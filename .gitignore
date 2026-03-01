@@ -1,0 +1,33 @@
+# Tests (internal only, not published)
+tests/
+examples/test_all.rs
+
+# Build output
+/target
+Cargo.lock
+
+# Coverage
+*.profraw
+*.profdata
+tarpaulin-report.*
+lcov.info
+coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+**/*.rs.bk
+
+# OS
+.DS_Store
+Thumbs.db

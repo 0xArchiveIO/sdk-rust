@@ -1,0 +1,50 @@
+[package]
+name = "oxarchive"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Rust client library for the 0xArchive API — historical and real-time crypto market data across Hyperliquid, Lighter.xyz, and HIP-3"
+license = "MIT"
+repository = "https://github.com/0xArchiveIO/sdk-rust"
+homepage = "https://0xarchive.io"
+documentation = "https://docs.rs/oxarchive"
+keywords = ["crypto", "market-data", "hyperliquid", "orderbook", "trading"]
+categories = ["api-bindings", "finance"]
+readme = "README.md"
+exclude = ["examples/test_all.rs"]
+
+[dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+url = "2"
+
+# WebSocket (optional)
+tokio-tungstenite = { version = "0.24", features = ["native-tls"], optional = true }
+futures-util = { version = "0.3", optional = true }
+
+[features]
+default = []
+websocket = ["dep:tokio-tungstenite", "dep:futures-util"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+wiremock = "0.5"
+
+[[example]]
+name = "basic"
+path = "examples/basic.rs"
+
+[[example]]
+name = "pagination"
+path = "examples/pagination.rs"
+
+[[example]]
+name = "websocket"
+path = "examples/websocket.rs"
+required-features = ["websocket"]
+
+[workspace]
