@@ -284,13 +284,17 @@ pub struct Liquidation {
 }
 
 /// Pre-aggregated liquidation volume for a time bucket.
+///
+/// USD fields use `String` (matching the API's raw decimal format) to avoid
+/// floating-point precision loss on large values. This is consistent with
+/// every other money/size field in the SDK.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiquidationVolume {
     pub coin: String,
     pub timestamp: String,
-    pub total_usd: f64,
-    pub long_usd: f64,
-    pub short_usd: f64,
+    pub total_usd: String,
+    pub long_usd: String,
+    pub short_usd: String,
     pub count: i64,
     pub long_count: i64,
     pub short_count: i64,
