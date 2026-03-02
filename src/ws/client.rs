@@ -3,7 +3,7 @@
 ///
 /// Requires the `websocket` feature:
 /// ```toml
-/// oxarchive = { version = "0.1", features = ["websocket"] }
+/// oxarchive = { version = "1", features = ["websocket"] }
 /// ```
 
 use futures_util::{SinkExt, StreamExt};
