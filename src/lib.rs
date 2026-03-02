@@ -70,7 +70,7 @@
 //! and bulk data download:
 //!
 //! ```toml
-//! oxarchive = { version = "1", features = ["websocket"] }
+//! oxarchive = { version = "1.1", features = ["websocket"] }
 //! ```
 
 pub mod client;
