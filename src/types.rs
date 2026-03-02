@@ -3,7 +3,47 @@
 /// The API returns `snake_case` JSON which matches Rust's native field
 /// naming convention, so no `rename_all` attribute is needed.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize a value that may arrive as a JSON number or a JSON string,
+/// always storing it as a `String`. This preserves decimal precision when the
+/// API quotes the value, while still accepting bare floats.
+fn deserialize_number_or_string<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct NumberOrString;
+
+    impl<'de> serde::de::Visitor<'de> for NumberOrString {
+        type Value = String;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a number or string")
+        }
+
+        fn visit_f64<E: serde::de::Error>(self, v: f64) -> std::result::Result<String, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_u64<E: serde::de::Error>(self, v: u64) -> std::result::Result<String, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_i64<E: serde::de::Error>(self, v: i64) -> std::result::Result<String, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_str<E: serde::de::Error>(self, v: &str) -> std::result::Result<String, E> {
+            Ok(v.to_owned())
+        }
+
+        fn visit_string<E: serde::de::Error>(self, v: String) -> std::result::Result<String, E> {
+            Ok(v)
+        }
+    }
+
+    deserializer.deserialize_any(NumberOrString)
+}
 
 // ---------------------------------------------------------------------------
 // Generic response envelope
@@ -285,15 +325,19 @@ pub struct Liquidation {
 
 /// Pre-aggregated liquidation volume for a time bucket.
 ///
-/// USD fields use `String` (matching the API's raw decimal format) to avoid
-/// floating-point precision loss on large values. This is consistent with
-/// every other money/size field in the SDK.
+/// USD fields use `String` to stay consistent with every other money/size
+/// field in the SDK and avoid floating-point precision loss on large values.
+/// The API may return these as bare JSON numbers or quoted strings depending
+/// on the aggregation path, so a custom deserializer accepts both formats.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiquidationVolume {
     pub coin: String,
     pub timestamp: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub total_usd: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub long_usd: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub short_usd: String,
     pub count: i64,
     pub long_count: i64,
