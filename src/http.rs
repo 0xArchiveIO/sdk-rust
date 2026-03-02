@@ -4,7 +4,7 @@ use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use std::sync::Arc;
-use std::time::Duration;
+pub(crate) use std::time::Duration;
 
 use crate::error::Error;
 use crate::types::ApiEnvelope;
@@ -27,6 +27,10 @@ pub struct HttpClient {
 
 impl HttpClient {
     pub(crate) fn new(config: HttpConfig) -> crate::error::Result<Self> {
+        if config.api_key.is_empty() {
+            return Err(Error::InvalidParam("API key must not be empty".into()));
+        }
+
         let mut headers = HeaderMap::new();
         headers.insert("X-API-Key", HeaderValue::from_str(&config.api_key).map_err(|_| {
             Error::InvalidParam("API key contains invalid characters".into())
@@ -50,6 +54,16 @@ impl HttpClient {
         path: &str,
         params: &[(&str, String)],
     ) -> crate::error::Result<T> {
+        self.get_with_timeout(path, params, None).await
+    }
+
+    /// Like [`get`](Self::get), but with an optional per-request timeout override.
+    pub async fn get_with_timeout<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+        timeout: Option<Duration>,
+    ) -> crate::error::Result<T> {
         let url = format!("{}{}", self.config.base_url, path);
 
         // Filter out empty-value params
@@ -59,7 +73,12 @@ impl HttpClient {
             .map(|(k, v)| (*k, v.as_str()))
             .collect();
 
-        let resp = self.inner.get(&url).query(&filtered).send().await.map_err(|e| {
+        let mut req = self.inner.get(&url).query(&filtered);
+        if let Some(t) = timeout {
+            req = req.timeout(t);
+        }
+
+        let resp = req.send().await.map_err(|e| {
             if e.is_timeout() {
                 Error::Timeout
             } else {

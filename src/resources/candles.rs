@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::http::HttpClient;
 use crate::types::{Candle, CandleInterval, CursorResponse, Timestamp};
 
@@ -29,13 +29,25 @@ impl CandlesResource {
     }
 
     /// Get paginated historical candles.
+    ///
+    /// Returns an error if the `start` timestamp is more than 5 minutes in the
+    /// future (the API silently returns empty data for future ranges).
     pub async fn history(
         &self,
         coin: &str,
         params: CandleHistoryParams,
     ) -> Result<CursorResponse<Vec<Candle>>> {
+        let start_ms = params.start.to_millis();
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        // Allow 5 minutes of clock skew tolerance
+        if start_ms > now_ms + 5 * 60 * 1000 {
+            return Err(Error::InvalidParam(
+                "start timestamp is in the future — no candle data can exist yet".into(),
+            ));
+        }
+
         let mut qp = vec![
-            ("start", params.start.to_millis().to_string()),
+            ("start", start_ms.to_string()),
             ("end", params.end.to_millis().to_string()),
         ];
         if let Some(c) = &params.cursor {
