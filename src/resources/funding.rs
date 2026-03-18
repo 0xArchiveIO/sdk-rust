@@ -30,7 +30,7 @@ impl FundingResource {
     /// Get paginated historical funding rates.
     pub async fn history(
         &self,
-        coin: &str,
+        symbol: &str,
         params: FundingHistoryParams,
     ) -> Result<CursorResponse<Vec<FundingRate>>> {
         let mut qp = vec![
@@ -48,15 +48,15 @@ impl FundingResource {
         }
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("{}/funding/{}", self.prefix, coin), &qp)
+            .get_with_cursor(&format!("{}/funding/{}", self.prefix, symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }
 
     /// Get the current funding rate.
-    pub async fn current(&self, coin: &str) -> Result<FundingRate> {
+    pub async fn current(&self, symbol: &str) -> Result<FundingRate> {
         self.http
-            .get(&format!("{}/funding/{}/current", self.prefix, coin), &[])
+            .get(&format!("{}/funding/{}/current", self.prefix, symbol), &[])
             .await
     }
 }

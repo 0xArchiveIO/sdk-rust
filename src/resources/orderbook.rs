@@ -42,8 +42,8 @@ impl OrderBookResource {
         }
     }
 
-    /// Get the current (or point-in-time) orderbook for a coin.
-    pub async fn get(&self, coin: &str, params: Option<GetOrderBookParams>) -> Result<OrderBook> {
+    /// Get the current (or point-in-time) orderbook for a symbol.
+    pub async fn get(&self, symbol: &str, params: Option<GetOrderBookParams>) -> Result<OrderBook> {
         let p = params.unwrap_or_default();
         let mut qp = vec![];
         if let Some(ts) = p.timestamp {
@@ -53,14 +53,14 @@ impl OrderBookResource {
             qp.push(("depth", d.to_string()));
         }
         self.http
-            .get(&format!("{}/orderbook/{}", self.prefix, coin), &qp)
+            .get(&format!("{}/orderbook/{}", self.prefix, symbol), &qp)
             .await
     }
 
     /// Get paginated historical orderbook snapshots.
     pub async fn history(
         &self,
-        coin: &str,
+        symbol: &str,
         params: OrderBookHistoryParams,
     ) -> Result<CursorResponse<Vec<OrderBook>>> {
         let mut qp = vec![
@@ -81,7 +81,7 @@ impl OrderBookResource {
         }
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("{}/orderbook/{}/history", self.prefix, coin), &qp)
+            .get_with_cursor(&format!("{}/orderbook/{}/history", self.prefix, symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }
@@ -100,7 +100,7 @@ impl OrderBookResource {
     /// tier (the API will return snapshot-level data instead of tick data).
     pub async fn history_tick(
         &self,
-        coin: &str,
+        symbol: &str,
         start: impl Into<Timestamp>,
         end: impl Into<Timestamp>,
         depth: Option<i32>,
@@ -116,7 +116,7 @@ impl OrderBookResource {
 
         let value: serde_json::Value = self
             .http
-            .get(&format!("{}/orderbook/{}/history", self.prefix, coin), &qp)
+            .get(&format!("{}/orderbook/{}/history", self.prefix, symbol), &qp)
             .await?;
 
         // Tick-level responses are objects with "checkpoint" + "deltas".
@@ -161,13 +161,13 @@ impl OrderBookResource {
     /// - `emit_all = false`: returns only the final state.
     pub async fn history_reconstructed(
         &self,
-        coin: &str,
+        symbol: &str,
         start: impl Into<Timestamp>,
         end: impl Into<Timestamp>,
         depth: Option<i32>,
         emit_all: bool,
     ) -> Result<Vec<ReconstructedOrderBook>> {
-        let tick_data = self.history_tick(coin, start, end, depth).await?;
+        let tick_data = self.history_tick(symbol, start, end, depth).await?;
         let mut reconstructor = OrderBookReconstructor::new();
         let options = ReconstructOptions {
             depth: depth.map(|d| d as usize),
@@ -189,7 +189,7 @@ impl OrderBookResource {
     /// streaming-style processing.
     pub async fn collect_tick_history(
         &self,
-        coin: &str,
+        symbol: &str,
         start: impl Into<Timestamp>,
         end: impl Into<Timestamp>,
         depth: Option<i32>,
@@ -205,7 +205,7 @@ impl OrderBookResource {
         let mut is_first_page = true;
 
         while cursor < end_ts {
-            let tick_data = self.history_tick(coin, cursor, end_ts, depth).await?;
+            let tick_data = self.history_tick(symbol, cursor, end_ts, depth).await?;
 
             if tick_data.deltas.is_empty() {
                 if is_first_page {

@@ -31,7 +31,7 @@ impl TradesResource {
     /// Get paginated historical trades.
     pub async fn list(
         &self,
-        coin: &str,
+        symbol: &str,
         params: GetTradesParams,
     ) -> Result<CursorResponse<Vec<Trade>>> {
         let mut qp = vec![
@@ -49,19 +49,19 @@ impl TradesResource {
         }
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("{}/trades/{}", self.prefix, coin), &qp)
+            .get_with_cursor(&format!("{}/trades/{}", self.prefix, symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }
 
     /// Get recent trades (Lighter.xyz and HIP-3 only).
-    pub async fn recent(&self, coin: &str, limit: Option<i64>) -> Result<Vec<Trade>> {
+    pub async fn recent(&self, symbol: &str, limit: Option<i64>) -> Result<Vec<Trade>> {
         let mut qp = vec![];
         if let Some(l) = limit {
             qp.push(("limit", l.to_string()));
         }
         self.http
-            .get(&format!("{}/trades/{}/recent", self.prefix, coin), &qp)
+            .get(&format!("{}/trades/{}/recent", self.prefix, symbol), &qp)
             .await
     }
 }

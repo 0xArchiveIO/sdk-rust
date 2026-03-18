@@ -34,7 +34,7 @@ impl CandlesResource {
     /// future (the API silently returns empty data for future ranges).
     pub async fn history(
         &self,
-        coin: &str,
+        symbol: &str,
         params: CandleHistoryParams,
     ) -> Result<CursorResponse<Vec<Candle>>> {
         let start_ms = params.start.to_millis();
@@ -61,7 +61,7 @@ impl CandlesResource {
         }
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("{}/candles/{}", self.prefix, coin), &qp)
+            .get_with_cursor(&format!("{}/candles/{}", self.prefix, symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }

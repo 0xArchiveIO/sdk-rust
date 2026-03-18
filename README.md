@@ -4,7 +4,7 @@ Official Rust SDK for [0xArchive](https://0xarchive.io) — Historical Market Da
 
 Supports multiple exchanges:
 - **Hyperliquid** — Perpetuals data from April 2023
-- **Hyperliquid HIP-3** — Builder-deployed perpetuals (Pro+ only, February 2026+)
+- **Hyperliquid HIP-3** — Builder-deployed perpetuals (February 2026+, free tier: km:US500, Build+: all symbols, Pro+: orderbook history)
 - **Lighter.xyz** — Perpetuals data (August 2025+ for fills, Jan 2026+ for OB, OI, Funding Rate)
 
 ## Installation
@@ -13,14 +13,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.1"
+oxarchive = "1.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 For WebSocket support (real-time streaming, replay, bulk download):
 
 ```toml
-oxarchive = { version = "1.1", features = ["websocket"] }
+oxarchive = { version = "1.2", features = ["websocket"] }
 ```
 
 ## Quick Start
@@ -74,7 +74,23 @@ let client = OxArchive::builder("your-api-key")
 
 ## REST API Reference
 
-All examples use `client.hyperliquid.*` but the same methods are available on `client.lighter.*` for Lighter.xyz data and `client.hyperliquid.hip3.*` for HIP-3 data.
+The sections below show which resources are available on each exchange client:
+
+| Resource | `client.hyperliquid` | `client.hyperliquid.hip3` | `client.lighter` |
+|----------|---------------------|--------------------------|-------------------|
+| `orderbook` | Yes | Yes | Yes |
+| `trades` | Yes | Yes | Yes |
+| `instruments` | Yes | Yes | Yes |
+| `funding` | Yes | Yes | Yes |
+| `open_interest` | Yes | Yes | Yes |
+| `candles` | Yes | Yes | Yes |
+| `liquidations` | Yes | Yes | -- |
+| `orders` | Yes | Yes | -- |
+| `l4_orderbook` | Yes | Yes | -- |
+| `l3_orderbook` | -- | -- | Yes |
+| `freshness()` | Yes | Yes | Yes |
+| `summary()` | Yes | Yes | Yes |
+| `price_history()` | Yes | Yes | Yes |
 
 ### Order Book
 
@@ -268,11 +284,12 @@ while let Some(c) = cursor {
     cursor = page.next_cursor;
 }
 
-// Get recent trades (Lighter only)
+// Get recent trades (Lighter and HIP-3 only)
 let recent = client.lighter.trades.recent("BTC", Some(100)).await?;
+let hip3_recent = client.hyperliquid.hip3.trades.recent("km:US500", Some(50)).await?;
 ```
 
-**Note:** The `recent()` method is only available for Lighter.xyz. Hyperliquid does not have a recent trades endpoint — use `list()` with a time range instead.
+**Note:** The `recent()` method is available for Lighter.xyz and HIP-3 only. Hyperliquid does not have a recent trades endpoint — use `list()` with a time range instead.
 
 ### Instruments
 
@@ -352,9 +369,9 @@ let history = client.hyperliquid.open_interest.history("BTC", OpenInterestHistor
 }).await?;
 ```
 
-### Liquidations (Hyperliquid only)
+### Liquidations (Hyperliquid and HIP-3)
 
-Historical liquidation events from May 2025 onwards.
+Historical liquidation events from May 2025 onwards. Available on `client.hyperliquid.liquidations` and `client.hyperliquid.hip3.liquidations`.
 
 ```rust
 use oxarchive::resources::liquidations::*;
@@ -387,6 +404,22 @@ let volume = client.hyperliquid.liquidations.volume("BTC", LiquidationVolumePara
 for bucket in &volume.data {
     println!("total=${}, long=${}, short=${}", bucket.total_usd, bucket.long_usd, bucket.short_usd);
 }
+
+// HIP-3 liquidations (same API, different exchange prefix)
+let hip3_liqs = client.hyperliquid.hip3.liquidations.history("km:US500", LiquidationHistoryParams {
+    start: 1704067200000_i64.into(),
+    end: 1704153600000_i64.into(),
+    cursor: None,
+    limit: None,
+}).await?;
+
+let hip3_vol = client.hyperliquid.hip3.liquidations.volume("km:US500", LiquidationVolumeParams {
+    start: 1704067200000_i64.into(),
+    end: 1704153600000_i64.into(),
+    interval: Some("1h".to_string()),
+    cursor: None,
+    limit: None,
+}).await?;
 ```
 
 ### Candles (OHLCV)
@@ -411,6 +444,122 @@ for candle in &candles.data {
 #### Available Intervals
 
 `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`, `1w`
+
+### Orders (Hyperliquid and HIP-3)
+
+Order history, order flow aggregation, and TP/SL order queries. Available on `client.hyperliquid.orders` and `client.hyperliquid.hip3.orders`.
+
+```rust
+use oxarchive::resources::orders::*;
+
+// Get order history for a symbol
+let orders = client.hyperliquid.orders.history("BTC", OrderHistoryParams {
+    start: Some(1704067200000_i64.into()),
+    end: Some(1704153600000_i64.into()),
+    user: None,
+    status: None,
+    order_type: None,
+    cursor: None,
+    limit: Some(1000),
+}).await?;
+
+// Filter by user address
+let user_orders = client.hyperliquid.orders.history("BTC", OrderHistoryParams {
+    start: Some(1704067200000_i64.into()),
+    end: Some(1704153600000_i64.into()),
+    user: Some("0x1234...".to_string()),
+    status: Some("filled".to_string()),
+    order_type: None,
+    cursor: None,
+    limit: None,
+}).await?;
+
+// Get aggregated order flow
+let flow = client.hyperliquid.orders.flow("BTC", OrderFlowParams {
+    start: Some(1704067200000_i64.into()),
+    end: Some(1704153600000_i64.into()),
+    interval: Some("1h".to_string()),
+    limit: None,
+}).await?;
+
+// Get TP/SL (take-profit / stop-loss) orders
+let tpsl = client.hyperliquid.orders.tpsl("BTC", TpslParams {
+    start: Some(1704067200000_i64.into()),
+    end: Some(1704153600000_i64.into()),
+    user: None,
+    triggered: Some(true),
+    cursor: None,
+    limit: None,
+}).await?;
+
+// HIP-3 orders
+let hip3_orders = client.hyperliquid.hip3.orders.history("km:US500", OrderHistoryParams::default()).await?;
+```
+
+### L4 Orderbook (Hyperliquid and HIP-3)
+
+Node-level L4 orderbook data with user attribution. Available on `client.hyperliquid.l4_orderbook` and `client.hyperliquid.hip3.l4_orderbook`.
+
+```rust
+use oxarchive::resources::l4_orderbook::*;
+
+// Get current L4 orderbook snapshot
+let l4 = client.hyperliquid.l4_orderbook.get("BTC", None).await?;
+
+// Get with specific timestamp and depth
+let l4 = client.hyperliquid.l4_orderbook.get("BTC", Some(L4OrderBookParams {
+    timestamp: Some(1704067200000_i64.into()),
+    depth: Some(20),
+})).await?;
+
+// Get paginated L4 orderbook diffs
+let diffs = client.hyperliquid.l4_orderbook.diffs("BTC", L4DiffsParams {
+    start: 1704067200000_i64.into(),
+    end: 1704153600000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+}).await?;
+
+// Get paginated L4 orderbook history
+let history = client.hyperliquid.l4_orderbook.history("BTC", L4HistoryParams {
+    start: 1704067200000_i64.into(),
+    end: 1704153600000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+    depth: Some(20),
+}).await?;
+
+// HIP-3 L4 orderbook
+let hip3_l4 = client.hyperliquid.hip3.l4_orderbook.get("km:US500", None).await?;
+let hip3_diffs = client.hyperliquid.hip3.l4_orderbook.diffs("km:US500", L4DiffsParams {
+    start: 1704067200000_i64.into(),
+    end: 1704153600000_i64.into(),
+    cursor: None,
+    limit: None,
+}).await?;
+```
+
+### L3 Orderbook (Lighter only)
+
+Order-level L3 orderbook data showing individual orders. Available on `client.lighter.l3_orderbook`.
+
+```rust
+use oxarchive::resources::l3_orderbook::L3HistoryParams;
+
+// Get current L3 orderbook
+let l3 = client.lighter.l3_orderbook.get("BTC", None).await?;
+
+// Get with depth limit
+let l3 = client.lighter.l3_orderbook.get("BTC", Some(20)).await?;
+
+// Get paginated L3 orderbook history
+let history = client.lighter.l3_orderbook.history("BTC", L3HistoryParams {
+    start: 1704067200000_i64.into(),
+    end: 1704153600000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+}).await?;
+```
 
 ### Freshness
 
@@ -460,15 +609,15 @@ println!("System: {}", status.status);
 let coverage = client.data_quality.coverage().await?;
 
 // Symbol-specific coverage with gap detection
-let btc = client.data_quality.symbol_coverage("hyperliquid", "BTC", None).await?;
+let btc = client.data_quality.symbol_coverage("hyperliquid", "BTC").await?;
 
 // Incidents
-let incidents = client.data_quality.list_incidents(None, None).await?;
+let incidents = client.data_quality.list_incidents(None).await?;
 let incident = client.data_quality.get_incident("inc-123").await?;
 
 // Latency and SLA
 let latency = client.data_quality.latency().await?;
-let sla = client.data_quality.sla(None, None).await?;
+let sla = client.data_quality.sla(None).await?;
 ```
 
 ## Web3 Authentication
@@ -481,30 +630,26 @@ let challenge = client.web3.challenge("0xYourWalletAddress").await?;
 
 // Step 2: Sign the challenge and register
 let result = client.web3.signup(
-    "0xYourWalletAddress",
     &challenge.message,
     "0xYourSignature",
 ).await?;
 println!("API Key: {}", result.api_key);
 
-// Manage API keys
-let keys = client.web3.list_keys("0xYourWalletAddress", "Bearer token").await?;
-client.web3.revoke_key("key-id", "Bearer token").await?;
+// Manage API keys (requires fresh SIWE signature)
+let keys = client.web3.list_keys(&challenge.message, "0xSignature").await?;
+client.web3.revoke_key(&challenge.message, "0xSignature", "key-id").await?;
 
 // Subscribe with x402 USDC payment
-let sub = client.web3.subscribe(
-    "0xYourWalletAddress",
-    "build",
-    "0xPaymentTxHash",
-).await?;
+let sub = client.web3.subscribe("build", "base64_payment_payload").await?;
 ```
 
 ## WebSocket Client
 
-Requires the `websocket` feature. Supports three modes on a single connection:
+Requires the `websocket` feature. Supports two modes on a single connection:
 - **Real-time** — subscribe to live market data
 - **Replay** — replay historical data with timing preserved
-- **Stream** — bulk-download historical data as fast as possible
+
+For bulk data downloads, use the S3 Parquet bulk export via the [Data Explorer](https://0xarchive.io/data).
 
 ### Real-time Streaming
 
@@ -542,27 +687,6 @@ ws.replay_seek(1704069000000).await?;
 ws.replay_stop().await?;
 ```
 
-### Bulk Streaming
-
-```rust
-// Stream trades as fast as possible
-ws.stream("trades", "ETH", 1704067200000, 1704153600000, Some(5000)).await?;
-
-let mut rx = ws.rx.take().expect("receiver");
-while let Some(msg) = rx.recv().await {
-    match msg {
-        ServerMsg::HistoricalBatch { data, .. } => {
-            println!("Batch: {} records", data.len());
-        }
-        ServerMsg::StreamCompleted { snapshots_sent, .. } => {
-            println!("Done: {} total", snapshots_sent.unwrap_or(0));
-            break;
-        }
-        _ => {}
-    }
-}
-```
-
 ### Available Channels
 
 | Channel | Description | Historical |
@@ -580,11 +704,17 @@ while let Some(msg) = rx.recv().await {
 | `lighter_candles` | Lighter.xyz candles | Yes |
 | `lighter_open_interest` | Lighter.xyz open interest | Yes |
 | `lighter_funding` | Lighter.xyz funding rates | Yes |
+| `lighter_l3_orderbook` | Lighter.xyz L3 order-level orderbook (Pro+) | Yes |
 | `hip3_orderbook` | HIP-3 L2 order book | Yes |
 | `hip3_trades` | HIP-3 trades | Yes |
 | `hip3_candles` | HIP-3 candles | Yes |
 | `hip3_open_interest` | HIP-3 open interest | Yes |
 | `hip3_funding` | HIP-3 funding rates | Yes |
+| `hip3_liquidations` | HIP-3 liquidation events (Feb 2026+) | Yes |
+| `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution | Real-time only |
+| `l4_orders` | Hyperliquid order lifecycle events | Real-time only |
+| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution | Real-time only |
+| `hip3_l4_orders` | HIP-3 order lifecycle events | Real-time only |
 
 ### Tier Limits
 
@@ -644,6 +774,10 @@ cargo run --example pagination
 # WebSocket (requires websocket feature)
 cargo run --example websocket --features websocket
 ```
+
+## Bulk Data Downloads
+
+For large-scale data exports (full order books, complete trade history, etc.), use the S3 Parquet bulk export available at [0xarchive.io/data](https://0xarchive.io/data). The Data Explorer lets you select time ranges, symbols, and data types, then download compressed Parquet files directly.
 
 ## Requirements
 

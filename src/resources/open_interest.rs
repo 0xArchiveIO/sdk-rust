@@ -30,7 +30,7 @@ impl OpenInterestResource {
     /// Get paginated historical open interest snapshots.
     pub async fn history(
         &self,
-        coin: &str,
+        symbol: &str,
         params: OpenInterestHistoryParams,
     ) -> Result<CursorResponse<Vec<OpenInterest>>> {
         let mut qp = vec![
@@ -48,16 +48,16 @@ impl OpenInterestResource {
         }
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("{}/openinterest/{}", self.prefix, coin), &qp)
+            .get_with_cursor(&format!("{}/openinterest/{}", self.prefix, symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }
 
     /// Get the current open interest.
-    pub async fn current(&self, coin: &str) -> Result<OpenInterest> {
+    pub async fn current(&self, symbol: &str) -> Result<OpenInterest> {
         self.http
             .get(
-                &format!("{}/openinterest/{}/current", self.prefix, coin),
+                &format!("{}/openinterest/{}/current", self.prefix, symbol),
                 &[],
             )
             .await
