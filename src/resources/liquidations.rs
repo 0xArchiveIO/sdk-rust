@@ -51,7 +51,7 @@ impl LiquidationsResource {
     /// Get paginated historical liquidations for a coin.
     pub async fn history(
         &self,
-        coin: &str,
+        symbol: &str,
         params: LiquidationHistoryParams,
     ) -> Result<CursorResponse<Vec<Liquidation>>> {
         let mut qp = vec![
@@ -66,7 +66,7 @@ impl LiquidationsResource {
         }
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("{}/liquidations/{}", self.prefix, coin), &qp)
+            .get_with_cursor(&format!("{}/liquidations/{}", self.prefix, symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }
@@ -103,7 +103,7 @@ impl LiquidationsResource {
     /// Get aggregated liquidation volume by time bucket.
     pub async fn volume(
         &self,
-        coin: &str,
+        symbol: &str,
         params: LiquidationVolumeParams,
     ) -> Result<CursorResponse<Vec<LiquidationVolume>>> {
         let mut qp = vec![
@@ -122,7 +122,7 @@ impl LiquidationsResource {
         let (data, next_cursor) = self
             .http
             .get_with_cursor(
-                &format!("{}/liquidations/{}/volume", self.prefix, coin),
+                &format!("{}/liquidations/{}/volume", self.prefix, symbol),
                 &qp,
             )
             .await?;

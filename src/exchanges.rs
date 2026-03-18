@@ -5,8 +5,8 @@ use crate::error::Result;
 use crate::http::HttpClient;
 use crate::resources::{
     CandlesResource, FundingResource, Hip3InstrumentsResource, InstrumentsResource,
-    LighterInstrumentsResource, LiquidationsResource, OpenInterestResource, OrderBookResource,
-    TradesResource,
+    L3OrderBookResource, L4OrderBookResource, LighterInstrumentsResource, LiquidationsResource,
+    OpenInterestResource, OrderBookResource, OrdersResource, TradesResource,
 };
 use crate::types::{
     CoinFreshness, CoinSummary, CursorResponse, PriceSnapshot, Timestamp,
@@ -27,6 +27,8 @@ pub struct HyperliquidClient {
     pub open_interest: OpenInterestResource,
     pub candles: CandlesResource,
     pub liquidations: LiquidationsResource,
+    pub orders: OrdersResource,
+    pub l4_orderbook: L4OrderBookResource,
     pub hip3: Hip3Client,
 }
 
@@ -41,29 +43,31 @@ impl HyperliquidClient {
             open_interest: OpenInterestResource::new(http.clone(), prefix),
             candles: CandlesResource::new(http.clone(), prefix),
             liquidations: LiquidationsResource::new(http.clone(), prefix),
+            orders: OrdersResource::new(http.clone(), prefix),
+            l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             hip3: Hip3Client::new(http.clone()),
             http,
         }
     }
 
-    /// Get data freshness (lag) for a coin across all data types.
-    pub async fn freshness(&self, coin: &str) -> Result<CoinFreshness> {
+    /// Get data freshness (lag) for a symbol across all data types.
+    pub async fn freshness(&self, symbol: &str) -> Result<CoinFreshness> {
         self.http
-            .get(&format!("/v1/hyperliquid/freshness/{}", coin), &[])
+            .get(&format!("/v1/hyperliquid/freshness/{}", symbol), &[])
             .await
     }
 
-    /// Get a combined market summary for a coin.
-    pub async fn summary(&self, coin: &str) -> Result<CoinSummary> {
+    /// Get a combined market summary for a symbol.
+    pub async fn summary(&self, symbol: &str) -> Result<CoinSummary> {
         self.http
-            .get(&format!("/v1/hyperliquid/summary/{}", coin), &[])
+            .get(&format!("/v1/hyperliquid/summary/{}", symbol), &[])
             .await
     }
 
-    /// Get historical price snapshots for a coin.
+    /// Get historical price snapshots for a symbol.
     pub async fn price_history(
         &self,
-        coin: &str,
+        symbol: &str,
         start: impl Into<Timestamp>,
         end: impl Into<Timestamp>,
         interval: Option<&str>,
@@ -85,7 +89,7 @@ impl HyperliquidClient {
         }
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("/v1/hyperliquid/prices/{}", coin), &qp)
+            .get_with_cursor(&format!("/v1/hyperliquid/prices/{}", symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }
@@ -107,6 +111,9 @@ pub struct Hip3Client {
     pub funding: FundingResource,
     pub open_interest: OpenInterestResource,
     pub candles: CandlesResource,
+    pub liquidations: LiquidationsResource,
+    pub orders: OrdersResource,
+    pub l4_orderbook: L4OrderBookResource,
 }
 
 impl Hip3Client {
@@ -119,28 +126,31 @@ impl Hip3Client {
             funding: FundingResource::new(http.clone(), prefix),
             open_interest: OpenInterestResource::new(http.clone(), prefix),
             candles: CandlesResource::new(http.clone(), prefix),
+            liquidations: LiquidationsResource::new(http.clone(), prefix),
+            orders: OrdersResource::new(http.clone(), prefix),
+            l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             http,
         }
     }
 
-    /// Get data freshness for a HIP-3 coin.
-    pub async fn freshness(&self, coin: &str) -> Result<CoinFreshness> {
+    /// Get data freshness for a HIP-3 symbol.
+    pub async fn freshness(&self, symbol: &str) -> Result<CoinFreshness> {
         self.http
-            .get(&format!("/v1/hyperliquid/hip3/freshness/{}", coin), &[])
+            .get(&format!("/v1/hyperliquid/hip3/freshness/{}", symbol), &[])
             .await
     }
 
-    /// Get a combined market summary for a HIP-3 coin.
-    pub async fn summary(&self, coin: &str) -> Result<CoinSummary> {
+    /// Get a combined market summary for a HIP-3 symbol.
+    pub async fn summary(&self, symbol: &str) -> Result<CoinSummary> {
         self.http
-            .get(&format!("/v1/hyperliquid/hip3/summary/{}", coin), &[])
+            .get(&format!("/v1/hyperliquid/hip3/summary/{}", symbol), &[])
             .await
     }
 
-    /// Get historical price snapshots for a HIP-3 coin.
+    /// Get historical price snapshots for a HIP-3 symbol.
     pub async fn price_history(
         &self,
-        coin: &str,
+        symbol: &str,
         start: impl Into<Timestamp>,
         end: impl Into<Timestamp>,
         interval: Option<&str>,
@@ -162,7 +172,7 @@ impl Hip3Client {
         }
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("/v1/hyperliquid/hip3/prices/{}", coin), &qp)
+            .get_with_cursor(&format!("/v1/hyperliquid/hip3/prices/{}", symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }
@@ -182,6 +192,7 @@ pub struct LighterClient {
     pub funding: FundingResource,
     pub open_interest: OpenInterestResource,
     pub candles: CandlesResource,
+    pub l3_orderbook: L3OrderBookResource,
 }
 
 impl LighterClient {
@@ -194,28 +205,29 @@ impl LighterClient {
             funding: FundingResource::new(http.clone(), prefix),
             open_interest: OpenInterestResource::new(http.clone(), prefix),
             candles: CandlesResource::new(http.clone(), prefix),
+            l3_orderbook: L3OrderBookResource::new(http.clone(), prefix),
             http,
         }
     }
 
-    /// Get data freshness for a Lighter coin.
-    pub async fn freshness(&self, coin: &str) -> Result<CoinFreshness> {
+    /// Get data freshness for a Lighter symbol.
+    pub async fn freshness(&self, symbol: &str) -> Result<CoinFreshness> {
         self.http
-            .get(&format!("/v1/lighter/freshness/{}", coin), &[])
+            .get(&format!("/v1/lighter/freshness/{}", symbol), &[])
             .await
     }
 
-    /// Get a combined market summary for a Lighter coin.
-    pub async fn summary(&self, coin: &str) -> Result<CoinSummary> {
+    /// Get a combined market summary for a Lighter symbol.
+    pub async fn summary(&self, symbol: &str) -> Result<CoinSummary> {
         self.http
-            .get(&format!("/v1/lighter/summary/{}", coin), &[])
+            .get(&format!("/v1/lighter/summary/{}", symbol), &[])
             .await
     }
 
-    /// Get historical price snapshots for a Lighter coin.
+    /// Get historical price snapshots for a Lighter symbol.
     pub async fn price_history(
         &self,
-        coin: &str,
+        symbol: &str,
         start: impl Into<Timestamp>,
         end: impl Into<Timestamp>,
         interval: Option<&str>,
@@ -237,7 +249,7 @@ impl LighterClient {
         }
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("/v1/lighter/prices/{}", coin), &qp)
+            .get_with_cursor(&format!("/v1/lighter/prices/{}", symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }

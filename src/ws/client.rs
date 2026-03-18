@@ -3,7 +3,7 @@
 ///
 /// Requires the `websocket` feature:
 /// ```toml
-/// oxarchive = { version = "1.1", features = ["websocket"] }
+/// oxarchive = { version = "1.2", features = ["websocket"] }
 /// ```
 
 use futures_util::{SinkExt, StreamExt};
@@ -59,15 +59,23 @@ impl WsOptions {
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum ClientMsg {
     #[serde(rename = "subscribe")]
-    Subscribe { channel: String, coin: Option<String> },
+    Subscribe { channel: String, symbol: Option<String> },
     #[serde(rename = "unsubscribe")]
-    Unsubscribe { channel: String, coin: Option<String> },
+    Unsubscribe { channel: String, symbol: Option<String> },
     #[serde(rename = "ping")]
     Ping,
     #[serde(rename = "replay")]
     Replay {
         channel: String,
-        coin: String,
+        symbol: String,
+        start: i64,
+        end: Option<i64>,
+        speed: Option<f64>,
+    },
+    #[serde(rename = "replay")]
+    ReplayMulti {
+        channels: Vec<String>,
+        symbol: String,
         start: i64,
         end: Option<i64>,
         speed: Option<f64>,
@@ -83,7 +91,7 @@ pub enum ClientMsg {
     #[serde(rename = "stream")]
     Stream {
         channel: String,
-        coin: String,
+        symbol: String,
         start: i64,
         end: i64,
         batch_size: Option<usize>,
@@ -99,10 +107,12 @@ pub enum ServerMsg {
     Subscribed {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
     },
     Unsubscribed {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
     },
     Pong,
     Error {
@@ -111,28 +121,33 @@ pub enum ServerMsg {
     Data {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
         data: serde_json::Value,
     },
     HistoricalData {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
         timestamp: i64,
         data: serde_json::Value,
     },
     ReplaySnapshot {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
         timestamp: i64,
         data: serde_json::Value,
     },
     HistoricalBatch {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
         data: Vec<serde_json::Value>,
     },
     ReplayStarted {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
     },
     ReplayPaused {
         current_timestamp: Option<i64>,
@@ -143,12 +158,14 @@ pub enum ServerMsg {
     ReplayCompleted {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
         snapshots_sent: Option<i64>,
     },
     ReplayStopped,
     StreamStarted {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
     },
     StreamProgress {
         snapshots_sent: Option<i64>,
@@ -156,6 +173,7 @@ pub enum ServerMsg {
     StreamCompleted {
         channel: String,
         coin: Option<String>,
+        symbol: Option<String>,
         snapshots_sent: Option<i64>,
     },
     StreamStopped {
@@ -164,6 +182,7 @@ pub enum ServerMsg {
     GapDetected {
         channel: Option<String>,
         coin: Option<String>,
+        symbol: Option<String>,
         gap_start: Option<i64>,
         gap_end: Option<i64>,
         duration_minutes: Option<f64>,
@@ -253,35 +272,57 @@ impl OxArchiveWs {
     }
 
     /// Subscribe to a real-time channel.
-    pub async fn subscribe(&self, channel: &str, coin: Option<&str>) -> Result<()> {
+    pub async fn subscribe(&self, channel: &str, symbol: Option<&str>) -> Result<()> {
         self.send(ClientMsg::Subscribe {
             channel: channel.to_string(),
-            coin: coin.map(|s| s.to_string()),
+            symbol: symbol.map(|s| s.to_string()),
         })
         .await
     }
 
     /// Unsubscribe from a real-time channel.
-    pub async fn unsubscribe(&self, channel: &str, coin: Option<&str>) -> Result<()> {
+    pub async fn unsubscribe(&self, channel: &str, symbol: Option<&str>) -> Result<()> {
         self.send(ClientMsg::Unsubscribe {
             channel: channel.to_string(),
-            coin: coin.map(|s| s.to_string()),
+            symbol: symbol.map(|s| s.to_string()),
         })
         .await
     }
 
-    /// Start a historical replay.
+    /// Start a historical replay on a single channel.
     pub async fn replay(
         &self,
         channel: &str,
-        coin: &str,
+        symbol: &str,
         start: i64,
         end: Option<i64>,
         speed: Option<f64>,
     ) -> Result<()> {
         self.send(ClientMsg::Replay {
             channel: channel.to_string(),
-            coin: coin.to_string(),
+            symbol: symbol.to_string(),
+            start,
+            end,
+            speed,
+        })
+        .await
+    }
+
+    /// Start a multi-channel synchronized replay.
+    ///
+    /// All channels are replayed together with data interleaved chronologically.
+    /// Initial `replay_snapshot` messages provide each channel's state at `start`.
+    pub async fn replay_multi(
+        &self,
+        channels: &[&str],
+        symbol: &str,
+        start: i64,
+        end: Option<i64>,
+        speed: Option<f64>,
+    ) -> Result<()> {
+        self.send(ClientMsg::ReplayMulti {
+            channels: channels.iter().map(|c| c.to_string()).collect(),
+            symbol: symbol.to_string(),
             start,
             end,
             speed,
@@ -313,14 +354,14 @@ impl OxArchiveWs {
     pub async fn stream(
         &self,
         channel: &str,
-        coin: &str,
+        symbol: &str,
         start: i64,
         end: i64,
         batch_size: Option<usize>,
     ) -> Result<()> {
         self.send(ClientMsg::Stream {
             channel: channel.to_string(),
-            coin: coin.to_string(),
+            symbol: symbol.to_string(),
             start,
             end,
             batch_size,
