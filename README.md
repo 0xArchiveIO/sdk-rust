@@ -13,14 +13,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.2"
+oxarchive = "1.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 For WebSocket support (real-time streaming, replay, bulk download):
 
 ```toml
-oxarchive = { version = "1.2", features = ["websocket"] }
+oxarchive = { version = "1.3", features = ["websocket"] }
 ```
 
 ## Quick Start
@@ -87,6 +87,7 @@ The sections below show which resources are available on each exchange client:
 | `liquidations` | Yes | Yes | -- |
 | `orders` | Yes | Yes | -- |
 | `l4_orderbook` | Yes | Yes | -- |
+| `l2_orderbook` | Yes | Yes | -- |
 | `l3_orderbook` | -- | -- | Yes |
 | `freshness()` | Yes | Yes | Yes |
 | `summary()` | Yes | Yes | Yes |
@@ -539,6 +540,43 @@ let hip3_diffs = client.hyperliquid.hip3.l4_orderbook.diffs("km:US500", L4DiffsP
 }).await?;
 ```
 
+### L2 Orderbook (Hyperliquid and HIP-3)
+
+Full-depth L2 orderbook derived from L4 data. Available on `client.hyperliquid.l2_orderbook` and `client.hyperliquid.hip3.l2_orderbook`.
+
+```rust
+use oxarchive::resources::l2_orderbook::*;
+
+// Get current L2 full-depth orderbook (Build+ tier)
+let l2 = client.hyperliquid.l2_orderbook.get("BTC", None).await?;
+
+// Get L2 orderbook at a specific timestamp
+let l2 = client.hyperliquid.l2_orderbook.get("BTC", Some(L2OrderBookParams {
+    timestamp: Some(1704067200000_i64.into()),
+    depth: Some(50),
+})).await?;
+
+// Get L2 orderbook history (Build+ tier)
+let l2_history = client.hyperliquid.l2_orderbook.history("BTC", L2HistoryParams {
+    start: 1704067200000_i64.into(),
+    end: 1704153600000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+    depth: Some(50),
+}).await?;
+
+// Get L2 tick-level diffs (Pro+ tier)
+let l2_diffs = client.hyperliquid.l2_orderbook.diffs("BTC", L2DiffsParams {
+    start: 1704067200000_i64.into(),
+    end: 1704153600000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+}).await?;
+
+// HIP-3 L2 orderbook
+let hip3_l2 = client.hyperliquid.hip3.l2_orderbook.get("km:US500", None).await?;
+```
+
 ### L3 Orderbook (Lighter only)
 
 Order-level L3 orderbook data showing individual orders. Available on `client.lighter.l3_orderbook`.
@@ -711,10 +749,10 @@ ws.replay_stop().await?;
 | `hip3_open_interest` | HIP-3 open interest | Yes |
 | `hip3_funding` | HIP-3 funding rates | Yes |
 | `hip3_liquidations` | HIP-3 liquidation events (Feb 2026+) | Yes |
-| `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution | Real-time only |
-| `l4_orders` | Hyperliquid order lifecycle events | Real-time only |
-| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution | Real-time only |
-| `hip3_l4_orders` | HIP-3 order lifecycle events | Real-time only |
+| `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution (Pro+) | Real-time only |
+| `l4_orders` | Hyperliquid order lifecycle events (Pro+) | Real-time only |
+| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution (Pro+) | Real-time only |
+| `hip3_l4_orders` | HIP-3 order lifecycle events (Pro+) | Real-time only |
 
 ### Tier Limits
 

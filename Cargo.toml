@@ -1,6 +1,6 @@
 [package]
 name = "oxarchive"
-version = "1.2.0"
+version = "1.3.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Rust client library for the 0xArchive API — historical and real-time crypto market data across Hyperliquid, Lighter.xyz, and HIP-3"

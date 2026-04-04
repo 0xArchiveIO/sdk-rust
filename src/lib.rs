@@ -77,6 +77,7 @@ pub mod client;
 pub mod error;
 pub mod exchanges;
 pub mod http;
+pub mod l4_reconstructor;
 pub mod orderbook_reconstructor;
 pub mod resources;
 pub mod types;
@@ -85,6 +86,7 @@ pub mod ws;
 // Re-export the main entry points at the crate root.
 pub use client::{ClientBuilder, OxArchive};
 pub use error::{Error, Result};
+pub use l4_reconstructor::{L4OrderBookReconstructor, L4Order, L4Diff, L2Level};
 pub use orderbook_reconstructor::{
     reconstruct_final, reconstruct_orderbook, OrderBookReconstructor,
 };
