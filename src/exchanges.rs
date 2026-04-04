@@ -5,8 +5,8 @@ use crate::error::Result;
 use crate::http::HttpClient;
 use crate::resources::{
     CandlesResource, FundingResource, Hip3InstrumentsResource, InstrumentsResource,
-    L3OrderBookResource, L4OrderBookResource, LighterInstrumentsResource, LiquidationsResource,
-    OpenInterestResource, OrderBookResource, OrdersResource, TradesResource,
+    L2OrderBookResource, L3OrderBookResource, L4OrderBookResource, LighterInstrumentsResource,
+    LiquidationsResource, OpenInterestResource, OrderBookResource, OrdersResource, TradesResource,
 };
 use crate::types::{
     CoinFreshness, CoinSummary, CursorResponse, PriceSnapshot, Timestamp,
@@ -29,6 +29,7 @@ pub struct HyperliquidClient {
     pub liquidations: LiquidationsResource,
     pub orders: OrdersResource,
     pub l4_orderbook: L4OrderBookResource,
+    pub l2_orderbook: L2OrderBookResource,
     pub hip3: Hip3Client,
 }
 
@@ -45,6 +46,7 @@ impl HyperliquidClient {
             liquidations: LiquidationsResource::new(http.clone(), prefix),
             orders: OrdersResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
+            l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
             hip3: Hip3Client::new(http.clone()),
             http,
         }
@@ -114,6 +116,7 @@ pub struct Hip3Client {
     pub liquidations: LiquidationsResource,
     pub orders: OrdersResource,
     pub l4_orderbook: L4OrderBookResource,
+    pub l2_orderbook: L2OrderBookResource,
 }
 
 impl Hip3Client {
@@ -129,6 +132,7 @@ impl Hip3Client {
             liquidations: LiquidationsResource::new(http.clone(), prefix),
             orders: OrdersResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
+            l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
             http,
         }
     }

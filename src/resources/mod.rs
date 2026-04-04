@@ -9,6 +9,7 @@ pub mod data_quality;
 pub mod web3;
 pub mod orders;
 pub mod l4_orderbook;
+pub mod l2_orderbook;
 pub mod l3_orderbook;
 
 pub use orderbook::OrderBookResource;
@@ -22,4 +23,5 @@ pub use data_quality::DataQualityResource;
 pub use web3::Web3Resource;
 pub use orders::OrdersResource;
 pub use l4_orderbook::L4OrderBookResource;
+pub use l2_orderbook::L2OrderBookResource;
 pub use l3_orderbook::L3OrderBookResource;
