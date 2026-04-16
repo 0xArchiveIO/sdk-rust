@@ -177,6 +177,22 @@ pub struct Trade {
     pub user_address: Option<String>,
     pub maker_address: Option<String>,
     pub taker_address: Option<String>,
+    /// Builder address that routed this order. Present only when the order was placed through a builder.
+    pub builder_address: Option<String>,
+    /// Builder fee charged on this fill, paid to the builder (in quote currency, typically USDC).
+    /// Present only when `builder_address` is set.
+    pub builder_fee: Option<String>,
+    /// HIP-3 deployer fee share on this fill (in quote currency). Negative for the maker side (rebate),
+    /// positive for the taker side. Present only on HIP-3 fills.
+    pub deployer_fee: Option<String>,
+    /// Priority fee burned in HYPE (not USDC) for write priority on the Hyperliquid validator queue.
+    /// Independent of `builder_fee` and `deployer_fee` — paid to the network, not to a builder or
+    /// deployer. Present only when the order paid for priority.
+    pub priority_gas: Option<f64>,
+    /// Client order ID.
+    pub cloid: Option<String>,
+    /// TWAP execution ID.
+    pub twap_id: Option<i64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -265,12 +281,12 @@ pub struct OpenInterest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Candle {
     pub timestamp: String,
-    pub open: f64,
-    pub high: f64,
-    pub low: f64,
-    pub close: f64,
-    pub volume: f64,
-    pub quote_volume: Option<f64>,
+    pub open: String,
+    pub high: String,
+    pub low: String,
+    pub close: String,
+    pub volume: String,
+    pub quote_volume: Option<String>,
     pub trade_count: Option<i64>,
 }
 
@@ -663,4 +679,113 @@ impl Default for ReconstructOptions {
             emit_all: true,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// L4 Orderbook (typed responses)
+// ---------------------------------------------------------------------------
+
+/// A single order in an L4 orderbook snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L4OrderEntry {
+    pub oid: u64,
+    pub user_address: String,
+    pub side: String,
+    pub price: f64,
+    pub size: f64,
+}
+
+/// L4 orderbook snapshot with individual orders and user attribution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L4OrderBookSnapshot {
+    pub coin: String,
+    pub timestamp: String,
+    pub checkpoint_timestamp: String,
+    pub diffs_applied: u64,
+    pub last_block_number: u64,
+    pub bid_count: usize,
+    pub ask_count: usize,
+    pub total_bid_size: f64,
+    pub total_ask_size: f64,
+    pub bids: Vec<L4OrderEntry>,
+    pub asks: Vec<L4OrderEntry>,
+}
+
+/// A single L4 orderbook diff (order placement, modification, or cancellation).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L4DiffEntry {
+    pub coin: String,
+    pub timestamp: String,
+    pub block_number: u64,
+    pub oid: u64,
+    pub side: String,
+    pub price: f64,
+    pub diff_type: String,
+    pub new_size: Option<f64>,
+    pub user_address: String,
+}
+
+// ---------------------------------------------------------------------------
+// L2 Full-Depth Orderbook (typed responses)
+// ---------------------------------------------------------------------------
+
+/// A single price level in an L2 orderbook.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L2PriceLevel {
+    pub px: f64,
+    pub sz: f64,
+    pub n: u32,
+}
+
+/// L2 full-depth orderbook snapshot with aggregated price levels.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L2OrderBookSnapshot {
+    pub coin: String,
+    pub timestamp: String,
+    pub bid_levels: usize,
+    pub ask_levels: usize,
+    pub total_bid_size: f64,
+    pub total_ask_size: f64,
+    pub mid_price: Option<f64>,
+    pub spread: Option<f64>,
+    pub spread_bps: Option<f64>,
+    pub bids: Vec<L2PriceLevel>,
+    pub asks: Vec<L2PriceLevel>,
+}
+
+/// A single L2 tick-level diff (price level change).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L2DiffEntry {
+    pub timestamp: String,
+    pub block_number: u64,
+    pub side: String,
+    pub price: f64,
+    pub size: f64,
+    pub count: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Order History (typed responses)
+// ---------------------------------------------------------------------------
+
+/// An order lifecycle event (placement, fill, cancel, trigger).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderHistoryEntry {
+    pub coin: String,
+    pub timestamp: String,
+    pub block_number: u64,
+    pub block_time: String,
+    pub oid: u64,
+    pub user_address: String,
+    pub side: String,
+    pub limit_price: f64,
+    pub size: f64,
+    pub orig_size: f64,
+    pub status: String,
+    pub order_type: String,
+    pub tif: String,
+    pub reduce_only: bool,
+    pub is_trigger: bool,
+    pub is_position_tpsl: bool,
+    pub cloid: Option<String>,
 }
