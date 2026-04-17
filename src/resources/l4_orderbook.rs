@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::http::HttpClient;
-use crate::types::{CursorResponse, Timestamp};
+use crate::types::{CursorResponse, L4DiffEntry, L4OrderBookSnapshot, Timestamp};
 
 /// Parameters for fetching a single L4 orderbook snapshot.
 #[derive(Debug, Default)]
@@ -50,7 +50,7 @@ impl L4OrderBookResource {
         &self,
         symbol: &str,
         params: Option<L4OrderBookParams>,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<L4OrderBookSnapshot> {
         let p = params.unwrap_or_default();
         let mut qp = vec![];
         if let Some(ts) = p.timestamp {
@@ -69,7 +69,7 @@ impl L4OrderBookResource {
         &self,
         symbol: &str,
         params: L4DiffsParams,
-    ) -> Result<CursorResponse<Vec<serde_json::Value>>> {
+    ) -> Result<CursorResponse<Vec<L4DiffEntry>>> {
         let mut qp = vec![
             ("start", params.start.to_millis().to_string()),
             ("end", params.end.to_millis().to_string()),
@@ -95,7 +95,7 @@ impl L4OrderBookResource {
         &self,
         symbol: &str,
         params: L4HistoryParams,
-    ) -> Result<CursorResponse<Vec<serde_json::Value>>> {
+    ) -> Result<CursorResponse<Vec<L4OrderBookSnapshot>>> {
         let mut qp = vec![
             ("start", params.start.to_millis().to_string()),
             ("end", params.end.to_millis().to_string()),
