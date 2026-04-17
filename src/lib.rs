@@ -70,7 +70,7 @@
 //! and bulk data download:
 //!
 //! ```toml
-//! oxarchive = { version = "1.2", features = ["websocket"] }
+//! oxarchive = { version = "1.3", features = ["websocket"] }
 //! ```
 
 pub mod client;
@@ -90,7 +90,10 @@ pub use l4_reconstructor::{L4OrderBookReconstructor, L4Order, L4Diff, L2Level};
 pub use orderbook_reconstructor::{
     reconstruct_final, reconstruct_orderbook, OrderBookReconstructor,
 };
-pub use types::CursorResponse;
+pub use types::{
+    CursorResponse, L4OrderBookSnapshot, L4OrderEntry, L4DiffEntry,
+    L2OrderBookSnapshot, L2PriceLevel, L2DiffEntry, OrderHistoryEntry,
+};
 
 #[cfg(feature = "websocket")]
 pub use ws::{ClientMsg, OxArchiveWs, ServerMsg, WsOptions};

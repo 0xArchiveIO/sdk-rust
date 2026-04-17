@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::http::HttpClient;
-use crate::types::{CursorResponse, Timestamp};
+use crate::types::{CursorResponse, OrderHistoryEntry, Timestamp};
 
 /// Parameters for paginated order history.
 #[derive(Debug, Default)]
@@ -54,7 +54,7 @@ impl OrdersResource {
         &self,
         symbol: &str,
         params: OrderHistoryParams,
-    ) -> Result<CursorResponse<Vec<serde_json::Value>>> {
+    ) -> Result<CursorResponse<Vec<OrderHistoryEntry>>> {
         let mut qp = vec![];
         if let Some(ref s) = params.start {
             qp.push(("start", s.to_millis().to_string()));

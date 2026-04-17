@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::http::HttpClient;
-use crate::types::{CursorResponse, Timestamp};
+use crate::types::{CursorResponse, L2DiffEntry, L2OrderBookSnapshot, Timestamp};
 
 /// Parameters for fetching a single L2 full-depth orderbook snapshot.
 #[derive(Debug, Default)]
@@ -50,7 +50,7 @@ impl L2OrderBookResource {
         &self,
         symbol: &str,
         params: Option<L2OrderBookParams>,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<L2OrderBookSnapshot> {
         let p = params.unwrap_or_default();
         let mut qp = vec![];
         if let Some(ts) = p.timestamp {
@@ -69,7 +69,7 @@ impl L2OrderBookResource {
         &self,
         symbol: &str,
         params: L2HistoryParams,
-    ) -> Result<CursorResponse<Vec<serde_json::Value>>> {
+    ) -> Result<CursorResponse<Vec<L2OrderBookSnapshot>>> {
         let mut qp = vec![
             ("start", params.start.to_millis().to_string()),
             ("end", params.end.to_millis().to_string()),
@@ -98,7 +98,7 @@ impl L2OrderBookResource {
         &self,
         symbol: &str,
         params: L2DiffsParams,
-    ) -> Result<CursorResponse<Vec<serde_json::Value>>> {
+    ) -> Result<CursorResponse<Vec<L2DiffEntry>>> {
         let mut qp = vec![
             ("start", params.start.to_millis().to_string()),
             ("end", params.end.to_millis().to_string()),
