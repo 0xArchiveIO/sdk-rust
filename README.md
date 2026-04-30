@@ -1,11 +1,10 @@
 # oxarchive
 
-Official Rust SDK for [0xArchive](https://0xarchive.io) — Historical Market Data API.
+Rust client for async services that need typed 0xArchive market data.
 
-Supports multiple exchanges:
-- **Hyperliquid** — Perpetuals data from April 2023
-- **Hyperliquid HIP-3** — Builder-deployed perpetuals (February 2026+, free tier: km:US500, Build+: all symbols, Pro+: orderbook history)
-- **Lighter.xyz** — Perpetuals data (August 2025+ for fills, Jan 2026+ for OB, OI, Funding Rate)
+0xArchive is granular market data infrastructure for Hyperliquid and Lighter.xyz. HIP-3 builder perps live under the Hyperliquid namespace at `/v1/hyperliquid/hip3`.
+
+Use this SDK when the integration belongs in an async Rust service, data system, backtest runner, or strongly typed market-data pipeline.
 
 ## Installation
 
@@ -13,14 +12,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.3"
+oxarchive = "1.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 For WebSocket support (real-time streaming, replay, bulk download):
 
 ```toml
-oxarchive = { version = "1.3", features = ["websocket"] }
+oxarchive = { version = "1.4", features = ["websocket"] }
 ```
 
 ## Quick Start
@@ -30,17 +29,17 @@ use oxarchive::OxArchive;
 
 #[tokio::main]
 async fn main() -> oxarchive::Result<()> {
-    let client = OxArchive::new("your-api-key")?;
+    let client = OxArchive::new("0xa_your_api_key")?;
 
-    // Hyperliquid data
+    // First successful call: Hyperliquid BTC order book
     let ob = client.hyperliquid.orderbook.get("BTC", None).await?;
     println!("Hyperliquid BTC mid price: {:?}", ob.mid_price);
 
-    // Lighter.xyz data
+    // Lighter.xyz uses its own venue client
     let lighter_ob = client.lighter.orderbook.get("BTC", None).await?;
     println!("Lighter BTC mid price: {:?}", lighter_ob.mid_price);
 
-    // HIP-3 builder perps (February 2026+)
+    // Hyperliquid HIP-3 builder perps stay under client.hyperliquid.hip3
     let hip3 = client.hyperliquid.hip3.instruments.list().await?;
     let hip3_ob = client.hyperliquid.hip3.orderbook.get("km:US500", None).await?;
     let hip3_funding = client.hyperliquid.hip3.funding.current("xyz:XYZ100").await?;
@@ -60,13 +59,31 @@ async fn main() -> oxarchive::Result<()> {
 }
 ```
 
+## Choose Your Next Path
+
+| Need | Link |
+| --- | --- |
+| First authenticated route | [Quick Start](https://www.0xarchive.io/docs/quick-start) |
+| SDK install and route docs | [SDK docs](https://www.0xarchive.io/docs/sdks) |
+| Claude Code, GPT Codex, and coding-agent workflows | [AI Clients](https://www.0xarchive.io/docs/ai-clients) |
+| File-based historical pulls | [Data Catalog](https://www.0xarchive.io/data) |
+| Route contract and machine context | [OpenAPI](https://www.0xarchive.io/openapi.json), [llms.txt](https://www.0xarchive.io/llms.txt) |
+
+## Data Coverage
+
+| Venue | Coverage | Notes |
+| --- | --- | --- |
+| Hyperliquid | April 2023+ | Perpetuals across the full venue |
+| Hyperliquid HIP-3 | February 2026+ | Free tier: `km:US500`. Build+: all HIP-3 symbols. Pro+: orderbook history. |
+| Lighter.xyz | August 2025+ for fills; January 2026+ for orderbooks, open interest, funding rates | Perpetuals |
+
 ## Configuration
 
 ```rust
 use oxarchive::OxArchive;
 use std::time::Duration;
 
-let client = OxArchive::builder("your-api-key")
+let client = OxArchive::builder("0xa_your_api_key")
     .base_url("https://api.0xarchive.io")  // Optional
     .timeout(Duration::from_secs(60))       // Optional (default: 30s)
     .build()?;
@@ -687,7 +704,7 @@ Requires the `websocket` feature. Supports two modes on a single connection:
 - **Real-time** — subscribe to live market data
 - **Replay** — replay historical data with timing preserved
 
-For bulk data downloads, use the S3 Parquet bulk export via the [Data Explorer](https://0xarchive.io/data).
+For file-based historical exports, use the [Data Catalog](https://www.0xarchive.io/data).
 
 ### Real-time Streaming
 
@@ -813,9 +830,9 @@ cargo run --example pagination
 cargo run --example websocket --features websocket
 ```
 
-## Bulk Data Downloads
+## Data Catalog
 
-For large-scale data exports (full order books, complete trade history, etc.), use the S3 Parquet bulk export available at [0xarchive.io/data](https://0xarchive.io/data). The Data Explorer lets you select time ranges, symbols, and data types, then download compressed Parquet files directly.
+For large-scale data exports (full order books, complete trade history, etc.), use the [Data Catalog](https://www.0xarchive.io/data). It lets you choose markets, datasets, and date ranges, see a live quote, and export zstd-compressed Parquet.
 
 ## Requirements
 

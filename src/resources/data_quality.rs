@@ -7,7 +7,7 @@ use crate::types::{
     StatusResponse, SymbolCoverageResponse,
 };
 
-/// Timeout for data quality endpoints that aggregate across all exchanges/symbols.
+/// Timeout for data quality endpoints that aggregate across venue APIs/symbols.
 /// These can be significantly slower than per-instrument queries.
 const SLOW_ENDPOINT_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -27,9 +27,9 @@ impl DataQualityResource {
         self.http.get("/v1/data-quality/status", &[]).await
     }
 
-    /// Get data coverage for all exchanges.
+    /// Get data coverage across venue APIs.
     ///
-    /// This endpoint aggregates coverage data across all exchanges and data
+    /// This endpoint aggregates coverage data across supported venue APIs and data
     /// types, which can take longer than other queries. It uses a 120-second
     /// timeout instead of the default 30 seconds.
     pub async fn coverage(&self) -> Result<CoverageResponse> {
@@ -38,7 +38,7 @@ impl DataQualityResource {
             .await
     }
 
-    /// Get data coverage for a single exchange.
+    /// Get data coverage for a single venue scope.
     pub async fn exchange_coverage(&self, exchange: &str) -> Result<ExchangeCoverage> {
         self.http
             .get(&format!("/v1/data-quality/coverage/{}", exchange), &[])

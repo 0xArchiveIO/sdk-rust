@@ -474,13 +474,13 @@ pub struct StatusResponse {
     pub active_incidents: Option<i64>,
 }
 
-/// Coverage information for all exchanges.
+/// Coverage information for supported venue APIs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoverageResponse {
     pub exchanges: Vec<ExchangeCoverage>,
 }
 
-/// Coverage information for a single exchange.
+/// Coverage information for a single venue scope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExchangeCoverage {
     pub exchange: String,
