@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::http::HttpClient;
 use crate::types::{CursorResponse, Timestamp, Trade};
 
@@ -54,8 +54,24 @@ impl TradesResource {
         Ok(CursorResponse { data, next_cursor })
     }
 
-    /// Get recent trades (Lighter.xyz and HIP-3 only).
+    /// Get recent trades.
+    ///
+    /// Only available on Lighter.xyz (`/v1/lighter`) and HIP-3
+    /// (`/v1/hyperliquid/hip3`). The Hyperliquid base namespace
+    /// (`/v1/hyperliquid`) does **not** expose a `/recent` endpoint;
+    /// calling `client.hyperliquid.trades.recent(...)` returns
+    /// [`Error::InvalidParam`] without a network round-trip. Use
+    /// [`TradesResource::list`] with a time range instead.
     pub async fn recent(&self, symbol: &str, limit: Option<i64>) -> Result<Vec<Trade>> {
+        // Reject the Hyperliquid base prefix: backend only exposes /recent
+        // for HIP-3 (`/v1/hyperliquid/hip3`) and Lighter (`/v1/lighter`).
+        // Match exactly on `/v1/hyperliquid` to avoid catching the hip3
+        // nested prefix.
+        if self.prefix == "/v1/hyperliquid" {
+            return Err(Error::InvalidParam(
+                "trades.recent() is not available on Hyperliquid; use trades.list() with a time range".to_string(),
+            ));
+        }
         let mut qp = vec![];
         if let Some(l) = limit {
             qp.push(("limit", l.to_string()));

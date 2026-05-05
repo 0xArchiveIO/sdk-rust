@@ -3,7 +3,7 @@
 ///
 /// Requires the `websocket` feature:
 /// ```toml
-/// oxarchive = { version = "1.2", features = ["websocket"] }
+/// oxarchive = { version = "1.6", features = ["websocket"] }
 /// ```
 
 use futures_util::{SinkExt, StreamExt};
@@ -186,6 +186,19 @@ pub enum ServerMsg {
         gap_start: Option<i64>,
         gap_end: Option<i64>,
         duration_minutes: Option<f64>,
+    },
+    /// Terminal signal for a HIP-4 coin: the outcome settled to `0` or `1`.
+    ///
+    /// Emitted at most once per `(outcome_id, side)`. On receipt, the server
+    /// proactively unsubscribes the client from every `hip4_*` subscription
+    /// for `coin`. Other subscriptions (Hyperliquid perps, HIP-3, etc.)
+    /// remain active. Treat this as the terminal frame for the coin.
+    OutcomeSettled {
+        coin: String,
+        outcome_id: u64,
+        side: u8,
+        settlement_value: Option<f64>,
+        settlement_at: Option<String>,
     },
 }
 

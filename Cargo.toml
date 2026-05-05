@@ -1,6 +1,6 @@
 [package]
 name = "oxarchive"
-version = "1.4.0"
+version = "1.6.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Rust SDK for async 0xArchive market data clients"
@@ -21,6 +21,7 @@ thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 url = "2"
+urlencoding = "2"
 
 # WebSocket (optional)
 tokio-tungstenite = { version = "0.24", features = ["native-tls"], optional = true }
