@@ -242,6 +242,139 @@ pub struct Hip3Instrument {
 }
 
 // ---------------------------------------------------------------------------
+// HIP-4 (outcome markets)
+// ---------------------------------------------------------------------------
+
+/// A single side of a HIP-4 outcome market, returned by `/instruments`.
+///
+/// Each market has two per-side rows (e.g. `#0` Yes, `#1` No). For the
+/// per-outcome aggregate (both sides combined plus `aggregated_oi`), see
+/// [`Hip4OutcomeAggregate`].
+///
+/// Coin format: `#<10*outcome_id + side>`. Backend accepts the bare numeric
+/// form on every path; the SDK passes `symbol` through unchanged.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hip4Outcome {
+    pub outcome_id: i64,
+    pub side: i32,
+    pub asset_id: i64,
+    pub coin: String,
+    pub symbol: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub side_name: Option<String>,
+    pub recurring_class: Option<String>,
+    pub recurring_underlying: Option<String>,
+    pub recurring_expiry: Option<String>,
+    pub recurring_target_px: Option<f64>,
+    pub recurring_period: Option<String>,
+    pub builder_address: Option<String>,
+    pub is_settled: Option<bool>,
+    pub settlement_value: Option<f64>,
+    pub settlement_at: Option<String>,
+    pub first_seen_at: Option<String>,
+    pub last_updated_at: Option<String>,
+    /// Per-side human-readable title, deterministic from parsed metadata.
+    /// e.g. `"BTC above 78,213 on May 4 at 06:00 UTC? . Yes"`.
+    pub display_title: Option<String>,
+    /// Per-side URL slug mirroring Hyperliquid's pattern.
+    /// e.g. `"btc-above-78213-yes-may-04-0600"`.
+    pub slug: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// Per-side specification embedded in [`Hip4OutcomeAggregate`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hip4SideSpec {
+    pub side: i32,
+    pub name: Option<String>,
+    pub coin: String,
+    pub asset_id: i64,
+    /// Per-side human-readable title (e.g. `"BTC above 78,213 on May 4 at 06:00 UTC? . Yes"`).
+    pub display_title: Option<String>,
+    /// Per-side URL slug mirroring HL's pattern (e.g. `"btc-above-78213-yes-may-04-0600"`).
+    pub slug: Option<String>,
+}
+
+/// Latest aggregated open-interest snapshot for a HIP-4 outcome (both sides).
+///
+/// Populated only on `/outcomes/{outcome_id}` (detail), omitted from the
+/// `/outcomes` list response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hip4AggregatedOi {
+    pub side0_open_interest_contracts: Option<f64>,
+    pub side1_open_interest_contracts: Option<f64>,
+    pub outcome_display_open_interest_contracts: Option<f64>,
+    pub paired_set_supply_contracts: Option<f64>,
+    pub side_supply_parity: Option<bool>,
+    pub currency: Option<String>,
+    pub as_of: Option<String>,
+    pub side0_as_of: Option<String>,
+    pub side1_as_of: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// A HIP-4 outcome market (per-outcome view, both sides combined).
+///
+/// Returned by `/outcomes` (list, no `aggregated_oi`) and `/outcomes/{id}`
+/// (detail, with `aggregated_oi` populated). Also returned by
+/// `/outcomes/by-slug/{slug}` and the `?slug=` filter on `/outcomes`.
+///
+/// `mark_price` (when present on related endpoints like
+/// `Hip4OpenInterestRecord`) is an implied probability in `[0, 1]`, not a
+/// USD price. The field name matches the perp/HIP-3 convention because the
+/// Hyperliquid upstream uses `markPx` for both.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hip4OutcomeAggregate {
+    pub outcome_id: i64,
+    pub name: Option<String>,
+    pub description_raw: Option<String>,
+    pub class: Option<String>,
+    pub underlying: Option<String>,
+    pub expiry: Option<String>,
+    pub target_price: Option<f64>,
+    pub period: Option<String>,
+    #[serde(default)]
+    pub side_specs: Vec<Hip4SideSpec>,
+    pub is_settled: Option<bool>,
+    pub status: Option<String>,
+    pub source_seen_at: Option<String>,
+    /// Outcome-level human-readable title (no side suffix).
+    /// e.g. `"BTC above 78,213 on May 4 at 06:00 UTC?"`.
+    pub display_title: Option<String>,
+    /// Outcome-level URL slug (no side word, no leading `#`).
+    /// e.g. `"btc-above-78213-may-04-0600"`.
+    pub slug: Option<String>,
+    /// Pair of side coins for this outcome, e.g. `["#0", "#1"]`. Surfaced
+    /// on `/v1/symbols` HIP-4 rows; included here for symmetry.
+    pub outcome_pair: Option<[String; 2]>,
+    pub aggregated_oi: Option<Hip4AggregatedOi>,
+    #[serde(default, flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// HIP-4 open-interest record (mirrors HIP-3 OI plus `outcome_id` and `side`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hip4OpenInterestRecord {
+    pub coin: String,
+    pub symbol: Option<String>,
+    pub outcome_id: Option<i64>,
+    pub side: Option<i32>,
+    pub timestamp: String,
+    pub open_interest: String,
+    /// **Implied probability in `[0, 1]`, not a USD price.** The field name
+    /// matches perp/HIP-3 because the Hyperliquid upstream uses `markPx` for
+    /// both. To convert to a percentage, multiply by 100.
+    pub mark_price: Option<String>,
+    pub oracle_price: Option<String>,
+    pub mid_price: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+// ---------------------------------------------------------------------------
 // Funding rates
 // ---------------------------------------------------------------------------
 

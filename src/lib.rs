@@ -70,7 +70,7 @@
 //! and bulk data download:
 //!
 //! ```toml
-//! oxarchive = { version = "1.3", features = ["websocket"] }
+//! oxarchive = { version = "1.6", features = ["websocket"] }
 //! ```
 
 pub mod client;
@@ -86,12 +86,14 @@ pub mod ws;
 // Re-export the main entry points at the crate root.
 pub use client::{ClientBuilder, OxArchive};
 pub use error::{Error, Result};
+pub use exchanges::Hip4;
 pub use l4_reconstructor::{L4OrderBookReconstructor, L4Order, L4Diff, L2Level};
 pub use orderbook_reconstructor::{
     reconstruct_final, reconstruct_orderbook, OrderBookReconstructor,
 };
 pub use types::{
-    CursorResponse, L4OrderBookSnapshot, L4OrderEntry, L4DiffEntry,
+    CursorResponse, Hip4AggregatedOi, Hip4OpenInterestRecord, Hip4Outcome, Hip4OutcomeAggregate,
+    Hip4SideSpec, L4OrderBookSnapshot, L4OrderEntry, L4DiffEntry,
     L2OrderBookSnapshot, L2PriceLevel, L2DiffEntry, OrderHistoryEntry,
 };
 

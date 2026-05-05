@@ -12,14 +12,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.4"
+oxarchive = "1.6"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 For WebSocket support (real-time streaming, replay, bulk download):
 
 ```toml
-oxarchive = { version = "1.4", features = ["websocket"] }
+oxarchive = { version = "1.6", features = ["websocket"] }
 ```
 
 ## Quick Start
@@ -616,6 +616,95 @@ let history = client.lighter.l3_orderbook.history("BTC", L3HistoryParams {
 }).await?;
 ```
 
+### HIP-4 Outcome Markets (Hyperliquid)
+
+Binary outcome perps deployed under the Hyperliquid namespace. Coin symbols
+use the bare `#<10*outcome_id + side>` form (`#0`, `#1`, `#55850`, ...). The
+SDK passes `symbol` straight through to the URL path. Use the bare form in
+your code; do not pre-encode `#` to `%23`.
+
+HIP-4 markets are fully collateralized: there are **no funding rates, no
+liquidations, and no candles**. `mark_price` on HIP-4 is an implied
+probability in `[0, 1]`, not a USD price.
+
+```rust
+use oxarchive::exchanges::{Hip4HistoryRange, Hip4ListOutcomesParams,
+    Hip4OrderBookParams, Hip4TradesParams};
+
+// Outcomes (per-outcome view, both sides combined)
+let outcomes = client.hyperliquid.hip4.list_outcomes(None).await?;
+for o in &outcomes.data {
+    println!("{} . {:?}", o.outcome_id, o.display_title);
+}
+
+// Filter by settlement state OR by slug
+let live = client.hyperliquid.hip4.list_outcomes(Some(Hip4ListOutcomesParams {
+    is_settled: Some(false),
+    slug: None,
+    cursor: None,
+    limit: Some(50),
+})).await?;
+
+let one = client.hyperliquid.hip4
+    .get_outcome_by_slug("btc-above-78213-may-04-0600").await?;
+println!("aggregated_oi: {:?}", one.aggregated_oi);
+
+// Outcome detail (with aggregated_oi)
+let detail = client.hyperliquid.hip4.get_outcome(5585).await?;
+
+// Per-side instruments (`#0`, `#1`, ...)
+let insts = client.hyperliquid.hip4.get_instruments().await?;
+let inst = client.hyperliquid.hip4.get_instrument("#0").await?;
+
+// L2 orderbook
+let ob = client.hyperliquid.hip4.get_orderbook("#0", None).await?;
+let ob_at = client.hyperliquid.hip4.get_orderbook("#0", Some(Hip4OrderBookParams {
+    timestamp: Some(1714694400000_i64.into()),
+    depth: Some(20),
+})).await?;
+let ob_history = client.hyperliquid.hip4.get_orderbook_history("#0", Hip4HistoryRange {
+    start: 1714694400000_i64.into(),
+    end:   1714780800000_i64.into(),
+    cursor: None,
+    limit: Some(100),
+}).await?;
+
+// Trades (history + recent)
+let trades = client.hyperliquid.hip4.get_trades("#0", Hip4TradesParams {
+    start: 1714694400000_i64.into(),
+    end:   1714780800000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+    side: None,
+}).await?;
+let recent = client.hyperliquid.hip4.get_trades_recent("#0", Some(50)).await?;
+
+// Open interest (per-side history + latest)
+let oi_hist = client.hyperliquid.hip4.get_open_interest("#0", Hip4HistoryRange {
+    start: 1714694400000_i64.into(),
+    end:   1714780800000_i64.into(),
+    cursor: None,
+    limit: None,
+}).await?;
+let oi_now = client.hyperliquid.hip4.get_open_interest_current("#0").await?;
+// mark_price on HIP-4 is an implied probability in [0, 1].
+
+// Summary, freshness, prices
+let summary    = client.hyperliquid.hip4.get_summary("#0").await?;
+let freshness  = client.hyperliquid.hip4.get_freshness("#0").await?;
+let prices     = client.hyperliquid.hip4.get_prices("#0",
+    1714694400000_i64, 1714780800000_i64, Some("1h"), Some(100), None).await?;
+
+// L4 (current snapshot, diffs, checkpoint history)
+let l4_now     = client.hyperliquid.hip4.get_l4_orderbook("#0", None).await?;
+let l4_diffs   = client.hyperliquid.hip4.get_l4_diffs("#0", Hip4HistoryRange {
+    start: 1714694400000_i64.into(),
+    end:   1714780800000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+}).await?;
+```
+
 ### Freshness
 
 Check when each data type was last updated for a specific coin.
@@ -720,7 +809,7 @@ ws.subscribe("trades", Some("ETH")).await?;
 let mut rx = ws.rx.take().expect("receiver");
 while let Some(msg) = rx.recv().await {
     match msg {
-        ServerMsg::Data { channel, coin, data } => {
+        ServerMsg::Data { channel, coin, data, .. } => {
             println!("{channel} {} update: {}", coin.unwrap_or_default(), data);
         }
         ServerMsg::Error { message } => eprintln!("Error: {message}"),
@@ -744,32 +833,56 @@ ws.replay_stop().await?;
 
 ### Available Channels
 
-| Channel | Description | Historical |
-|---------|-------------|-----------|
-| `orderbook` | L2 order book (~1.2s resolution) | Yes |
-| `trades` | Trade/fill updates | Yes |
-| `candles` | OHLCV candle data | Yes |
-| `liquidations` | Liquidation events (May 2025+) | Yes |
-| `open_interest` | Open interest snapshots (May 2023+) | Yes |
-| `funding` | Funding rate snapshots (May 2023+) | Yes |
-| `ticker` | Price and 24h volume | Real-time only |
-| `all_tickers` | All market tickers | Real-time only |
-| `lighter_orderbook` | Lighter.xyz L2 order book | Yes |
-| `lighter_trades` | Lighter.xyz trades | Yes |
-| `lighter_candles` | Lighter.xyz candles | Yes |
-| `lighter_open_interest` | Lighter.xyz open interest | Yes |
-| `lighter_funding` | Lighter.xyz funding rates | Yes |
-| `lighter_l3_orderbook` | Lighter.xyz L3 order-level orderbook (Pro+) | Yes |
-| `hip3_orderbook` | HIP-3 L2 order book | Yes |
-| `hip3_trades` | HIP-3 trades | Yes |
-| `hip3_candles` | HIP-3 candles | Yes |
-| `hip3_open_interest` | HIP-3 open interest | Yes |
-| `hip3_funding` | HIP-3 funding rates | Yes |
-| `hip3_liquidations` | HIP-3 liquidation events (Feb 2026+) | Yes |
-| `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution (Pro+) | Real-time only |
-| `l4_orders` | Hyperliquid order lifecycle events (Pro+) | Real-time only |
-| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution (Pro+) | Real-time only |
-| `hip3_l4_orders` | HIP-3 order lifecycle events (Pro+) | Real-time only |
+| Channel | Description | Realtime | Replay |
+|---------|-------------|----------|--------|
+| `orderbook` | L2 order book (~1.2s resolution) | Yes | Yes |
+| `trades` | Trade/fill updates | Yes | Yes |
+| `candles` | OHLCV candle data | Yes | Yes |
+| `liquidations` | Liquidation events. Each item is a fill row with `is_liquidation: true`. | Yes | Yes |
+| `open_interest` | Open interest snapshots | Yes | Yes |
+| `funding` | Funding rate snapshots | Yes | Yes |
+| `ticker` | Price and 24h volume | Yes | No |
+| `all_tickers` | All market tickers | Yes | No |
+| `lighter_orderbook` | Lighter.xyz L2 order book | Yes | Yes |
+| `lighter_trades` | Lighter.xyz trades | Yes | Yes |
+| `lighter_candles` | Lighter.xyz candles | Yes | Yes |
+| `lighter_open_interest` | Lighter.xyz open interest | Yes | Yes |
+| `lighter_funding` | Lighter.xyz funding rates | Yes | Yes |
+| `lighter_l3_orderbook` | Lighter.xyz L3 order-level orderbook (Pro+) | Yes | Yes |
+| `hip3_orderbook` | HIP-3 L2 order book | Yes | Yes |
+| `hip3_trades` | HIP-3 trades | Yes | Yes |
+| `hip3_candles` | HIP-3 candles | Yes | Yes |
+| `hip3_open_interest` | HIP-3 open interest | Yes | Yes |
+| `hip3_funding` | HIP-3 funding rates | Yes | Yes |
+| `hip3_liquidations` | HIP-3 liquidation events. Same wire shape as `liquidations`. | Yes | Yes |
+| `hip4_orderbook` | HIP-4 outcome-market L2 order book (Pro+) | Yes | Yes |
+| `hip4_trades` | HIP-4 trade/fill updates | Yes | Yes |
+| `hip4_open_interest` | HIP-4 open interest snapshots | Yes | Yes |
+| `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution (Pro+) | Yes | No |
+| `l4_orders` | Hyperliquid order lifecycle events (Pro+) | Yes | No |
+| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution (Pro+) | Yes | No |
+| `hip3_l4_orders` | HIP-3 order lifecycle events (Pro+) | Yes | No |
+| `hip4_l4_diffs` | HIP-4 L4 orderbook diffs with user attribution (Pro+) | Yes | No |
+| `hip4_l4_orders` | HIP-4 order lifecycle events (Pro+) | Yes | No |
+
+HIP-4 outcome markets have **no funding, no liquidations, and no candles** by design (binary outcomes settle to 0/1 at expiry).
+
+### Settlement Frame
+
+When a HIP-4 outcome settles, the server emits an `outcome_settled` frame
+exactly once per `(outcome_id, side)` and proactively unsubscribes the
+client from every `hip4_*` subscription on that coin. Other subscriptions
+remain active.
+
+```rust
+use oxarchive::ws::ServerMsg;
+
+while let Some(msg) = rx.recv().await {
+    if let ServerMsg::OutcomeSettled { coin, settlement_value, .. } = msg {
+        println!("{coin} settled to {:?}", settlement_value);
+    }
+}
+```
 
 ### Tier Limits
 

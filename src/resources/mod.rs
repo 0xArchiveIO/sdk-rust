@@ -14,7 +14,10 @@ pub mod l3_orderbook;
 
 pub use orderbook::OrderBookResource;
 pub use trades::TradesResource;
-pub use instruments::{InstrumentsResource, LighterInstrumentsResource, Hip3InstrumentsResource};
+pub use instruments::{
+    Hip3InstrumentsResource, Hip4InstrumentsResource, InstrumentsResource,
+    LighterInstrumentsResource,
+};
 pub use funding::FundingResource;
 pub use open_interest::OpenInterestResource;
 pub use candles::CandlesResource;

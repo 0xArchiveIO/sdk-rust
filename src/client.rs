@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::error;
+use crate::error::{self, Error};
 use crate::exchanges::{HyperliquidClient, LighterClient};
 use crate::http::{HttpClient, HttpConfig};
 use crate::resources::{DataQualityResource, Web3Resource};
@@ -12,6 +12,9 @@ pub const DEFAULT_BASE_URL: &str = "https://api.0xarchive.io";
 
 /// Default request timeout in seconds.
 pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
+
+/// Environment variable read by [`OxArchive::from_env`].
+pub const API_KEY_ENV: &str = "OXARCHIVE_API_KEY";
 
 /// Configuration for building an [`OxArchive`] client.
 pub struct ClientBuilder {
@@ -102,6 +105,29 @@ impl OxArchive {
     /// For advanced configuration, use [`OxArchive::builder`].
     pub fn new(api_key: impl Into<String>) -> error::Result<Self> {
         ClientBuilder::new(api_key).build()
+    }
+
+    /// Create a new client by reading the API key from the
+    /// `OXARCHIVE_API_KEY` environment variable.
+    ///
+    /// Returns [`Error::InvalidParam`] if the variable is not set or empty.
+    ///
+    /// ```no_run
+    /// use oxarchive::OxArchive;
+    /// # fn main() -> oxarchive::Result<()> {
+    /// // export OXARCHIVE_API_KEY=0xa_your_api_key
+    /// let client = OxArchive::from_env()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn from_env() -> error::Result<Self> {
+        let key = std::env::var(API_KEY_ENV).map_err(|_| {
+            Error::InvalidParam(format!(
+                "{} environment variable is not set",
+                API_KEY_ENV
+            ))
+        })?;
+        ClientBuilder::new(key).build()
     }
 
     /// Create a builder for advanced configuration.
