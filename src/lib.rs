@@ -2,9 +2,10 @@
 //!
 //! Rust client library for the [0xArchive](https://0xarchive.io) API.
 //!
-//! Query historical and real-time crypto market data — orderbooks, trades,
-//! candles, funding rates, open interest, and liquidations across Hyperliquid,
-//! Lighter.xyz, and HIP-3.
+//! Query historical and real-time crypto market data: orderbooks, trades,
+//! candles, funding rates, open interest, and liquidations across Hyperliquid
+//! perps, Hyperliquid Spot, HIP-3 builder perps, HIP-4 outcome markets, and
+//! Lighter.xyz.
 //!
 //! ## Quick start
 //!
@@ -70,7 +71,7 @@
 //! and bulk data download:
 //!
 //! ```toml
-//! oxarchive = { version = "1.6", features = ["websocket"] }
+//! oxarchive = { version = "1.7", features = ["websocket"] }
 //! ```
 
 pub mod client;

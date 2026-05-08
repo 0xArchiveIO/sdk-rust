@@ -7,7 +7,7 @@ use crate::resources::{
     CandlesResource, FundingResource, Hip3InstrumentsResource, Hip4InstrumentsResource,
     InstrumentsResource, L2OrderBookResource, L3OrderBookResource, L4OrderBookResource,
     LighterInstrumentsResource, LiquidationsResource, OpenInterestResource, OrderBookResource,
-    OrdersResource, TradesResource,
+    OrdersResource, SpotPairsResource, SpotTwapResource, TradesResource,
 };
 use crate::types::{
     CoinFreshness, CoinSummary, CursorResponse, Hip4OpenInterestRecord, Hip4Outcome,
@@ -36,6 +36,8 @@ pub struct HyperliquidClient {
     pub hip3: Hip3Client,
     /// HIP-4 outcome markets (binary outcome perps, `#`-prefixed coins).
     pub hip4: Hip4,
+    /// Hyperliquid Spot markets (dashed canonical pairs, `HYPE-USDC`, `PURR-USDC`).
+    pub spot: SpotClient,
 }
 
 impl HyperliquidClient {
@@ -54,6 +56,7 @@ impl HyperliquidClient {
             l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
             hip3: Hip3Client::new(http.clone()),
             hip4: Hip4::new(http.clone()),
+            spot: SpotClient::new(http.clone()),
             http,
         }
     }
@@ -185,6 +188,62 @@ impl Hip3Client {
             .get_with_cursor(&format!("/v1/hyperliquid/hip3/prices/{}", symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hyperliquid Spot (nested under Hyperliquid)
+// ---------------------------------------------------------------------------
+
+/// Client for Hyperliquid Spot endpoints (`/v1/hyperliquid/spot`).
+///
+/// Spot symbols use the dashed canonical form (e.g. `HYPE-USDC`, `PURR-USDC`).
+/// The server resolves the dashed form to the wire format (`PURR/USDC`, `@107`)
+/// internally.
+///
+/// Spot has **no funding, no open interest, no liquidations, and no candles**.
+/// Those are perp-only constructs. Trade history backfills to 2025-03-22; every
+/// other dataset is live-only from 2026-05-05.
+#[derive(Debug, Clone)]
+pub struct SpotClient {
+    http: HttpClient,
+    /// Pair discovery (`/pairs`, `/pairs/{symbol}`).
+    pub pairs: SpotPairsResource,
+    /// L2 orderbook (current and history).
+    pub orderbook: OrderBookResource,
+    /// Trades (history + recent).
+    pub trades: TradesResource,
+    /// L4 orderbook (snapshot, diffs, checkpoint history). Pro+ for snapshot
+    /// and diffs, Build+ for checkpoint history.
+    pub l4_orderbook: L4OrderBookResource,
+    /// Order lifecycle events (Pro+).
+    pub orders: OrdersResource,
+    /// TWAP execution statuses (by symbol or by user).
+    pub twap: SpotTwapResource,
+}
+
+impl SpotClient {
+    pub(crate) fn new(http: HttpClient) -> Self {
+        let prefix = "/v1/hyperliquid/spot";
+        Self {
+            pairs: SpotPairsResource::new(http.clone(), prefix),
+            orderbook: OrderBookResource::new(http.clone(), prefix),
+            trades: TradesResource::new(http.clone(), prefix),
+            l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
+            orders: OrdersResource::new(http.clone(), prefix),
+            twap: SpotTwapResource::new(http.clone(), prefix),
+            http,
+        }
+    }
+
+    /// Get data freshness (lag) for a spot symbol across all data types.
+    pub async fn freshness(&self, symbol: &str) -> Result<CoinFreshness> {
+        self.http
+            .get(
+                &format!("/v1/hyperliquid/spot/freshness/{}", symbol),
+                &[],
+            )
+            .await
     }
 }
 
