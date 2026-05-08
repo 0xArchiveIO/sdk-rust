@@ -14,7 +14,7 @@ where
 {
     struct NumberOrString;
 
-    impl<'de> serde::de::Visitor<'de> for NumberOrString {
+    impl serde::de::Visitor<'_> for NumberOrString {
         type Value = String;
 
         fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -239,6 +239,54 @@ pub struct Hip3Instrument {
     pub open_interest: Option<f64>,
     pub mid_price: Option<f64>,
     pub latest_timestamp: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Hyperliquid Spot
+// ---------------------------------------------------------------------------
+
+/// A Hyperliquid Spot trading pair (e.g. `HYPE-USDC`, `PURR-USDC`).
+///
+/// Symbols are dashed canonical. The server resolves the dashed form to the
+/// wire format (`PURR/USDC`, `@107`) internally. Spot pairs have no funding
+/// rate, no open interest, and no liquidations: those are perp-only
+/// constructs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpotPair {
+    /// Dashed canonical symbol (e.g. `HYPE-USDC`).
+    pub symbol: String,
+    /// Base asset (e.g. `HYPE`).
+    pub base: Option<String>,
+    /// Quote asset (e.g. `USDC`).
+    pub quote: Option<String>,
+    /// Hyperliquid wire-format pair (e.g. `PURR/USDC` or `@107`).
+    pub wire_symbol: Option<String>,
+    /// Hyperliquid spot index (the `@N` form), when applicable.
+    pub spot_index: Option<i64>,
+    pub mark_price: Option<f64>,
+    pub mid_price: Option<f64>,
+    pub latest_timestamp: Option<String>,
+    pub is_active: Option<bool>,
+    #[serde(default, flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// A Hyperliquid Spot TWAP execution status record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpotTwapStatus {
+    pub coin: String,
+    pub timestamp: String,
+    pub twap_id: i64,
+    pub user_address: Option<String>,
+    pub side: Option<String>,
+    pub status: Option<String>,
+    pub executed_size: Option<String>,
+    pub executed_notional: Option<String>,
+    pub minutes: Option<i64>,
+    pub randomize: Option<bool>,
+    pub reduce_only: Option<bool>,
+    #[serde(default, flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 Rust client for async services that need typed 0xArchive market data.
 
-0xArchive is granular market data infrastructure for Hyperliquid and Lighter.xyz. HIP-3 builder perps live under the Hyperliquid namespace at `/v1/hyperliquid/hip3`.
+0xArchive is granular market data infrastructure for Hyperliquid and Lighter.xyz. HIP-3 builder perps live under the Hyperliquid namespace at `/v1/hyperliquid/hip3`. HIP-4 outcome markets live at `/v1/hyperliquid/hip4`. Hyperliquid Spot lives at `/v1/hyperliquid/spot`.
 
 Use this SDK when the integration belongs in an async Rust service, data system, backtest runner, or strongly typed market-data pipeline.
 
@@ -12,14 +12,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.6"
+oxarchive = "1.7"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 For WebSocket support (real-time streaming, replay, bulk download):
 
 ```toml
-oxarchive = { version = "1.6", features = ["websocket"] }
+oxarchive = { version = "1.7", features = ["websocket"] }
 ```
 
 ## Quick Start
@@ -43,6 +43,11 @@ async fn main() -> oxarchive::Result<()> {
     let hip3 = client.hyperliquid.hip3.instruments.list().await?;
     let hip3_ob = client.hyperliquid.hip3.orderbook.get("km:US500", None).await?;
     let hip3_funding = client.hyperliquid.hip3.funding.current("xyz:XYZ100").await?;
+
+    // Hyperliquid Spot stays under client.hyperliquid.spot (dashed canonical pairs)
+    let pairs = client.hyperliquid.spot.pairs.list().await?;
+    let hype_ob = client.hyperliquid.spot.orderbook.get("HYPE-USDC", None).await?;
+    println!("HYPE-USDC mid price: {:?}", hype_ob.mid_price);
 
     // Historical order book snapshots
     use oxarchive::resources::orderbook::OrderBookHistoryParams;
@@ -75,6 +80,8 @@ async fn main() -> oxarchive::Result<()> {
 | --- | --- | --- |
 | Hyperliquid | April 2023+ | Perpetuals across the full venue |
 | Hyperliquid HIP-3 | February 2026+ | Free tier: `km:US500`. Build+: all HIP-3 symbols. Pro+: orderbook history. |
+| Hyperliquid HIP-4 | April 2026+ | Binary outcome markets (`#0`, `#1`, ...). No funding, no liquidations, no candles. |
+| Hyperliquid Spot | Trades March 2025+; orderbook, L4, TWAP, freshness live-only from May 2026 | 294 pairs (`HYPE-USDC`, `PURR-USDC`, ...). No funding, no OI, no liquidations, no candles. |
 | Lighter.xyz | August 2025+ for fills; January 2026+ for orderbooks, open interest, funding rates | Perpetuals |
 
 ## Configuration
@@ -93,22 +100,24 @@ let client = OxArchive::builder("0xa_your_api_key")
 
 The sections below show which resources are available on each exchange client:
 
-| Resource | `client.hyperliquid` | `client.hyperliquid.hip3` | `client.lighter` |
-|----------|---------------------|--------------------------|-------------------|
-| `orderbook` | Yes | Yes | Yes |
-| `trades` | Yes | Yes | Yes |
-| `instruments` | Yes | Yes | Yes |
-| `funding` | Yes | Yes | Yes |
-| `open_interest` | Yes | Yes | Yes |
-| `candles` | Yes | Yes | Yes |
-| `liquidations` | Yes | Yes | -- |
-| `orders` | Yes | Yes | -- |
-| `l4_orderbook` | Yes | Yes | -- |
-| `l2_orderbook` | Yes | Yes | -- |
-| `l3_orderbook` | -- | -- | Yes |
-| `freshness()` | Yes | Yes | Yes |
-| `summary()` | Yes | Yes | Yes |
-| `price_history()` | Yes | Yes | Yes |
+| Resource | `client.hyperliquid` | `client.hyperliquid.hip3` | `client.hyperliquid.spot` | `client.lighter` |
+|----------|---------------------|--------------------------|-------------------------|-------------------|
+| `orderbook` | Yes | Yes | Yes | Yes |
+| `trades` | Yes | Yes | Yes | Yes |
+| `instruments` | Yes | Yes | -- (use `pairs`) | Yes |
+| `pairs` | -- | -- | Yes | -- |
+| `funding` | Yes | Yes | -- | Yes |
+| `open_interest` | Yes | Yes | -- | Yes |
+| `candles` | Yes | Yes | -- | Yes |
+| `liquidations` | Yes | Yes | -- | -- |
+| `orders` | Yes | Yes | Yes | -- |
+| `l4_orderbook` | Yes | Yes | Yes | -- |
+| `l2_orderbook` | Yes | Yes | -- | -- |
+| `l3_orderbook` | -- | -- | -- | Yes |
+| `twap` | -- | -- | Yes | -- |
+| `freshness()` | Yes | Yes | Yes | Yes |
+| `summary()` | Yes | Yes | -- | Yes |
+| `price_history()` | Yes | Yes | -- | Yes |
 
 ### Order Book
 
@@ -705,6 +714,79 @@ let l4_diffs   = client.hyperliquid.hip4.get_l4_diffs("#0", Hip4HistoryRange {
 }).await?;
 ```
 
+### Hyperliquid Spot
+
+Spot trading pairs deployed under the Hyperliquid namespace. Symbols use the
+dashed canonical form (`HYPE-USDC`, `PURR-USDC`, ...). The server resolves
+the dashed form to the wire format (`PURR/USDC`, `@107`) internally.
+
+Spot has **no funding, no open interest, no liquidations, and no candles**:
+those are perp-only constructs. Trade history backfills to 2025-03-22; every
+other dataset is live-only from 2026-05-05.
+
+```rust
+use oxarchive::resources::orderbook::{GetOrderBookParams, OrderBookHistoryParams};
+use oxarchive::resources::l4_orderbook::{L4DiffsParams, L4HistoryParams, L4OrderBookParams};
+use oxarchive::resources::orders::OrderHistoryParams;
+use oxarchive::resources::spot::SpotTwapParams;
+use oxarchive::resources::trades::GetTradesParams;
+
+// Pair discovery (dashed canonical: HYPE-USDC, PURR-USDC, ...).
+let pairs = client.hyperliquid.spot.pairs.list().await?;
+let hype = client.hyperliquid.spot.pairs.get("HYPE-USDC").await?;
+
+// Current L2 orderbook.
+let ob = client.hyperliquid.spot.orderbook.get("HYPE-USDC", None).await?;
+println!("HYPE-USDC mid: {:?}", ob.mid_price);
+
+// Historical L2 orderbook.
+let ob_history = client.hyperliquid.spot.orderbook.history("HYPE-USDC", OrderBookHistoryParams {
+    start: 1746489600000_i64.into(), // 2026-05-06 UTC
+    end:   1746576000000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+    depth: None,
+    granularity: None,
+}).await?;
+
+// Trades (history backfilled to 2025-03-22).
+let trades = client.hyperliquid.spot.trades.list("PURR-USDC", GetTradesParams {
+    start: 1742601600000_i64.into(), // 2025-03-22 UTC
+    end:   1746576000000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+    side: None,
+}).await?;
+
+// L4 reconstruction (Pro+).
+let l4_now = client.hyperliquid.spot.l4_orderbook.get("HYPE-USDC", None).await?;
+let l4_diffs = client.hyperliquid.spot.l4_orderbook.diffs("HYPE-USDC", L4DiffsParams {
+    start: 1746489600000_i64.into(),
+    end:   1746576000000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+}).await?;
+let l4_history = client.hyperliquid.spot.l4_orderbook.history("HYPE-USDC", L4HistoryParams {
+    start: 1746489600000_i64.into(),
+    end:   1746576000000_i64.into(),
+    cursor: None,
+    limit: Some(10),
+    depth: Some(20),
+}).await?;
+
+// Order lifecycle events (Pro+).
+let orders = client.hyperliquid.spot.orders.history("HYPE-USDC", OrderHistoryParams::default()).await?;
+
+// TWAP statuses by symbol or by user.
+let twap_sym = client.hyperliquid.spot.twap
+    .by_symbol("HYPE-USDC", SpotTwapParams::default()).await?;
+let twap_user = client.hyperliquid.spot.twap
+    .by_user("0x1234...", SpotTwapParams::default()).await?;
+
+// Per-table freshness.
+let freshness = client.hyperliquid.spot.freshness("HYPE-USDC").await?;
+```
+
 ### Freshness
 
 Check when each data type was last updated for a specific coin.
@@ -713,6 +795,7 @@ Check when each data type was last updated for a specific coin.
 let freshness = client.hyperliquid.freshness("BTC").await?;
 let lighter_freshness = client.lighter.freshness("BTC").await?;
 let hip3_freshness = client.hyperliquid.hip3.freshness("km:US500").await?;
+let spot_freshness = client.hyperliquid.spot.freshness("HYPE-USDC").await?;
 ```
 
 ### Summary
@@ -864,8 +947,15 @@ ws.replay_stop().await?;
 | `hip3_l4_orders` | HIP-3 order lifecycle events (Pro+) | Yes | No |
 | `hip4_l4_diffs` | HIP-4 L4 orderbook diffs with user attribution (Pro+) | Yes | No |
 | `hip4_l4_orders` | HIP-4 order lifecycle events (Pro+) | Yes | No |
+| `spot_orderbook` | Hyperliquid Spot L2 order book (Build+) | Yes | No |
+| `spot_trades` | Hyperliquid Spot trades (Build+) | Yes | No |
+| `spot_l4_diffs` | Hyperliquid Spot L4 orderbook diffs with user attribution (Pro+) | Yes | No |
+| `spot_l4_orders` | Hyperliquid Spot order lifecycle events (Pro+) | Yes | No |
+| `spot_twap` | Hyperliquid Spot TWAP execution updates (Build+) | Yes | No |
 
 HIP-4 outcome markets have **no funding, no liquidations, and no candles** by design (binary outcomes settle to 0/1 at expiry).
+
+Hyperliquid Spot has **no funding, no open interest, no liquidations, and no candles** by design (perp-only constructs). Spot symbols use the dashed canonical form (`HYPE-USDC`, `PURR-USDC`).
 
 ### Settlement Frame
 
@@ -938,6 +1028,9 @@ cargo run --example basic
 
 # Cursor-based pagination
 cargo run --example pagination
+
+# Hyperliquid Spot
+cargo run --example spot
 
 # WebSocket (requires websocket feature)
 cargo run --example websocket --features websocket

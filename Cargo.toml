@@ -1,6 +1,6 @@
 [package]
 name = "oxarchive"
-version = "1.6.0"
+version = "1.7.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Rust SDK for async 0xArchive market data clients"
@@ -42,6 +42,10 @@ path = "examples/basic.rs"
 [[example]]
 name = "pagination"
 path = "examples/pagination.rs"
+
+[[example]]
+name = "spot"
+path = "examples/spot.rs"
 
 [[example]]
 name = "websocket"

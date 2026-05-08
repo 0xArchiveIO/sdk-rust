@@ -1,4 +1,4 @@
-/// Error types for the 0xArchive SDK.
+//! Error types for the 0xArchive SDK.
 
 /// An error returned by the 0xArchive API or the SDK itself.
 #[derive(Debug, thiserror::Error)]

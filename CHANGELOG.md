@@ -3,6 +3,39 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.7.0] - 2026-05-06
+
+### Added
+- **Hyperliquid Spot support** under `client.hyperliquid.spot` (REST base
+  `/v1/hyperliquid/spot`). Symbols are dashed canonical (`HYPE-USDC`,
+  `PURR-USDC`); the server resolves the dashed form to the wire format
+  (`PURR/USDC`, `@107`) internally.
+  - `pairs.list()`, `pairs.get(symbol)`: pair discovery (`/pairs`,
+    `/pairs/{symbol}`).
+  - `orderbook.get(symbol, params)`, `orderbook.history(...)`: current and
+    historical L2 orderbook.
+  - `l4_orderbook.get(...)`, `l4_orderbook.diffs(...)`,
+    `l4_orderbook.history(...)`: L4 reconstruction (Pro+), raw diffs
+    (Pro+), checkpoint history (Build+).
+  - `trades.list(symbol, params)`: trade history. Backfills to 2025-03-22.
+  - `orders.history(symbol, params)`: order lifecycle events (Pro+).
+  - `twap.by_symbol(symbol, params)`, `twap.by_user(user, params)`:
+    TWAP execution statuses.
+  - `freshness(symbol)`: per-table lag.
+- **Spot WebSocket channels** (delivered via the existing `Data` envelope as
+  channel-name strings): `spot_orderbook` (Build+), `spot_trades` (Build+),
+  `spot_l4_diffs` (Pro+), `spot_l4_orders` (Pro+), `spot_twap` (Build+).
+- **`SpotPair` and `SpotTwapStatus` types** in `oxarchive::types`.
+- **New `examples/spot.rs`** mirroring the HIP-3 example.
+
+### Notes
+- Spot has **no funding, no open interest, no liquidations, no candles**:
+  those are perp-only constructs. The candles endpoint returns 501 by
+  design; the SDK does not expose it.
+- Trade history backfills to 2025-03-22 (the earliest published Hyperliquid
+  S3 spot data). Orderbook, L4, TWAP, and freshness are live-only from
+  2026-05-05.
+
 ## [1.6.0] - 2026-05-04
 
 ### Added
