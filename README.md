@@ -80,7 +80,7 @@ async fn main() -> oxarchive::Result<()> {
 
 ## Use From Coding Agents
 
-When prototyping Rust services from Claude Code, ChatGPT Codex, or another coding agent, also install the [0xArchive skill](https://github.com/0xArchiveIO/0xarchive-skill) so the agent has typed API context and example patterns for every endpoint. The skill installs into `.claude/skills/0xarchive` (Claude Code) or `.agents/skills/0xarchive` (ChatGPT Codex). For shell-driven exploration alongside the SDK, the [CLI](https://npmjs.com/package/@0xarchive/cli) and [MCP server](https://npmjs.com/package/@0xarchive/mcp-server) share the same API key.
+When prototyping Rust services from Claude Code, ChatGPT Codex, or another coding agent, also install the [0xArchive skill](https://github.com/0xArchiveIO/0xarchive-skill) so the agent has typed API context and example patterns for every endpoint. The skill installs into `.claude/skills/0xarchive` (Claude Code) or `.agents/skills/0xarchive` (ChatGPT Codex). For shell-driven exploration alongside the SDK, the [CLI](https://npmjs.com/package/@0xarchive/cli) and the [hosted MCP](https://mcp.0xarchive.io) share the same API key.
 
 ## Data Coverage
 
@@ -1054,7 +1054,7 @@ For large-scale data exports (full order books, complete trade history, etc.), u
 - [Python SDK](https://pypi.org/project/oxarchive/)
 - [TypeScript SDK](https://npmjs.com/package/@0xarchive/sdk)
 - [CLI](https://npmjs.com/package/@0xarchive/cli)
-- [MCP Server](https://npmjs.com/package/@0xarchive/mcp-server)
+- [MCP Server](https://mcp.0xarchive.io) (or [self-host](https://npmjs.com/package/@0xarchive/mcp-server))
 - [0xArchive Skill](https://github.com/0xArchiveIO/0xarchive-skill)
 - [Examples](https://github.com/0xArchiveIO/examples)
 
