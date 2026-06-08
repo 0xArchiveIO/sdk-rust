@@ -2,13 +2,17 @@
 
 Rust client for async services that need typed 0xArchive market data.
 
-0xArchive is granular market data infrastructure for Hyperliquid and Lighter.xyz. HIP-3 builder perps live under the Hyperliquid namespace at `/v1/hyperliquid/hip3`. HIP-4 outcome markets live at `/v1/hyperliquid/hip4`. Hyperliquid Spot lives at `/v1/hyperliquid/spot`.
+0xArchive is granular market data infrastructure for Hyperliquid and Lighter.xyz. Hyperliquid includes core perps (`/v1/hyperliquid`), HIP-3 builder perps (`/v1/hyperliquid/hip3`), HIP-4 outcome markets (`/v1/hyperliquid/hip4`), and Hyperliquid Spot (`/v1/hyperliquid/spot`). Lighter.xyz is the second top-level venue API at `/v1/lighter`.
 
 Use this SDK when the integration belongs in an async Rust service, data system, backtest runner, or strongly typed market-data pipeline.
 
 ## Installation
 
-Add to your `Cargo.toml`:
+```bash
+cargo add oxarchive
+```
+
+Or add directly to your `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -70,9 +74,13 @@ async fn main() -> oxarchive::Result<()> {
 | --- | --- |
 | First authenticated route | [Quick Start](https://www.0xarchive.io/docs/quick-start) |
 | SDK install and route docs | [SDK docs](https://www.0xarchive.io/docs/sdks) |
-| Claude Code, GPT Codex, and coding-agent workflows | [AI Clients](https://www.0xarchive.io/docs/ai-clients) |
+| Claude Code, ChatGPT Codex, and coding-agent workflows | [AI Clients](https://www.0xarchive.io/docs/ai-clients) |
 | File-based historical pulls | [Data Catalog](https://www.0xarchive.io/data) |
 | Route contract and machine context | [OpenAPI](https://www.0xarchive.io/openapi.json), [llms.txt](https://www.0xarchive.io/llms.txt) |
+
+## Use From Coding Agents
+
+When prototyping Rust services from Claude Code, ChatGPT Codex, or another coding agent, also install the [0xArchive skill](https://github.com/0xArchiveIO/0xarchive-skill) so the agent has typed API context and example patterns for every endpoint. The skill installs into `.claude/skills/0xarchive` (Claude Code) or `.agents/skills/0xarchive` (ChatGPT Codex). For shell-driven exploration alongside the SDK, the [CLI](https://npmjs.com/package/@0xarchive/cli) and [MCP server](https://npmjs.com/package/@0xarchive/mcp-server) share the same API key.
 
 ## Data Coverage
 
@@ -1039,6 +1047,16 @@ cargo run --example websocket --features websocket
 ## Data Catalog
 
 For large-scale data exports (full order books, complete trade history, etc.), use the [Data Catalog](https://www.0xarchive.io/data). It lets you choose markets, datasets, and date ranges, see a live quote, and export zstd-compressed Parquet.
+
+## Links
+
+- [API Docs](https://www.0xarchive.io/docs)
+- [Python SDK](https://pypi.org/project/oxarchive/)
+- [TypeScript SDK](https://npmjs.com/package/@0xarchive/sdk)
+- [CLI](https://npmjs.com/package/@0xarchive/cli)
+- [MCP Server](https://npmjs.com/package/@0xarchive/mcp-server)
+- [0xArchive Skill](https://github.com/0xArchiveIO/0xarchive-skill)
+- [Examples](https://github.com/0xArchiveIO/examples)
 
 ## Requirements
 
