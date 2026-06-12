@@ -88,16 +88,16 @@ impl OrderBookResource {
 
     /// Fetch tick-level orderbook data (checkpoint + deltas).
     ///
-    /// **Requires Enterprise tier.** Returns a full L2 checkpoint at the start
-    /// of the range plus every incremental delta within the range (up to ~1000
-    /// deltas per request). Use this with [`OrderBookReconstructor`] for
-    /// maximum control, or call [`history_reconstructed`](Self::history_reconstructed)
-    /// for a one-shot convenience method.
+    /// Returns a full L2 checkpoint at the start of the range plus every
+    /// incremental delta within the range (up to ~1000 deltas per request).
+    /// Use this with [`OrderBookReconstructor`] for maximum control, or call
+    /// [`history_reconstructed`](Self::history_reconstructed) for a one-shot
+    /// convenience method.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidParam`] if the account is not on the Enterprise
-    /// tier (the API will return snapshot-level data instead of tick data).
+    /// Returns [`Error::InvalidParam`] if the API returns snapshot-level data
+    /// instead of tick data for this request.
     pub async fn history_tick(
         &self,
         symbol: &str,
@@ -120,19 +120,19 @@ impl OrderBookResource {
             .await?;
 
         // Tick-level responses are objects with "checkpoint" + "deltas".
-        // Non-Enterprise tiers receive an array of snapshots instead.
+        // Some requests receive an array of snapshots instead.
         let obj = value.as_object().ok_or_else(|| {
             Error::InvalidParam(
-                "Tick-level orderbook data requires Enterprise tier. \
-                 See https://0xarchive.io/pricing for details."
+                "Tick-level orderbook data was not returned for this request. \
+                 Check the symbol and time range, or use a different granularity."
                     .into(),
             )
         })?;
 
         if !obj.contains_key("checkpoint") {
             return Err(Error::InvalidParam(
-                "Tick-level orderbook data requires Enterprise tier. \
-                 See https://0xarchive.io/pricing for details."
+                "Tick-level orderbook data was not returned for this request. \
+                 Check the symbol and time range, or use a different granularity."
                     .into(),
             ));
         }
@@ -153,7 +153,7 @@ impl OrderBookResource {
 
     /// Fetch tick-level data and reconstruct orderbook snapshots (single page).
     ///
-    /// **Requires Enterprise tier.** This is a convenience wrapper that calls
+    /// This is a convenience wrapper that calls
     /// [`history_tick`](Self::history_tick) and runs reconstruction in one step.
     ///
     /// - `emit_all = true` (default): returns one snapshot per delta plus the
@@ -179,10 +179,9 @@ impl OrderBookResource {
     /// Fetch and reconstruct tick-level orderbook history with automatic
     /// pagination.
     ///
-    /// **Requires Enterprise tier.** Fetches up to ~1000 deltas per API call,
-    /// automatically advancing the cursor until the entire time range is
-    /// covered. Returns all reconstructed snapshots (one per tick) as a
-    /// single `Vec`.
+    /// Fetches up to ~1000 deltas per API call, automatically advancing the
+    /// cursor until the entire time range is covered. Returns all
+    /// reconstructed snapshots (one per tick) as a single `Vec`.
     ///
     /// For very large time ranges this may use significant memory. Consider
     /// using [`history_tick`](Self::history_tick) in a manual loop for
