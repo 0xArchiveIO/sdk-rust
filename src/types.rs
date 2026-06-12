@@ -573,7 +573,7 @@ impl OiFundingInterval {
 // Lighter orderbook granularity
 // ---------------------------------------------------------------------------
 
-/// Lighter.xyz orderbook snapshot granularity (tier-gated).
+/// Lighter.xyz orderbook snapshot granularity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LighterGranularity {
     Checkpoint,
@@ -799,7 +799,7 @@ pub struct Web3SubscribeResult {
 /// A single atomic change to the order book.
 ///
 /// Deltas are returned by the tick-level orderbook history endpoint
-/// (Enterprise tier) and must be applied in sequence order. A `size` of
+/// and must be applied in sequence order. A `size` of
 /// `0.0` means the price level should be removed entirely.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderbookDelta {

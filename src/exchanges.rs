@@ -213,10 +213,9 @@ pub struct SpotClient {
     pub orderbook: OrderBookResource,
     /// Trades (history + recent).
     pub trades: TradesResource,
-    /// L4 orderbook (snapshot, diffs, checkpoint history). Pro+ for snapshot
-    /// and diffs, Build+ for checkpoint history.
+    /// L4 orderbook (snapshot, diffs, checkpoint history).
     pub l4_orderbook: L4OrderBookResource,
-    /// Order lifecycle events (Pro+).
+    /// Order lifecycle events.
     pub orders: OrdersResource,
     /// TWAP execution statuses (by symbol or by user).
     pub twap: SpotTwapResource,

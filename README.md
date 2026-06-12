@@ -87,7 +87,7 @@ When prototyping Rust services from Claude Code, ChatGPT Codex, or another codin
 | Venue | Coverage | Notes |
 | --- | --- | --- |
 | Hyperliquid | April 2023+ | Perpetuals across the full venue |
-| Hyperliquid HIP-3 | February 2026+ | Free tier: `km:US500`. Build+: all HIP-3 symbols. Pro+: orderbook history. |
+| Hyperliquid HIP-3 | February 2026+ | All HIP-3 symbols, orderbook, and history on every tier. |
 | Hyperliquid HIP-4 | April 2026+ | Binary outcome markets (`#0`, `#1`, ...). No funding, no liquidations, no candles. |
 | Hyperliquid Spot | Trades March 2025+; orderbook, L4, TWAP, freshness live-only from May 2026 | 294 pairs (`HYPE-USDC`, `PURR-USDC`, ...). No funding, no OI, no liquidations, no candles. |
 | Lighter.xyz | August 2025+ for fills; January 2026+ for orderbooks, open interest, funding rates | Perpetuals |
@@ -155,16 +155,11 @@ let history = client.hyperliquid.orderbook.history("BTC", OrderBookHistoryParams
 }).await?;
 ```
 
-#### Orderbook Depth Limits
+#### Orderbook Depth
 
-| Tier | Max Depth |
-|------|-----------|
-| Free | 20 |
-| Build | 200 |
-| Pro | Full Depth |
-| Enterprise | Full Depth |
+Full orderbook depth is available on every tier.
 
-**Note:** Hyperliquid L2 source data contains 20 levels. Full-depth L2 (derived from L4) and Lighter.xyz provide full depth on Pro+. Depth limits apply to L2 snapshot endpoints only — L4 and L2 diff endpoints return full data.
+**Note:** Hyperliquid L2 source data contains ~20 levels. Full-depth L2 (derived from L4) and Lighter.xyz provide full depth.
 
 #### Lighter Orderbook Granularity
 
@@ -183,15 +178,15 @@ let history = client.lighter.orderbook.history("BTC", OrderBookHistoryParams {
 }).await?;
 ```
 
-| Granularity | Interval | Tier Required | Credit Multiplier |
-|-------------|----------|---------------|-------------------|
-| `Checkpoint` | ~60s | Free+ | 1x |
-| `ThirtySeconds` | 30s | Build+ | 2x |
-| `TenSeconds` | 10s | Build+ | 3x |
-| `OneSecond` | 1s | Pro+ | 10x |
-| `Tick` | tick-level | Enterprise | 20x |
+| Granularity | Interval | Credit Multiplier |
+|-------------|----------|-------------------|
+| `Checkpoint` | ~60s | 1x |
+| `ThirtySeconds` | 30s | 2x |
+| `TenSeconds` | 10s | 3x |
+| `OneSecond` | 1s | 10x |
+| `Tick` | tick-level | 20x |
 
-### Orderbook Reconstruction (Enterprise)
+### Orderbook Reconstruction
 
 Tick-level orderbook history returns a full **checkpoint** plus **incremental deltas**, allowing you to reconstruct the exact state of the order book at every tick. This is the most granular data available and is ideal for backtesting, market microstructure research, and latency analysis.
 
@@ -581,7 +576,7 @@ Full-depth L2 orderbook derived from L4 data. Available on `client.hyperliquid.l
 ```rust
 use oxarchive::resources::l2_orderbook::*;
 
-// Get current L2 full-depth orderbook (Build+ tier)
+// Get current L2 full-depth orderbook
 let l2 = client.hyperliquid.l2_orderbook.get("BTC", None).await?;
 
 // Get L2 orderbook at a specific timestamp
@@ -590,7 +585,7 @@ let l2 = client.hyperliquid.l2_orderbook.get("BTC", Some(L2OrderBookParams {
     depth: Some(50),
 })).await?;
 
-// Get L2 orderbook history (Build+ tier)
+// Get L2 orderbook history
 let l2_history = client.hyperliquid.l2_orderbook.history("BTC", L2HistoryParams {
     start: 1704067200000_i64.into(),
     end: 1704153600000_i64.into(),
@@ -599,7 +594,7 @@ let l2_history = client.hyperliquid.l2_orderbook.history("BTC", L2HistoryParams 
     depth: Some(50),
 }).await?;
 
-// Get L2 tick-level diffs (Pro+ tier)
+// Get L2 tick-level diffs
 let l2_diffs = client.hyperliquid.l2_orderbook.diffs("BTC", L2DiffsParams {
     start: 1704067200000_i64.into(),
     end: 1704153600000_i64.into(),
@@ -766,7 +761,7 @@ let trades = client.hyperliquid.spot.trades.list("PURR-USDC", GetTradesParams {
     side: None,
 }).await?;
 
-// L4 reconstruction (Pro+).
+// L4 reconstruction.
 let l4_now = client.hyperliquid.spot.l4_orderbook.get("HYPE-USDC", None).await?;
 let l4_diffs = client.hyperliquid.spot.l4_orderbook.diffs("HYPE-USDC", L4DiffsParams {
     start: 1746489600000_i64.into(),
@@ -782,7 +777,7 @@ let l4_history = client.hyperliquid.spot.l4_orderbook.history("HYPE-USDC", L4His
     depth: Some(20),
 }).await?;
 
-// Order lifecycle events (Pro+).
+// Order lifecycle events.
 let orders = client.hyperliquid.spot.orders.history("HYPE-USDC", OrderHistoryParams::default()).await?;
 
 // TWAP statuses by symbol or by user.
@@ -939,27 +934,27 @@ ws.replay_stop().await?;
 | `lighter_candles` | Lighter.xyz candles | Yes | Yes |
 | `lighter_open_interest` | Lighter.xyz open interest | Yes | Yes |
 | `lighter_funding` | Lighter.xyz funding rates | Yes | Yes |
-| `lighter_l3_orderbook` | Lighter.xyz L3 order-level orderbook (Pro+) | Yes | Yes |
+| `lighter_l3_orderbook` | Lighter.xyz L3 order-level orderbook | Yes | Yes |
 | `hip3_orderbook` | HIP-3 L2 order book | Yes | Yes |
 | `hip3_trades` | HIP-3 trades | Yes | Yes |
 | `hip3_candles` | HIP-3 candles | Yes | Yes |
 | `hip3_open_interest` | HIP-3 open interest | Yes | Yes |
 | `hip3_funding` | HIP-3 funding rates | Yes | Yes |
 | `hip3_liquidations` | HIP-3 liquidation events. Same wire shape as `liquidations`. | Yes | Yes |
-| `hip4_orderbook` | HIP-4 outcome-market L2 order book (Pro+) | Yes | Yes |
+| `hip4_orderbook` | HIP-4 outcome-market L2 order book | Yes | Yes |
 | `hip4_trades` | HIP-4 trade/fill updates | Yes | Yes |
 | `hip4_open_interest` | HIP-4 open interest snapshots | Yes | Yes |
-| `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution (Pro+) | Yes | No |
-| `l4_orders` | Hyperliquid order lifecycle events (Pro+) | Yes | No |
-| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution (Pro+) | Yes | No |
-| `hip3_l4_orders` | HIP-3 order lifecycle events (Pro+) | Yes | No |
-| `hip4_l4_diffs` | HIP-4 L4 orderbook diffs with user attribution (Pro+) | Yes | No |
-| `hip4_l4_orders` | HIP-4 order lifecycle events (Pro+) | Yes | No |
-| `spot_orderbook` | Hyperliquid Spot L2 order book (Build+) | Yes | No |
-| `spot_trades` | Hyperliquid Spot trades (Build+) | Yes | No |
-| `spot_l4_diffs` | Hyperliquid Spot L4 orderbook diffs with user attribution (Pro+) | Yes | No |
-| `spot_l4_orders` | Hyperliquid Spot order lifecycle events (Pro+) | Yes | No |
-| `spot_twap` | Hyperliquid Spot TWAP execution updates (Build+) | Yes | No |
+| `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution | Yes | No |
+| `l4_orders` | Hyperliquid order lifecycle events | Yes | No |
+| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution | Yes | No |
+| `hip3_l4_orders` | HIP-3 order lifecycle events | Yes | No |
+| `hip4_l4_diffs` | HIP-4 L4 orderbook diffs with user attribution | Yes | No |
+| `hip4_l4_orders` | HIP-4 order lifecycle events | Yes | No |
+| `spot_orderbook` | Hyperliquid Spot L2 order book | Yes | No |
+| `spot_trades` | Hyperliquid Spot trades | Yes | No |
+| `spot_l4_diffs` | Hyperliquid Spot L4 orderbook diffs with user attribution | Yes | No |
+| `spot_l4_orders` | Hyperliquid Spot order lifecycle events | Yes | No |
+| `spot_twap` | Hyperliquid Spot TWAP execution updates | Yes | No |
 
 HIP-4 outcome markets have **no funding, no liquidations, and no candles** by design (binary outcomes settle to 0/1 at expiry).
 
@@ -984,12 +979,15 @@ while let Some(msg) = rx.recv().await {
 
 ### Tier Limits
 
-| Tier | Max Subscriptions | Max Replay Speed | Max Batch Size |
-|------|------------------|------------------|----------------|
-| Free | — | — | — |
-| Build | 25 | 50x | 2,000 |
-| Pro | 100 | 100x | 5,000 |
-| Enterprise | 200 | 1000x | 10,000 |
+Every tier has access to all markets, all schemas, and full history. Tiers differ only in capacity limits.
+
+| Tier | Max Subscriptions | Max Connections | Max Replay Speed | Max Batch Size |
+|------|------------------|-----------------|------------------|----------------|
+| Free | 10 | 2 | 10x | 2,000 |
+| Build | 500 | 3 | 50x | 2,000 |
+| Pro | 3,000 | 5 | 100x | 5,000 |
+| Scale | 20,000 | 16 | 300x | 10,000 |
+| Enterprise | Custom | Custom | from 500x | 10,000 |
 
 ## Timestamp Formats
 
