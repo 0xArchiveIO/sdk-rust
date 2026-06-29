@@ -88,7 +88,7 @@ When prototyping Rust services from Claude Code, ChatGPT Codex, or another codin
 | --- | --- | --- |
 | Hyperliquid | April 2023+ | Perpetuals across the full venue |
 | Hyperliquid HIP-3 | February 2026+ | All HIP-3 symbols, orderbook, and history on every tier. |
-| Hyperliquid HIP-4 | April 2026+ | Binary outcome markets (`#0`, `#1`, ...). No funding, no liquidations, no candles. |
+| Hyperliquid HIP-4 | May 2026+ | Binary outcome markets (`#0`, `#1`, ...). No funding, no liquidations, no candles. |
 | Hyperliquid Spot | Trades March 2025+; orderbook, L4, TWAP, freshness live-only from May 2026 | 294 pairs (`HYPE-USDC`, `PURR-USDC`, ...). No funding, no OI, no liquidations, no candles. |
 | Lighter.xyz | August 2025+ for fills; January 2026+ for orderbooks, open interest, funding rates | Perpetuals |
 
