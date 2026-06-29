@@ -876,8 +876,8 @@ let sub = client.web3.subscribe("build", "base64_payment_payload").await?;
 ## WebSocket Client
 
 Requires the `websocket` feature. Supports two modes on a single connection:
-- **Real-time** — subscribe to live market data
-- **Replay** — replay historical data with timing preserved
+- **Real-time**: subscribe to live market data
+- **Replay**: replay historical data with timing preserved
 
 For file-based historical exports, use the [Data Catalog](https://www.0xarchive.io/data).
 
