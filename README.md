@@ -1,5 +1,7 @@
 # oxarchive
 
+[![Crates.io](https://img.shields.io/crates/v/oxarchive.svg)](https://crates.io/crates/oxarchive) [![Docs.rs](https://docs.rs/oxarchive/badge.svg)](https://docs.rs/oxarchive) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Rust client for async services that need typed 0xArchive market data.
 
 0xArchive is granular market data infrastructure for Hyperliquid and Lighter.xyz. Hyperliquid includes core perps (`/v1/hyperliquid`), HIP-3 builder perps (`/v1/hyperliquid/hip3`), HIP-4 outcome markets (`/v1/hyperliquid/hip4`), and Hyperliquid Spot (`/v1/hyperliquid/spot`). Lighter.xyz is the second top-level venue API at `/v1/lighter`.
