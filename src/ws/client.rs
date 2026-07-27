@@ -124,6 +124,28 @@ pub enum ServerMsg {
         symbol: Option<String>,
         data: serde_json::Value,
     },
+    /// Initial L4 orderbook snapshot, sent once after subscribing to an
+    /// `l4_diffs`-family channel, before the batch stream begins. `data` is
+    /// the full book (`bids`/`asks` arrays of order objects); large symbols
+    /// can be tens of MB of JSON.
+    L4Snapshot {
+        channel: String,
+        coin: String,
+        symbol: String,
+        /// Block number of the last applied diff in this snapshot.
+        last_block_number: u64,
+        timestamp: i64,
+        data: serde_json::Value,
+    },
+    /// Batched L4 data (real-time, ~100ms windows). Each element of `data`
+    /// is one diff or order event; diff objects deserialize into
+    /// [`crate::types::L4DiffEntry`].
+    L4Batch {
+        channel: String,
+        coin: String,
+        symbol: String,
+        data: Vec<serde_json::Value>,
+    },
     HistoricalData {
         channel: String,
         coin: Option<String>,
@@ -200,6 +222,10 @@ pub enum ServerMsg {
         settlement_value: Option<f64>,
         settlement_at: Option<String>,
     },
+    /// Any message type this SDK version does not know. Carried instead of
+    /// being silently dropped so callers can log or ignore explicitly.
+    #[serde(other)]
+    Unknown,
 }
 
 // ---------------------------------------------------------------------------
@@ -397,5 +423,51 @@ impl OxArchiveWs {
         if let Some(ref mut writer) = *self.sink.lock().await {
             let _ = writer.close().await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ServerMsg;
+
+    #[test]
+    fn l4_snapshot_deserializes() {
+        let json = r#"{"type":"l4_snapshot","channel":"l4_diffs","coin":"BTC","symbol":"BTC","last_block_number":1087344118,"timestamp":1785540000000,"data":{"bids":[],"asks":[]}}"#;
+        match serde_json::from_str::<ServerMsg>(json).expect("l4_snapshot must parse") {
+            ServerMsg::L4Snapshot { coin, last_block_number, .. } => {
+                assert_eq!(coin, "BTC");
+                assert_eq!(last_block_number, 1087344118);
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn l4_batch_deserializes() {
+        let json = r#"{"type":"l4_batch","channel":"l4_diffs","coin":"BTC","symbol":"BTC","data":[{"oid":1},{"oid":2}]}"#;
+        match serde_json::from_str::<ServerMsg>(json).expect("l4_batch must parse") {
+            ServerMsg::L4Batch { data, .. } => assert_eq!(data.len(), 2),
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_type_maps_to_unknown_not_error() {
+        let json = r#"{"type":"some_future_message","payload":123}"#;
+        let msg = serde_json::from_str::<ServerMsg>(json).expect("unknown types must not error");
+        assert!(matches!(msg, ServerMsg::Unknown));
+    }
+
+    #[test]
+    fn l4_diff_entry_carries_seq_and_insert_before() {
+        let json = r#"{"coin":"BTC","timestamp":"2026-07-26T22:31:23.618Z","block_number":1087344118,"seq":116,"oid":503076737852,"side":"B","price":58671.0,"diff_type":"new","new_size":0.00342,"user_address":"0xd4bb","insert_before":503076737000}"#;
+        let d: crate::types::L4DiffEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(d.seq, 116);
+        assert_eq!(d.insert_before, Some(503076737000));
+        // seq/insert_before absent (pre-native-seq rows, tail placements)
+        let json2 = r#"{"coin":"BTC","timestamp":"t","block_number":1,"oid":2,"side":"A","price":1.0,"diff_type":"remove","new_size":null,"user_address":"0x"}"#;
+        let d2: crate::types::L4DiffEntry = serde_json::from_str(json2).unwrap();
+        assert_eq!(d2.seq, 0);
+        assert_eq!(d2.insert_before, None);
     }
 }

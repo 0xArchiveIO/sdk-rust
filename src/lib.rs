@@ -96,7 +96,11 @@ pub use types::{
     CursorResponse, Hip4AggregatedOi, Hip4OpenInterestRecord, Hip4Outcome, Hip4OutcomeAggregate,
     Hip4SideSpec, L4OrderBookSnapshot, L4OrderEntry, L4DiffEntry,
     L2OrderBookSnapshot, L2PriceLevel, L2DiffEntry, OrderHistoryEntry,
+    LiquidationLevelBucket, LiquidationLevels, LiquidationLevelsHistoryItem,
+    TriggerLevelBucket, TriggerLevels, TriggerLevelsHistoryItem,
 };
+pub use resources::liquidations::{LevelsHistoryParams, LiquidationLevelsParams};
+pub use resources::orders::TriggerLevelsParams;
 
 #[cfg(feature = "websocket")]
 pub use ws::{ClientMsg, OxArchiveWs, ServerMsg, WsOptions};
