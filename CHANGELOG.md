@@ -3,6 +3,43 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.8.0] - 2026-07-27
+
+### Added
+- **Liquidation levels**: `liquidations.levels()` and `levels_history()` on
+  the Hyperliquid and HIP-3 clients. Projected forced-liquidation levels
+  computed from clearinghouse positions and margin state (~45-minute
+  snapshots, `at` point-in-time reads, `side` filter, cursor-paginated
+  history with `summary` mode). History retained from 2026-07-27.
+- **Trigger levels**: `orders.trigger_levels()` and
+  `trigger_levels_history()` — the pending stop-loss / take-profit map
+  (15-minute snapshot history). Typed models exported at the crate root.
+- **WebSocket L4 frames**: `ServerMsg::L4Snapshot` and `ServerMsg::L4Batch`.
+  Previously these server messages failed to deserialize and were silently
+  discarded, so L4 channel subscribers received nothing.
+- `ServerMsg::Unknown` catch-all: unrecognized message types now surface as
+  a variant instead of being silently dropped.
+- `L4DiffEntry.seq` (within-block sequence, default 0 on pre-native-seq
+  rows) and `L4DiffEntry.insert_before` (ALO queue-priority target oid).
+- `CoinSummary.volume_24h` (Lighter naming; `day_ntl_volume` is
+  Hyperliquid-only).
+
+### Fixed
+- `liquidations.by_user()` hit `/liquidations/{address}` instead of
+  `/liquidations/user/{address}` — the server treated the wallet as a coin
+  symbol and returned an empty array, silently.
+- `Candle` OHLCV fields declared plain `String` but the wire serves JSON
+  numbers, so every `candles.history()` call failed to deserialize on all
+  mounts. Fields now accept numbers or strings (still stored as `String`).
+- `data_quality.sla()` now takes `(year, month)` matching the API contract;
+  the old lone `month` string was silently ignored by the server.
+
+### Changed
+- The server-side `/liquidations/{symbol}/levels` endpoints now serve
+  projected forced-liquidation levels; the pending trigger-order map moved
+  to `/orders/{symbol}/trigger-levels`.
+- `ServerMsg` gained variants; exhaustive matches on it will need new arms.
+
 ## [1.7.0] - 2026-05-06
 
 ### Added
