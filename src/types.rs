@@ -70,6 +70,11 @@ pub struct ApiMeta {
     pub count: usize,
     pub request_id: String,
     pub next_cursor: Option<String>,
+    /// Coverage start date (ISO 8601), present when the requested window ends
+    /// before the symbol's coverage begins.
+    pub coverage_from: Option<String>,
+    /// Advisory notice explaining an empty response (e.g. window predates coverage).
+    pub notice: Option<String>,
 }
 
 /// Raw API response envelope (internal use).

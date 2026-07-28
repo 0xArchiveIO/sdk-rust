@@ -23,6 +23,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   rows) and `L4DiffEntry.insert_before` (ALO queue-priority target oid).
 - `CoinSummary.volume_24h` (Lighter naming; `day_ntl_volume` is
   Hyperliquid-only).
+- **`ApiMeta.coverage_from` / `ApiMeta.notice`**: empty responses for range
+  windows that end before a symbol's coverage begins now carry the coverage
+  start date and an advisory notice.
 
 ### Fixed
 - `liquidations.by_user()` hit `/liquidations/{address}` instead of
