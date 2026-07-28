@@ -45,6 +45,21 @@ where
     deserializer.deserialize_any(NumberOrString)
 }
 
+/// Option-aware variant of [`deserialize_number_or_string`]: `null`/absent
+/// stays `None`; numbers and strings both become `Some(String)`.
+fn deserialize_opt_number_or_string<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Wrap(#[serde(deserialize_with = "deserialize_number_or_string")] String);
+
+    let opt = Option::<Wrap>::deserialize(deserializer)?;
+    Ok(opt.map(|w| w.0))
+}
+
 // ---------------------------------------------------------------------------
 // Generic response envelope
 // ---------------------------------------------------------------------------
@@ -55,6 +70,11 @@ pub struct ApiMeta {
     pub count: usize,
     pub request_id: String,
     pub next_cursor: Option<String>,
+    /// Coverage start date (ISO 8601), present when the requested window ends
+    /// before the symbol's coverage begins.
+    pub coverage_from: Option<String>,
+    /// Advisory notice explaining an empty response (e.g. window predates coverage).
+    pub notice: Option<String>,
 }
 
 /// Raw API response envelope (internal use).
@@ -459,14 +479,23 @@ pub struct OpenInterest {
 // ---------------------------------------------------------------------------
 
 /// OHLCV candle (candlestick) data.
+///
+/// The wire serves OHLCV as JSON numbers; these fields accept both numbers
+/// and strings and store the value as `String` to preserve precision.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Candle {
     pub timestamp: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub open: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub high: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub low: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub close: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub volume: String,
+    #[serde(default, deserialize_with = "deserialize_opt_number_or_string")]
     pub quote_volume: Option<String>,
     pub trade_count: Option<i64>,
 }
@@ -625,7 +654,12 @@ pub struct CoinSummary {
     pub oracle_price: Option<String>,
     pub open_interest: Option<String>,
     pub funding_rate: Option<String>,
+    /// 24h notional volume, Hyperliquid naming. Lighter sends `volume_24h`
+    /// instead; check that field on Lighter summaries.
     pub day_ntl_volume: Option<String>,
+    /// 24h volume, Lighter naming.
+    #[serde(default, deserialize_with = "deserialize_opt_number_or_string")]
+    pub volume_24h: Option<String>,
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
@@ -898,12 +932,122 @@ pub struct L4DiffEntry {
     pub coin: String,
     pub timestamp: String,
     pub block_number: u64,
+    /// Within-block sequence number. Faithful engine ordering from late May
+    /// 2026 onward; `0` on earlier rows.
+    #[serde(default)]
+    pub seq: u64,
     pub oid: u64,
     pub side: String,
     pub price: f64,
     pub diff_type: String,
     pub new_size: Option<f64>,
     pub user_address: String,
+    /// ALO queue priority: for `new` diffs placed with queue priority, the
+    /// `oid` this order was inserted ahead of. Absent for tail placements.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_before: Option<u64>,
+}
+
+// ---------------------------------------------------------------------------
+// Liquidation levels (projected forced-liquidation levels)
+// ---------------------------------------------------------------------------
+
+/// One price bucket of projected forced-liquidation exposure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiquidationLevelBucket {
+    /// Bucket center price.
+    pub price: f64,
+    /// USD notional of long positions projected to liquidate in this bucket.
+    pub long_notional: f64,
+    /// USD notional of short positions projected to liquidate in this bucket.
+    pub short_notional: f64,
+    /// Number of long positions in this bucket.
+    pub long_count: u64,
+    /// Number of short positions in this bucket.
+    pub short_count: u64,
+}
+
+/// Projected forced-liquidation levels for one snapshot, computed from
+/// clearinghouse positions and margin state. Snapshots refresh roughly every
+/// 45 minutes; `snapshot_ts` identifies the snapshot served.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiquidationLevels {
+    /// Mark price at the snapshot, center of the requested range.
+    pub mid_price: f64,
+    /// UTC snapshot time the levels reflect.
+    pub snapshot_ts: String,
+    /// Hyperliquid block height the snapshot reflects.
+    pub block_number: u64,
+    /// Total long notional at risk across the whole book.
+    pub total_long: f64,
+    /// Total short notional at risk across the whole book.
+    pub total_short: f64,
+    /// Notional computed approximately or not bucketed (HIP-3 cross-margin exposure).
+    pub flagged_notional: f64,
+    /// Price buckets inside the requested range.
+    pub levels: Vec<LiquidationLevelBucket>,
+}
+
+/// One historical liquidation-levels snapshot. `levels` is `None` when the
+/// history was requested with `summary = true`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiquidationLevelsHistoryItem {
+    pub snapshot_ts: String,
+    pub block_number: u64,
+    pub mid_price: f64,
+    pub total_long: f64,
+    pub total_short: f64,
+    pub flagged_notional: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub levels: Option<Vec<LiquidationLevelBucket>>,
+}
+
+// ---------------------------------------------------------------------------
+// Trigger levels (pending stop-loss / take-profit orders)
+// ---------------------------------------------------------------------------
+
+/// Aggregated currently open trigger orders at one rounded price bucket.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerLevelBucket {
+    /// Rounded trigger price bucket.
+    pub price_bucket: f64,
+    /// Number of bid-side trigger orders in the bucket.
+    pub bid_count: u64,
+    /// Bid-side trigger size in the bucket.
+    pub bid_size: f64,
+    /// Number of ask-side trigger orders in the bucket.
+    pub ask_count: u64,
+    /// Ask-side trigger size in the bucket.
+    pub ask_size: f64,
+}
+
+/// Currently pending stop-loss and take-profit trigger orders grouped into
+/// price buckets. Voluntary trigger orders, not projected forced
+/// liquidations; use [`LiquidationLevels`] for those.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerLevels {
+    /// Current mid/mark price, center of the requested range.
+    pub mid_price: f64,
+    /// UTC RFC3339 server time the pending-trigger state was read.
+    pub as_of: String,
+    /// Total pending bid size across the returned window.
+    pub total_bid_size: f64,
+    /// Total pending ask size across the returned window.
+    pub total_ask_size: f64,
+    /// Price buckets inside the requested range.
+    pub levels: Vec<TriggerLevelBucket>,
+}
+
+/// One historical trigger-levels snapshot (15-minute cadence). `levels` is
+/// `None` when the history was requested with `summary = true`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerLevelsHistoryItem {
+    pub snapshot_ts: String,
+    pub mid_price: f64,
+    pub total_bid_size: f64,
+    pub total_ask_size: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub levels: Option<Vec<TriggerLevelBucket>>,
 }
 
 // ---------------------------------------------------------------------------

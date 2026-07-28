@@ -88,10 +88,14 @@ impl DataQualityResource {
 
     /// Get SLA compliance metrics.
     ///
-    /// Uses a 120-second timeout (this endpoint can be slow when computing
-    /// compliance across all data types).
-    pub async fn sla(&self, month: Option<&str>) -> Result<SlaResponse> {
+    /// Pass `year` + `month` (1-12) together to pin a period; omit both for
+    /// the current month. Uses a 120-second timeout (this endpoint can be
+    /// slow when computing compliance across all data types).
+    pub async fn sla(&self, year: Option<i32>, month: Option<u8>) -> Result<SlaResponse> {
         let mut qp = vec![];
+        if let Some(y) = year {
+            qp.push(("year", y.to_string()));
+        }
         if let Some(m) = month {
             qp.push(("month", m.to_string()));
         }
