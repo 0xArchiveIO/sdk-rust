@@ -1,5 +1,7 @@
+use oxarchive::resources::candles::CandleHistoryParams;
 use oxarchive::resources::spot::SpotTwapParams;
 use oxarchive::resources::trades::GetTradesParams;
+use oxarchive::types::CandleInterval;
 use oxarchive::OxArchive;
 
 #[tokio::main]
@@ -46,6 +48,24 @@ async fn main() -> oxarchive::Result<()> {
         )
         .await?;
     println!("\nPURR-USDC trades (last 24h): {}", trades.data.len());
+
+    // Candle history starts exactly at 2025-03-22T10:50:22Z; max 1,000 rows.
+    let candles = client
+        .hyperliquid
+        .spot
+        .candles
+        .history(
+            "HYPE-USDC",
+            CandleHistoryParams {
+                start: 1742640622000_i64.into(),
+                end: 1742644222000_i64.into(),
+                cursor: None,
+                limit: Some(1000),
+                interval: Some(CandleInterval::OneMinute),
+            },
+        )
+        .await?;
+    println!("HYPE-USDC candles: {} rows", candles.data.len());
 
     // TWAP statuses for a symbol.
     let twap = client

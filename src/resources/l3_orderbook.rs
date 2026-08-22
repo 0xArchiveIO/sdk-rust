@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::http::HttpClient;
 use crate::types::{CursorResponse, Timestamp};
 
@@ -27,13 +27,16 @@ impl L3OrderBookResource {
     }
 
     /// Get the current L3 orderbook for a symbol.
-    pub async fn get(
-        &self,
-        symbol: &str,
-        depth: Option<i64>,
-    ) -> Result<serde_json::Value> {
+    ///
+    /// `depth` caps individual resting orders per side and must be 1..=250.
+    pub async fn get(&self, symbol: &str, depth: Option<i64>) -> Result<serde_json::Value> {
         let mut qp = vec![];
         if let Some(d) = depth {
+            if !(1..=250).contains(&d) {
+                return Err(Error::InvalidParam(
+                    "depth must be between 1 and 250 orders per side".to_string(),
+                ));
+            }
             qp.push(("depth", d.to_string()));
         }
         self.http
