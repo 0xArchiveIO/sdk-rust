@@ -6,12 +6,23 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 ## [1.9.0] - 2026-08-22
 
 ### Added
-- Typed HIP-4 candle history at `client.hyperliquid.hip4.candles.history()`.
+- Typed HIP-4 candle history at `client.hyperliquid.hip4.candles.history()`;
+  served from 2026-05-02 with a 1,000-row page maximum.
+- Typed Hyperliquid Spot candle history at
+  `client.hyperliquid.spot.candles.history()`; coverage starts exactly at
+  2025-03-22T10:50:22Z, supports `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`,
+  and `1w`, and accepts at most 1,000 rows per page with opaque cursors.
 
 ### Changed
-- Coverage copy now states HIP-4 outcome-side OI at roughly 10-second cadence, Lighter L3 at 250 orders per side from March 5, 2026, and Lighter per-fill trade history from August 27, 2025.
-- HIP-4 WebSocket docs now distinguish live trades/L4/settlement delivery from stored-replay-only L2 and OI while those live bridges are paused.
-- `Hip4OpenInterestRecord` no longer advertises `oracle_price`, and Lighter L3 `depth` is validated as 1 through 250 individual resting orders per side.
+- Coverage copy now states HIP-4 outcome-side OI at roughly 10-second cadence,
+  Lighter candles from 2025-08-01, Lighter L3 at 250 orders per side from
+  March 5, 2026, and Lighter per-fill trade history from August 27, 2025.
+- HIP-4 WebSocket docs now distinguish live trades/L4/settlement delivery from
+  stored-replay-only L2 and OI while those live bridges are paused.
+- HIP-4 symbol documentation now distinguishes the bare user form from the
+  percent-encoded URL wire path.
+- `Hip4OpenInterestRecord` no longer advertises `oracle_price`, and Lighter L3
+  `depth` is validated as 1 through 250 individual resting orders per side.
 
 ## [1.8.0] - 2026-07-27
 
@@ -79,9 +90,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 - **New `examples/spot.rs`** mirroring the HIP-3 example.
 
 ### Notes
-- Spot has **no funding, no open interest, no liquidations, no candles**:
-  those are perp-only constructs. The candles endpoint returns 501 by
-  design; the SDK does not expose it.
+- At the time of the 1.7.0 release, Spot had **no funding, no open interest,
+  no liquidations, and no candles**: the candles endpoint returned 501 and the
+  SDK did not expose it. Spot candle history is now available as of 1.9.0;
+  see the current release notes above for its served coverage.
 - Trade history backfills to 2025-03-22 (the earliest published Hyperliquid
   S3 spot data). Orderbook, L4, TWAP, and freshness are live-only from
   2026-05-05.

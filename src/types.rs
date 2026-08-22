@@ -319,7 +319,8 @@ pub struct SpotTwapStatus {
 /// [`Hip4OutcomeAggregate`].
 ///
 /// Coin format: `#<10*outcome_id + side>`. Backend accepts the bare numeric
-/// form on every path; the SDK passes `symbol` through unchanged.
+/// form on every path. The SDK accepts the bare form and percent-encodes `#`
+/// only for URL wire transport.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hip4Outcome {
     pub outcome_id: i64,

@@ -201,9 +201,10 @@ impl Hip3Client {
 /// The server resolves the dashed form to the wire format (`PURR/USDC`, `@107`)
 /// internally.
 ///
-/// Spot has **no funding, no open interest, no liquidations, and no candles**.
-/// Those are perp-only constructs. Trade history backfills to 2025-03-22; every
-/// other dataset is live-only from 2026-05-05.
+/// Spot has **no funding, no open interest, and no liquidations**.
+/// Trade history backfills to 2025-03-22; candle history starts exactly at
+/// 2025-03-22T10:50:22Z. Orderbook, L4, TWAP, and freshness data are live-only
+/// from May 5, 2026.
 #[derive(Debug, Clone)]
 pub struct SpotClient {
     http: HttpClient,
@@ -213,6 +214,8 @@ pub struct SpotClient {
     pub orderbook: OrderBookResource,
     /// Trades (history + recent).
     pub trades: TradesResource,
+    /// OHLCV candle history (coverage starts 2025-03-22T10:50:22Z; max 1,000 rows per page).
+    pub candles: CandlesResource,
     /// L4 orderbook (snapshot, diffs, checkpoint history).
     pub l4_orderbook: L4OrderBookResource,
     /// Order lifecycle events.
@@ -228,6 +231,12 @@ impl SpotClient {
             pairs: SpotPairsResource::new(http.clone(), prefix),
             orderbook: OrderBookResource::new(http.clone(), prefix),
             trades: TradesResource::new(http.clone(), prefix),
+            candles: CandlesResource::new_with_transform_and_limit(
+                http.clone(),
+                prefix,
+                |symbol| symbol.to_string(),
+                Some(1000),
+            ),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             orders: OrdersResource::new(http.clone(), prefix),
             twap: SpotTwapResource::new(http.clone(), prefix),
@@ -353,6 +362,7 @@ pub struct Hip4TpslParams {
 /// raw OI updates arrive at roughly 10-second cadence. HIP-4 has no funding
 /// rates or liquidations. Coin symbols are `#`-prefixed (`#0`, `#1`, ...)
 /// and follow `#<10*outcome_id + side>`.
+/// Candle pages accept at most 1,000 rows.
 /// Use the **bare form** (`"#0"`) in your code; do not pre-encode `#` to
 /// `%23`. The SDK percent-encodes `#` strictly for the URL wire path so
 /// HTTP clients don't strip it as a fragment.
@@ -373,10 +383,11 @@ impl Hip4 {
     pub(crate) fn new(http: HttpClient) -> Self {
         Self {
             instruments: Hip4InstrumentsResource::new(http.clone(), HIP4_PREFIX),
-            candles: CandlesResource::new_with_transform(
+            candles: CandlesResource::new_with_transform_and_limit(
                 http.clone(),
                 HIP4_PREFIX,
                 hip4_encode,
+                Some(1000),
             ),
             http,
         }

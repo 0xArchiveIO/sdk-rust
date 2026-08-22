@@ -12,7 +12,7 @@
 /// # async fn example() -> oxarchive::Result<()> {
 /// let client = OxArchive::new("your-api-key")?;
 /// let tick_data = client.lighter.orderbook.history_tick(
-///     "BTC", 1704067200000_i64, 1704153600000_i64, None,
+///     "BTC", 1769904000000_i64, 1769907600000_i64, None,
 /// ).await?;
 ///
 /// let mut reconstructor = OrderBookReconstructor::new();
