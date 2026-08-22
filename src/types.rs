@@ -2,7 +2,6 @@
 ///
 /// The API returns `snake_case` JSON which matches Rust's native field
 /// naming convention, so no `rename_all` attribute is needed.
-
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Deserialize a value that may arrive as a JSON number or a JSON string,
@@ -320,7 +319,8 @@ pub struct SpotTwapStatus {
 /// [`Hip4OutcomeAggregate`].
 ///
 /// Coin format: `#<10*outcome_id + side>`. Backend accepts the bare numeric
-/// form on every path; the SDK passes `symbol` through unchanged.
+/// form on every path. The SDK accepts the bare form and percent-encodes `#`
+/// only for URL wire transport.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hip4Outcome {
     pub outcome_id: i64,
@@ -436,7 +436,6 @@ pub struct Hip4OpenInterestRecord {
     /// matches perp/HIP-3 because the Hyperliquid upstream uses `markPx` for
     /// both. To convert to a percentage, multiply by 100.
     pub mark_price: Option<String>,
-    pub oracle_price: Option<String>,
     pub mid_price: Option<String>,
     #[serde(default, flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,

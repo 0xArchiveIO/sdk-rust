@@ -8,7 +8,8 @@ pub struct CandleHistoryParams {
     pub start: Timestamp,
     pub end: Timestamp,
     pub cursor: Option<String>,
-    /// Max results per page (default 100, max 10,000 for candles).
+    /// Max results per page (default 100). The server maximum is route-specific;
+    /// HIP-4 candles accept at most 1,000 rows per page.
     pub limit: Option<i64>,
     pub interval: Option<CandleInterval>,
 }
@@ -18,20 +19,34 @@ pub struct CandleHistoryParams {
 pub struct CandlesResource {
     http: HttpClient,
     prefix: String,
+    symbol_transform: fn(&str) -> String,
+    max_limit: Option<i64>,
 }
 
 impl CandlesResource {
     pub(crate) fn new(http: HttpClient, prefix: &str) -> Self {
+        Self::new_with_transform_and_limit(http, prefix, |symbol| symbol.to_string(), None)
+    }
+
+    pub(crate) fn new_with_transform_and_limit(
+        http: HttpClient,
+        prefix: &str,
+        symbol_transform: fn(&str) -> String,
+        max_limit: Option<i64>,
+    ) -> Self {
         Self {
             http,
             prefix: prefix.to_string(),
+            symbol_transform,
+            max_limit,
         }
     }
 
     /// Get paginated historical candles.
     ///
     /// Returns an error if the `start` timestamp is more than 5 minutes in the
-    /// future (the API silently returns empty data for future ranges).
+    /// future (the API silently returns empty data for future ranges), or if a
+    /// route-specific page limit is exceeded.
     pub async fn history(
         &self,
         symbol: &str,
@@ -54,11 +69,19 @@ impl CandlesResource {
             qp.push(("cursor", c.clone()));
         }
         if let Some(l) = params.limit {
+            if let Some(max_limit) = self.max_limit {
+                if !(1..=max_limit).contains(&l) {
+                    return Err(Error::InvalidParam(format!(
+                        "candle limit must be between 1 and {max_limit} for this route"
+                    )));
+                }
+            }
             qp.push(("limit", l.to_string()));
         }
         if let Some(i) = params.interval {
             qp.push(("interval", i.as_str().to_string()));
         }
+        let symbol = (self.symbol_transform)(symbol);
         let (data, next_cursor) = self
             .http
             .get_with_cursor(&format!("{}/candles/{}", self.prefix, symbol), &qp)

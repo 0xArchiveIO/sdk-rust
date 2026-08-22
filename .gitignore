@@ -1,5 +1,6 @@
 # Tests (internal only, not published)
-tests/
+tests/*
+!tests/coverage_contract.rs
 examples/test_all.rs
 
 # Build output
