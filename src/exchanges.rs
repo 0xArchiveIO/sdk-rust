@@ -349,9 +349,10 @@ pub struct Hip4TpslParams {
 
 /// Client for HIP-4 outcome-market endpoints (`/v1/hyperliquid/hip4`).
 ///
-/// HIP-4 binary outcome markets are fully collateralized: there are no
-/// funding rates, no liquidations, and no candles. Coin symbols are
-/// `#`-prefixed (`#0`, `#1`, ...) and follow `#<10*outcome_id + side>`.
+/// HIP-4 candles and outcome-side open interest are served from May 2, 2026;
+/// raw OI updates arrive at roughly 10-second cadence. HIP-4 has no funding
+/// rates or liquidations. Coin symbols are `#`-prefixed (`#0`, `#1`, ...)
+/// and follow `#<10*outcome_id + side>`.
 /// Use the **bare form** (`"#0"`) in your code; do not pre-encode `#` to
 /// `%23`. The SDK percent-encodes `#` strictly for the URL wire path so
 /// HTTP clients don't strip it as a fragment.
@@ -364,12 +365,19 @@ pub struct Hip4 {
     http: HttpClient,
     /// Per-side instrument resource (`/instruments`, `/instruments/{symbol}`).
     pub instruments: Hip4InstrumentsResource,
+    /// Implied-probability OHLCV candles.
+    pub candles: CandlesResource,
 }
 
 impl Hip4 {
     pub(crate) fn new(http: HttpClient) -> Self {
         Self {
             instruments: Hip4InstrumentsResource::new(http.clone(), HIP4_PREFIX),
+            candles: CandlesResource::new_with_transform(
+                http.clone(),
+                HIP4_PREFIX,
+                hip4_encode,
+            ),
             http,
         }
     }

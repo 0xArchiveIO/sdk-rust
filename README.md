@@ -88,11 +88,11 @@ When prototyping Rust services from Claude Code, ChatGPT Codex, or another codin
 
 | Venue | Coverage | Notes |
 | --- | --- | --- |
-| Hyperliquid | April 2023+ | Perpetuals across the full venue |
-| Hyperliquid HIP-3 | February 2026+ | All HIP-3 symbols, orderbook, and history on every tier. |
-| Hyperliquid HIP-4 | May 2026+ | Binary outcome markets (`#0`, `#1`, ...). No funding, no liquidations, no candles. |
-| Hyperliquid Spot | Trades March 2025+; orderbook, L4, TWAP, freshness live-only from May 2026 | 294 pairs (`HYPE-USDC`, `PURR-USDC`, ...). No funding, no OI, no liquidations, no candles. |
-| Lighter.xyz | August 2025+ for fills; January 2026+ for orderbooks, open interest, funding rates | Perpetuals |
+| Hyperliquid | April 2023+ | Core perpetuals; coverage varies by schema and route. |
+| Hyperliquid HIP-3 | February 2026+ for served history | Builder perps; funding and OI update at roughly 10 seconds. |
+| Hyperliquid HIP-4 | May 2026+ | Candles and outcome-side OI are served from 2026-05-02; OI updates at ~10s. No funding or liquidations. |
+| Hyperliquid Spot | Trades March 2025+; orderbook, L4, TWAP, and freshness from May 2026 | 326 authenticated inventory rows using dashed symbols (`HYPE-USDC`, `PURR-USDC`, ...). No funding, OI, liquidations, or candles. |
+| Lighter.xyz | Observed global per-fill trade floor August 27, 2025; exact starts vary by market. L3 from March 5, 2026+ | Maker/taker trade context; L3 caps at 250 orders per side; funding/OI update at ~10s. |
 
 ## Configuration
 
@@ -159,9 +159,9 @@ let history = client.hyperliquid.orderbook.history("BTC", OrderBookHistoryParams
 
 #### Orderbook Depth
 
-Full orderbook depth is available on every tier.
+Depth is route-specific. Hyperliquid-family native L2 is capped at 20 levels per side. Lighter native L2 includes all served levels, and Lighter L3 is capped at 250 orders per side.
 
-**Note:** Hyperliquid L2 source data contains ~20 levels. Full-depth L2 (derived from L4) and Lighter.xyz provide full depth.
+**Note:** Dedicated L2 routes derived from L4 return all served levels where supported. Lighter L3 exposes individual resting orders rather than price levels and begins March 5, 2026.
 
 #### Lighter Orderbook Granularity
 
@@ -379,7 +379,7 @@ let history = client.hyperliquid.funding.history("ETH", FundingHistoryParams {
 | `4h` | 4 hours |
 | `1d` | 1 day |
 
-When omitted, raw ~1 minute data is returned.
+Raw cadence is route-specific: Hyperliquid core funding is ~1 minute; HIP-3 and Lighter funding are ~10 seconds. HIP-4 has no funding. HIP-3, HIP-4 outcome-side OI, and Lighter OI are also ~10 seconds.
 
 ### Open Interest
 
@@ -637,13 +637,15 @@ use the bare `#<10*outcome_id + side>` form (`#0`, `#1`, `#55850`, ...). The
 SDK passes `symbol` straight through to the URL path. Use the bare form in
 your code; do not pre-encode `#` to `%23`.
 
-HIP-4 markets are fully collateralized: there are **no funding rates, no
-liquidations, and no candles**. `mark_price` on HIP-4 is an implied
-probability in `[0, 1]`, not a USD price.
+HIP-4 candles and outcome-side OI are served from **2026-05-02**, with raw OI
+updates at ~10s. HIP-4 has **no funding rates and no liquidations**.
+`mark_price` on HIP-4 is an implied probability in `[0, 1]`, not a USD price.
 
 ```rust
 use oxarchive::exchanges::{Hip4HistoryRange, Hip4ListOutcomesParams,
     Hip4OrderBookParams, Hip4TradesParams};
+use oxarchive::resources::candles::CandleHistoryParams;
+use oxarchive::types::CandleInterval;
 
 // Outcomes (per-outcome view, both sides combined)
 let outcomes = client.hyperliquid.hip4.list_outcomes(None).await?;
@@ -692,6 +694,15 @@ let trades = client.hyperliquid.hip4.get_trades("#0", Hip4TradesParams {
     side: None,
 }).await?;
 let recent = client.hyperliquid.hip4.get_trades_recent("#0", Some(50)).await?;
+
+// Implied-probability OHLCV candles
+let candles = client.hyperliquid.hip4.candles.history("#0", CandleHistoryParams {
+    start: 1777680000000_i64.into(),
+    end: 1777766400000_i64.into(),
+    cursor: None,
+    limit: Some(1000),
+    interval: Some(CandleInterval::OneHour),
+}).await?;
 
 // Open interest (per-side history + latest)
 let oi_hist = client.hyperliquid.hip4.get_open_interest("#0", Hip4HistoryRange {
@@ -943,9 +954,9 @@ ws.replay_stop().await?;
 | `hip3_open_interest` | HIP-3 open interest | Yes | Yes |
 | `hip3_funding` | HIP-3 funding rates | Yes | Yes |
 | `hip3_liquidations` | HIP-3 liquidation events. Same wire shape as `liquidations`. | Yes | Yes |
-| `hip4_orderbook` | HIP-4 outcome-market L2 order book | Yes | Yes |
+| `hip4_orderbook` | HIP-4 outcome-market L2 order book | Yes | Stored replay only; live bridge paused |
 | `hip4_trades` | HIP-4 trade/fill updates | Yes | Yes |
-| `hip4_open_interest` | HIP-4 open interest snapshots | Yes | Yes |
+| `hip4_open_interest` | HIP-4 open interest snapshots | Yes | Stored replay only; live bridge paused |
 | `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution | Yes | No |
 | `l4_orders` | Hyperliquid order lifecycle events | Yes | No |
 | `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution | Yes | No |
@@ -958,7 +969,7 @@ ws.replay_stop().await?;
 | `spot_l4_orders` | Hyperliquid Spot order lifecycle events | Yes | No |
 | `spot_twap` | Hyperliquid Spot TWAP execution updates | Yes | No |
 
-HIP-4 outcome markets have **no funding, no liquidations, and no candles** by design (binary outcomes settle to 0/1 at expiry).
+HIP-4 has no funding or liquidation channels. HIP-4 candles and current outcome-side OI are available over REST from 2026-05-02; the live HIP-4 order-book and OI bridges are paused, while stored replay remains available. This HIP-4 channel set has no dedicated candle channel.
 
 Hyperliquid Spot has **no funding, no open interest, no liquidations, and no candles** by design (perp-only constructs). Spot symbols use the dashed canonical form (`HYPE-USDC`, `PURR-USDC`).
 
@@ -981,7 +992,7 @@ while let Some(msg) = rx.recv().await {
 
 ### Tier Limits
 
-Every tier has access to all markets, all schemas, and full history. Tiers differ only in capacity limits.
+All self-serve tiers reach the published route families and retained archive. Schema availability remains family-specific; tiers differ in capacity limits.
 
 | Tier | Max Subscriptions | Max Connections | Max Replay Speed | Max Batch Size |
 |------|------------------|-----------------|------------------|----------------|
@@ -1046,7 +1057,7 @@ cargo run --example websocket --features websocket
 
 ## Data Catalog
 
-For large-scale data exports (full order books, complete trade history, etc.), use the [Data Catalog](https://www.0xarchive.io/data). It lets you choose markets, datasets, and date ranges, see a live quote, and export zstd-compressed Parquet.
+For large-scale data exports (route-specific order books, fill-level trade history, and other retained datasets), use the [Data Catalog](https://www.0xarchive.io/data). It lets you choose markets, datasets, and date ranges, see a live quote, and export zstd-compressed Parquet.
 
 ## Links
 

@@ -3,6 +3,16 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.9.0] - 2026-08-22
+
+### Added
+- Typed HIP-4 candle history at `client.hyperliquid.hip4.candles.history()`.
+
+### Changed
+- Coverage copy now states HIP-4 outcome-side OI at roughly 10-second cadence, Lighter L3 at 250 orders per side from March 5, 2026, and Lighter per-fill trade history from August 27, 2025.
+- HIP-4 WebSocket docs now distinguish live trades/L4/settlement delivery from stored-replay-only L2 and OI while those live bridges are paused.
+- `Hip4OpenInterestRecord` no longer advertises `oracle_price`, and Lighter L3 `depth` is validated as 1 through 250 individual resting orders per side.
+
 ## [1.8.0] - 2026-07-27
 
 ### Added
@@ -86,10 +96,11 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `hip3_liquidations` channels now stream live with the same wire shape as
   `trades` (each item is a fill row with `is_liquidation: true`). Both
   channels also support historical replay.
-- **Full HIP-4 WebSocket surface.** New channels (delivered via the existing
+- **HIP-4 WebSocket channel helpers.** New channels (delivered via the existing
   `Data` envelope as channel-name strings):
-  - `hip4_orderbook`, `hip4_trades`, `hip4_open_interest` (realtime + replay).
-  - `hip4_l4_diffs`, `hip4_l4_orders` (realtime only, Pro+).
+  - `hip4_trades` (live + replay), `hip4_orderbook` and `hip4_open_interest`
+    (stored replay; live bridges currently paused).
+  - `hip4_l4_diffs`, `hip4_l4_orders` (live only).
 - **`outcome_settled` server message variant** in `ServerMsg`. Emitted at
   most once per `(outcome_id, side)` when a HIP-4 outcome settles. The
   server proactively unsubscribes the client from every `hip4_*`
@@ -126,9 +137,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `client.lighter.trades` and `client.hyperliquid.hip3.trades`.
 
 ### Notes
-- HIP-4 still has **no funding, no liquidations, and no candles** by design.
-  Outcomes settle to 0/1 at expiry; OHLCV can be reconstructed from
-  `hip4_fills` if needed.
+- HIP-4 has no funding or liquidations. Candle history and outcome-side OI are
+  served from May 2, 2026.
 
 ## [1.5.0]
 

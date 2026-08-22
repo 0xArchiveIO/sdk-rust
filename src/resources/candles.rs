@@ -18,13 +18,23 @@ pub struct CandleHistoryParams {
 pub struct CandlesResource {
     http: HttpClient,
     prefix: String,
+    symbol_transform: fn(&str) -> String,
 }
 
 impl CandlesResource {
     pub(crate) fn new(http: HttpClient, prefix: &str) -> Self {
+        Self::new_with_transform(http, prefix, |symbol| symbol.to_string())
+    }
+
+    pub(crate) fn new_with_transform(
+        http: HttpClient,
+        prefix: &str,
+        symbol_transform: fn(&str) -> String,
+    ) -> Self {
         Self {
             http,
             prefix: prefix.to_string(),
+            symbol_transform,
         }
     }
 
@@ -59,6 +69,7 @@ impl CandlesResource {
         if let Some(i) = params.interval {
             qp.push(("interval", i.as_str().to_string()));
         }
+        let symbol = (self.symbol_transform)(symbol);
         let (data, next_cursor) = self
             .http
             .get_with_cursor(&format!("{}/candles/{}", self.prefix, symbol), &qp)
