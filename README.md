@@ -477,8 +477,9 @@ for candle in &candles.data {
 
 `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`, `1w`
 
-Lighter candle history is served from **2025-08-01**. HIP-4 candle history is
-served from **2026-05-02** and accepts at most 1,000 rows per page.
+Hyperliquid, HIP-3, and Lighter candle routes accept at most 10,000 rows per
+page. HIP-4 and Spot accept at most 1,000. Lighter candle history is served
+from **2025-08-01**; HIP-4 candle history is served from **2026-05-02**.
 
 ```rust
 let lighter_candles = client.lighter.candles.history("BTC", CandleHistoryParams {
@@ -645,10 +646,11 @@ let history = client.lighter.l3_orderbook.history("BTC", L3HistoryParams {
 
 ### HIP-4 Outcome Markets (Hyperliquid)
 
-Binary outcome perps deployed under the Hyperliquid namespace. Coin symbols
-use the bare `#<10*outcome_id + side>` form (`#0`, `#1`, `#55850`, ...). The
-SDK accepts the bare form and percent-encodes `#` only for URL wire transport. Use
-the bare form in your code; do not pre-encode `#` to `%23`.
+Binary outcome perps deployed under the Hyperliquid namespace. Responses use
+`#<10*outcome_id + side>` symbols (`#0`, `#1`, `#55850`, ...). For path
+inputs, use the bare numeric form (`"0"`, `"1"`, `"55850"`). Legacy `"#0"`
+inputs remain supported and are percent-encoded for transport; do not
+pre-encode them yourself.
 
 HIP-4 candles and outcome-side OI are served from **2026-05-02**, with raw OI
 updates at ~10s. HIP-4 has **no funding rates and no liquidations**.
@@ -683,15 +685,15 @@ let detail = client.hyperliquid.hip4.get_outcome(5585).await?;
 
 // Per-side instruments (`#0`, `#1`, ...)
 let insts = client.hyperliquid.hip4.get_instruments().await?;
-let inst = client.hyperliquid.hip4.get_instrument("#0").await?;
+let inst = client.hyperliquid.hip4.get_instrument("0").await?;
 
 // L2 orderbook
-let ob = client.hyperliquid.hip4.get_orderbook("#0", None).await?;
-let ob_at = client.hyperliquid.hip4.get_orderbook("#0", Some(Hip4OrderBookParams {
+let ob = client.hyperliquid.hip4.get_orderbook("0", None).await?;
+let ob_at = client.hyperliquid.hip4.get_orderbook("0", Some(Hip4OrderBookParams {
     timestamp: Some(1777680000000_i64.into()),
     depth: Some(20),
 })).await?;
-let ob_history = client.hyperliquid.hip4.get_orderbook_history("#0", Hip4HistoryRange {
+let ob_history = client.hyperliquid.hip4.get_orderbook_history("0", Hip4HistoryRange {
     start: 1777680000000_i64.into(),
     end:   1777766400000_i64.into(),
     cursor: None,
@@ -699,17 +701,17 @@ let ob_history = client.hyperliquid.hip4.get_orderbook_history("#0", Hip4History
 }).await?;
 
 // Trades (history + recent)
-let trades = client.hyperliquid.hip4.get_trades("#0", Hip4TradesParams {
+let trades = client.hyperliquid.hip4.get_trades("0", Hip4TradesParams {
     start: 1777680000000_i64.into(),
     end:   1777766400000_i64.into(),
     cursor: None,
     limit: Some(1000),
     side: None,
 }).await?;
-let recent = client.hyperliquid.hip4.get_trades_recent("#0", Some(50)).await?;
+let recent = client.hyperliquid.hip4.get_trades_recent("0", Some(50)).await?;
 
 // Implied-probability OHLCV candles
-let candles = client.hyperliquid.hip4.candles.history("#0", CandleHistoryParams {
+let candles = client.hyperliquid.hip4.candles.history("0", CandleHistoryParams {
     start: 1777680000000_i64.into(),
     end: 1777766400000_i64.into(),
     cursor: None,
@@ -718,24 +720,24 @@ let candles = client.hyperliquid.hip4.candles.history("#0", CandleHistoryParams 
 }).await?;
 
 // Open interest (per-side history + latest)
-let oi_hist = client.hyperliquid.hip4.get_open_interest("#0", Hip4HistoryRange {
+let oi_hist = client.hyperliquid.hip4.get_open_interest("0", Hip4HistoryRange {
     start: 1777680000000_i64.into(),
     end:   1777766400000_i64.into(),
     cursor: None,
     limit: None,
 }).await?;
-let oi_now = client.hyperliquid.hip4.get_open_interest_current("#0").await?;
+let oi_now = client.hyperliquid.hip4.get_open_interest_current("0").await?;
 // mark_price on HIP-4 is an implied probability in [0, 1].
 
 // Summary, freshness, prices
-let summary    = client.hyperliquid.hip4.get_summary("#0").await?;
-let freshness  = client.hyperliquid.hip4.get_freshness("#0").await?;
-let prices     = client.hyperliquid.hip4.get_prices("#0",
+let summary    = client.hyperliquid.hip4.get_summary("0").await?;
+let freshness  = client.hyperliquid.hip4.get_freshness("0").await?;
+let prices     = client.hyperliquid.hip4.get_prices("0",
     1777680000000_i64, 1777766400000_i64, Some("1h"), Some(100), None).await?;
 
 // L4 (current snapshot, diffs, checkpoint history)
-let l4_now     = client.hyperliquid.hip4.get_l4_orderbook("#0", None).await?;
-let l4_diffs   = client.hyperliquid.hip4.get_l4_diffs("#0", Hip4HistoryRange {
+let l4_now     = client.hyperliquid.hip4.get_l4_orderbook("0", None).await?;
+let l4_diffs   = client.hyperliquid.hip4.get_l4_diffs("0", Hip4HistoryRange {
     start: 1777680000000_i64.into(),
     end:   1777766400000_i64.into(),
     cursor: None,

@@ -11,7 +11,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 - Typed Hyperliquid Spot candle history at
   `client.hyperliquid.spot.candles.history()`; coverage starts exactly at
   2025-03-22T10:50:22Z, supports `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`,
-  and `1w`, and accepts at most 1,000 rows per page with opaque cursors.
+  and `1w`, and accepts at most 1,000 rows per page. API-returned cursor
+  strings are passed through unchanged.
 
 ### Changed
 - Coverage copy now states HIP-4 outcome-side OI at roughly 10-second cadence,
@@ -19,8 +20,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   March 5, 2026, and Lighter per-fill trade history from August 27, 2025.
 - HIP-4 WebSocket docs now distinguish live trades/L4/settlement delivery from
   stored-replay-only L2 and OI while those live bridges are paused.
-- HIP-4 symbol documentation now distinguishes the bare user form from the
-  percent-encoded URL wire path.
+- HIP-4 path documentation now uses the bare numeric form (`"0"`) as primary
+  while retaining legacy `"#0"` compatibility with percent-encoded transport.
+- Candle page validation now matches the served route caps: 10,000 rows for
+  Hyperliquid, HIP-3, and Lighter; 1,000 for HIP-4 and Spot.
 - `Hip4OpenInterestRecord` no longer advertises `oracle_price`, and Lighter L3
   `depth` is validated as 1 through 250 individual resting orders per side.
 

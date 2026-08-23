@@ -28,6 +28,7 @@ pub struct HyperliquidClient {
     pub instruments: InstrumentsResource,
     pub funding: FundingResource,
     pub open_interest: OpenInterestResource,
+    /// OHLCV candle history (maximum 10,000 rows per page).
     pub candles: CandlesResource,
     pub liquidations: LiquidationsResource,
     pub orders: OrdersResource,
@@ -49,7 +50,12 @@ impl HyperliquidClient {
             instruments: InstrumentsResource::new(http.clone(), prefix),
             funding: FundingResource::new(http.clone(), prefix),
             open_interest: OpenInterestResource::new(http.clone(), prefix),
-            candles: CandlesResource::new(http.clone(), prefix),
+            candles: CandlesResource::new_with_transform_and_limit(
+                http.clone(),
+                prefix,
+                |symbol| symbol.to_string(),
+                Some(10_000),
+            ),
             liquidations: LiquidationsResource::new(http.clone(), prefix),
             orders: OrdersResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
@@ -121,6 +127,7 @@ pub struct Hip3Client {
     pub instruments: Hip3InstrumentsResource,
     pub funding: FundingResource,
     pub open_interest: OpenInterestResource,
+    /// OHLCV candle history (maximum 10,000 rows per page).
     pub candles: CandlesResource,
     pub liquidations: LiquidationsResource,
     pub orders: OrdersResource,
@@ -137,7 +144,12 @@ impl Hip3Client {
             instruments: Hip3InstrumentsResource::new(http.clone(), prefix),
             funding: FundingResource::new(http.clone(), prefix),
             open_interest: OpenInterestResource::new(http.clone(), prefix),
-            candles: CandlesResource::new(http.clone(), prefix),
+            candles: CandlesResource::new_with_transform_and_limit(
+                http.clone(),
+                prefix,
+                |symbol| symbol.to_string(),
+                Some(10_000),
+            ),
             liquidations: LiquidationsResource::new(http.clone(), prefix),
             orders: OrdersResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
@@ -263,13 +275,11 @@ const HIP4_PREFIX: &str = "/v1/hyperliquid/hip4";
 
 /// Build the wire-level path segment for a HIP-4 coin symbol.
 ///
-/// The user-facing SDK API takes the bare numeric form (`"#0"`, `"#1"`, ...)
-/// and the 0xArchive backend accepts that bare form on every HIP-4 path.
-/// However, raw `#` in a URL is the fragment delimiter per RFC 3986, so
-/// HTTP clients (`reqwest`/`url`) strip everything after `#` before sending.
-/// We percent-encode `#` to `%23` here strictly for URL transport. The user
-/// API never sees this encoding: pass `"#0"` straight in, get `"#0"` back
-/// in `coin` / `symbol` response fields.
+/// The primary user-facing path form is the bare numeric value (`"0"`,
+/// `"1"`, ...), which is sent unchanged. Legacy `#`-prefixed inputs such as
+/// `"#0"` remain accepted and are percent-encoded to `%230` for URL
+/// transport because raw `#` is the fragment delimiter per RFC 3986.
+/// Response `coin` / `symbol` fields retain the backend's `#`-prefixed form.
 fn hip4_encode(symbol: &str) -> String {
     urlencoding::encode(symbol).into_owned()
 }
@@ -360,12 +370,13 @@ pub struct Hip4TpslParams {
 ///
 /// HIP-4 candles and outcome-side open interest are served from May 2, 2026;
 /// raw OI updates arrive at roughly 10-second cadence. HIP-4 has no funding
-/// rates or liquidations. Coin symbols are `#`-prefixed (`#0`, `#1`, ...)
-/// and follow `#<10*outcome_id + side>`.
+/// rates or liquidations. Response coin symbols are `#`-prefixed (`#0`, `#1`,
+/// ...), following `#<10*outcome_id + side>`. Path inputs use the bare
+/// numeric form (`"0"`, `"1"`, ...); legacy `#N` inputs remain supported.
 /// Candle pages accept at most 1,000 rows.
-/// Use the **bare form** (`"#0"`) in your code; do not pre-encode `#` to
-/// `%23`. The SDK percent-encodes `#` strictly for the URL wire path so
-/// HTTP clients don't strip it as a fragment.
+/// Use the **bare numeric form** (`"0"`) in your code. For compatibility,
+/// `"#0"` is also accepted and encoded to `%230` on the wire; do not
+/// pre-encode it yourself.
 ///
 /// `mark_price` on HIP-4 endpoints is an implied probability in `[0, 1]`,
 /// not a USD price. The field name matches perp/HIP-3 to stay consistent
@@ -448,7 +459,8 @@ impl Hip4 {
         self.instruments.list().await
     }
 
-    /// Get a single per-side instrument by symbol (e.g. `#0`).
+    /// Get a single per-side instrument by path symbol (e.g. `"0"`; legacy
+    /// `"#0"` is also accepted).
     pub async fn get_instrument(&self, symbol: &str) -> Result<Hip4Outcome> {
         self.instruments.get(symbol).await
     }
@@ -880,20 +892,27 @@ mod hip4_tests {
 
     #[test]
     fn percent_encodes_hash_for_wire_only() {
-        // Public API takes the bare form. URL wire path needs `%23` because
-        // raw `#` is the fragment delimiter (RFC 3986); HTTP clients would
-        // otherwise strip the suffix. Documentation still recommends bare
-        // form in user code.
+        // Legacy `#N` input is retained for compatibility and encoded because
+        // raw `#` is the fragment delimiter (RFC 3986).
         assert_eq!(hip4_encode("#0"), "%230");
         assert_eq!(hip4_encode("#1"), "%231");
         assert_eq!(hip4_encode("#42"), "%2342");
     }
 
     #[test]
+    fn bare_numeric_path_is_primary_with_legacy_hash_compatibility() {
+        assert_eq!(hip4_encode("0"), "0");
+        assert_eq!(hip4_encode("1"), "1");
+        assert_eq!(hip4_encode("#0"), "%230");
+    }
+
+    #[test]
     fn orderbook_path_matches_spec() {
         let hip4 = make_hip4();
-        let path = format!("{}/orderbook/{}", HIP4_PREFIX, hip4_encode("#0"));
-        assert_eq!(path, "/v1/hyperliquid/hip4/orderbook/%230");
+        let primary_path = format!("{}/orderbook/{}", HIP4_PREFIX, hip4_encode("0"));
+        assert_eq!(primary_path, "/v1/hyperliquid/hip4/orderbook/0");
+        let legacy_path = format!("{}/orderbook/{}", HIP4_PREFIX, hip4_encode("#0"));
+        assert_eq!(legacy_path, "/v1/hyperliquid/hip4/orderbook/%230");
         // Field exists & is constructible without panicking.
         let _ = &hip4.instruments;
     }
@@ -924,6 +943,7 @@ pub struct LighterClient {
     pub instruments: LighterInstrumentsResource,
     pub funding: FundingResource,
     pub open_interest: OpenInterestResource,
+    /// OHLCV candle history (maximum 10,000 rows per page).
     pub candles: CandlesResource,
     pub l3_orderbook: L3OrderBookResource,
 }
@@ -937,7 +957,12 @@ impl LighterClient {
             instruments: LighterInstrumentsResource::new(http.clone(), prefix),
             funding: FundingResource::new(http.clone(), prefix),
             open_interest: OpenInterestResource::new(http.clone(), prefix),
-            candles: CandlesResource::new(http.clone(), prefix),
+            candles: CandlesResource::new_with_transform_and_limit(
+                http.clone(),
+                prefix,
+                |symbol| symbol.to_string(),
+                Some(10_000),
+            ),
             l3_orderbook: L3OrderBookResource::new(http.clone(), prefix),
             http,
         }
