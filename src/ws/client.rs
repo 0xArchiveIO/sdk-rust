@@ -1,4 +1,4 @@
-/// WebSocket client for real-time streaming, historical replay, and bulk
+/// WebSocket client for supported live streaming, historical replay, and bulk
 /// data download.
 ///
 /// Requires the `websocket` feature:
@@ -48,6 +48,25 @@ impl WsOptions {
         self.auto_reconnect = enabled;
         self
     }
+}
+
+/// Lighter channels support historical replay but not live subscriptions.
+pub const LIGHTER_REPLAY_CHANNELS: [&str; 6] = [
+    "lighter_orderbook",
+    "lighter_trades",
+    "lighter_candles",
+    "lighter_open_interest",
+    "lighter_funding",
+    "lighter_l3_orderbook",
+];
+
+/// Canonical guidance returned when a Lighter live subscription is requested.
+pub const LIGHTER_SUBSCRIPTION_ERROR: &str =
+    "Lighter WebSocket channels support replay, not live subscriptions. Use REST for current data or a replay request for stored history.";
+
+/// Return whether a channel is available through replay but not live subscribe.
+pub fn is_lighter_replay_channel(channel: &str) -> bool {
+    LIGHTER_REPLAY_CHANNELS.contains(&channel)
 }
 
 // ---------------------------------------------------------------------------
@@ -303,15 +322,22 @@ impl OxArchiveWs {
         let text = serde_json::to_string(&msg).map_err(|e| Error::WebSocket(e.to_string()))?;
         if let Some(ref mut writer) = *self.sink.lock().await {
             writer
-                .send(Message::Text(text.into()))
+                .send(Message::Text(text))
                 .await
                 .map_err(|e| Error::WebSocket(e.to_string()))?;
         }
         Ok(())
     }
 
-    /// Subscribe to a real-time channel.
+    /// Subscribe to a supported live channel.
+    ///
+    /// Lighter channels support replay, not live subscriptions. Use REST for
+    /// current data or a bounded replay request for stored history.
     pub async fn subscribe(&self, channel: &str, symbol: Option<&str>) -> Result<()> {
+        if is_lighter_replay_channel(channel) {
+            return Err(Error::InvalidParam(LIGHTER_SUBSCRIPTION_ERROR.to_string()));
+        }
+
         self.send(ClientMsg::Subscribe {
             channel: channel.to_string(),
             symbol: symbol.map(|s| s.to_string()),
@@ -328,7 +354,11 @@ impl OxArchiveWs {
         .await
     }
 
-    /// Start a historical replay on a single channel.
+    /// Start a bounded historical replay on a single channel.
+    ///
+    /// The six `lighter_*` channels support replay but not live subscriptions;
+    /// use the corresponding Lighter REST route for current data. A successful
+    /// replay terminates with a `replay_completed` server message.
     pub async fn replay(
         &self,
         channel: &str,
@@ -349,8 +379,10 @@ impl OxArchiveWs {
 
     /// Start a multi-channel synchronized replay.
     ///
-    /// All channels are replayed together with data interleaved chronologically.
-    /// Initial `replay_snapshot` messages provide each channel's state at `start`.
+    /// All channels are replayed together with data interleaved chronologically,
+    /// including the six Lighter replay channels. Initial `replay_snapshot`
+    /// messages provide each channel's state at `start`; the server terminates
+    /// the bounded replay with `replay_completed`.
     pub async fn replay_multi(
         &self,
         channels: &[&str],

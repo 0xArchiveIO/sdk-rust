@@ -466,10 +466,10 @@ fn public_copy_keeps_family_specific_coverage() {
     assert!(readme.contains("use the bare numeric form (`\"0\"`"));
     assert!(readme.contains("Legacy `\"#0\"`"));
     assert!(readme.contains(
-        "| `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Stored replay only |"
+        "| `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Yes |"
     ));
     assert!(readme.contains(
-        "| `hip4_open_interest` | HIP-4 open interest snapshots | No | Stored replay only |"
+        "| `hip4_open_interest` | HIP-4 open interest snapshots | No | Yes |"
     ));
     assert!(!readme.contains(
         "| `hip4_orderbook` | HIP-4 outcome-market L2 order book | Yes | Stored replay only"

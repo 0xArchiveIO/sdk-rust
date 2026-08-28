@@ -3,6 +3,14 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.9.1] - Unreleased
+
+### Changed
+- Lighter WebSocket channels are explicitly replay-only: current data remains
+  available through REST, all six channels remain available for bounded
+  historical replay, and live subscription requests fail fast with REST/replay
+  guidance.
+
 ## [1.9.0] - 2026-08-22
 
 ### Added
