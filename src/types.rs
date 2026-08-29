@@ -442,6 +442,49 @@ pub struct Hip4OpenInterestRecord {
 }
 
 // ---------------------------------------------------------------------------
+// HIP-3 market breadth above session VWAP
+// ---------------------------------------------------------------------------
+
+/// Instrument counts for one HIP-3 breadth-above-session-VWAP snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hip3BreadthCounts {
+    pub candidates: i64,
+    pub eligible: i64,
+    pub above: i64,
+    pub at: i64,
+    pub below: i64,
+    pub excluded_no_session_volume: i64,
+    pub excluded_stale_price: i64,
+}
+
+/// Per-namespace counts for one HIP-3 breadth snapshot.
+///
+/// The API includes only namespaces with non-zero counts in each map. An empty
+/// map is therefore meaningful and is not equivalent to missing data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hip3BreadthNamespaces {
+    pub eligible: std::collections::HashMap<String, i64>,
+    pub above: std::collections::HashMap<String, i64>,
+    pub at: std::collections::HashMap<String, i64>,
+    pub below: std::collections::HashMap<String, i64>,
+}
+
+/// A validated HIP-3 percentage-above-session-VWAP snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hip3BreadthSnapshot {
+    /// UTC calendar date for the current session.
+    pub session_date: String,
+    /// Job timestamp; the newest included one-minute candle closed at this minute.
+    pub calculated_at: String,
+    /// `100 * above / eligible`; `None` when no instrument is eligible.
+    pub value_pct: Option<f64>,
+    /// `eligible / candidates`, in the range 0 to 1.
+    pub coverage_ratio: f64,
+    pub counts: Hip3BreadthCounts,
+    pub namespaces: Hip3BreadthNamespaces,
+}
+
+// ---------------------------------------------------------------------------
 // Funding rates
 // ---------------------------------------------------------------------------
 
@@ -573,7 +616,7 @@ pub struct LiquidationVolume {
 // Aggregation intervals (OI / funding)
 // ---------------------------------------------------------------------------
 
-/// Supported aggregation intervals for open interest and funding queries.
+/// Supported aggregation intervals for open interest, funding, and HIP-3 breadth history queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OiFundingInterval {
     FiveMinutes,

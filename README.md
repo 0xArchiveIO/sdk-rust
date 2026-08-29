@@ -119,6 +119,7 @@ The sections below show which resources are available on each exchange client:
 | `funding` | Yes | Yes | -- | Yes |
 | `open_interest` | Yes | Yes | -- | Yes |
 | `candles` | Yes | Yes | Yes | Yes |
+| `breadth` (above session VWAP) | -- | Yes | -- | -- |
 | `liquidations` | Yes | Yes | -- | -- |
 | `orders` | Yes | Yes | Yes | -- |
 | `l4_orderbook` | Yes | Yes | Yes | -- |
@@ -348,6 +349,32 @@ for inst in &hip3_instruments {
 }
 ```
 
+### HIP-3 Breadth Above Session VWAP
+
+HIP-3 breadth is the percentage of eligible instruments trading above their
+current UTC-session VWAP. The session resets at 00:00 UTC, uses the close of
+the most recently completed one-minute candle, and excludes instruments with
+no session volume or a price older than five minutes. History begins on
+**2026-08-28**. `value_pct` is unavailable (`None`) when no instrument is
+eligible; do not render it as 0%, and do not average percentages across
+snapshots because the eligible denominator varies.
+
+```rust
+use oxarchive::resources::breadth::BreadthHistoryParams;
+use oxarchive::types::OiFundingInterval;
+
+let current = client.hyperliquid.hip3.breadth.current().await?;
+println!("HIP-3 above session VWAP: {:?}%", current.value_pct);
+
+let history = client.hyperliquid.hip3.breadth.history(BreadthHistoryParams {
+    start: Some(1787961600000_i64.into()),
+    end: Some(1788048000000_i64.into()),
+    interval: Some(OiFundingInterval::FiveMinutes),
+    cursor: None,
+    limit: Some(1000),
+}).await?;
+```
+
 ### Funding Rates
 
 ```rust
@@ -367,6 +394,11 @@ let history = client.hyperliquid.funding.history("ETH", FundingHistoryParams {
     interval: Some(OiFundingInterval::OneHour),
 }).await?;
 ```
+
+Lighter `funding_rate` values are decimal fractions, not percentages and not
+annualized. For example, `0.0001` means `0.01%`. This is a breaking unit
+normalization from the former raw percent representation; consumers that
+applied a compensating conversion must update it.
 
 #### Aggregation Intervals
 
@@ -453,6 +485,9 @@ let hip3_vol = client.hyperliquid.hip3.liquidations.volume("km:US500", Liquidati
     limit: None,
 }).await?;
 ```
+
+Projected forced-liquidation price levels refresh approximately every five
+minutes. This is an observed cadence, not an exact five-minute guarantee.
 
 ### Candles (OHLCV)
 
@@ -1015,16 +1050,16 @@ ws.replay_stop().await?;
 | `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Yes |
 | `hip4_trades` | HIP-4 trade/fill updates | Yes | Yes |
 | `hip4_open_interest` | HIP-4 open interest snapshots | No | Yes |
-| `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution | Yes | No |
-| `l4_orders` | Hyperliquid order lifecycle events | Yes | No |
-| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution | Yes | No |
-| `hip3_l4_orders` | HIP-3 order lifecycle events | Yes | No |
-| `hip4_l4_diffs` | HIP-4 L4 orderbook diffs with user attribution | Yes | No |
-| `hip4_l4_orders` | HIP-4 order lifecycle events | Yes | No |
+| `l4_diffs` | Hyperliquid core L4 orderbook diffs with user attribution | Yes | Yes, `l4_snapshot` then ordered `l4_batch` |
+| `l4_orders` | Hyperliquid core L4 order lifecycle events | Yes | Yes, `l4_snapshot` then ordered `l4_batch` |
+| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution | Yes | No, live-only |
+| `hip3_l4_orders` | HIP-3 order lifecycle events | Yes | No, live-only |
+| `hip4_l4_diffs` | HIP-4 L4 orderbook diffs with user attribution | Yes | No, live-only |
+| `hip4_l4_orders` | HIP-4 order lifecycle events | Yes | No, live-only |
 | `spot_orderbook` | Hyperliquid Spot L2 order book | Yes | No |
 | `spot_trades` | Hyperliquid Spot trades | Yes | No |
-| `spot_l4_diffs` | Hyperliquid Spot L4 orderbook diffs with user attribution | Yes | No |
-| `spot_l4_orders` | Hyperliquid Spot order lifecycle events | Yes | No |
+| `spot_l4_diffs` | Hyperliquid Spot L4 orderbook diffs with user attribution | Yes | No, live-only |
+| `spot_l4_orders` | Hyperliquid Spot order lifecycle events | Yes | No, live-only |
 | `spot_twap` | Hyperliquid Spot TWAP execution updates | Yes | No |
 
 Current Lighter data is available through the Lighter REST resources. Historical Lighter data is available through REST, WebSocket replay, or exports.

@@ -1,6 +1,9 @@
 use oxarchive::exchanges::Hip4HistoryRange;
+use oxarchive::resources::breadth::BreadthHistoryParams;
 use oxarchive::resources::candles::CandleHistoryParams;
-use oxarchive::types::{CandleInterval, Hip4OpenInterestRecord, Timestamp};
+use oxarchive::types::{
+    CandleInterval, Hip3BreadthSnapshot, Hip4OpenInterestRecord, OiFundingInterval, Timestamp,
+};
 use oxarchive::OxArchive;
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -500,4 +503,133 @@ fn public_copy_keeps_family_specific_coverage() {
     assert!(!hip4_oi_type.contains("pub oracle_price: Option<String>"));
     assert!(l3_resource.contains("1 and 250 orders per side"));
     assert!(source.contains("pub candles: CandlesResource"));
+}
+
+#[tokio::test]
+async fn hip3_breadth_current_is_typed_and_uses_the_exact_route() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/hip3/breadth/above-vwap/current"))
+        .and(header("x-api-key", "test-key"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "success": true,
+            "data": {
+                "session_date": "2026-08-28",
+                "calculated_at": "2026-08-28T20:54:00Z",
+                "value_pct": 20.93,
+                "coverage_ratio": 0.382,
+                "counts": {
+                    "candidates": 225,
+                    "eligible": 86,
+                    "above": 18,
+                    "at": 0,
+                    "below": 68,
+                    "excluded_no_session_volume": 75,
+                    "excluded_stale_price": 64
+                },
+                "namespaces": {
+                    "eligible": {"xyz": 41},
+                    "above": {"xyz": 9},
+                    "at": {},
+                    "below": {"xyz": 32}
+                }
+            },
+            "meta": {"count": 1, "request_id": "breadth-current", "next_cursor": null}
+        })))
+        .mount(&server)
+        .await;
+
+    let client = OxArchive::builder("test-key")
+        .base_url(server.uri())
+        .build()
+        .unwrap();
+    let result: Hip3BreadthSnapshot = client
+        .hyperliquid
+        .hip3
+        .breadth
+        .current()
+        .await
+        .unwrap();
+
+    assert_eq!(result.session_date, "2026-08-28");
+    assert_eq!(result.value_pct, Some(20.93));
+    assert_eq!(result.counts.eligible, 86);
+    assert_eq!(result.namespaces.eligible["xyz"], 41);
+}
+
+#[tokio::test]
+async fn hip3_breadth_history_sends_exact_params_and_preserves_null_and_cursor() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/hip3/breadth/above-vwap"))
+        .and(header("x-api-key", "test-key"))
+        .and(query_param("start", "1787961600000"))
+        .and(query_param("end", "1788048000000"))
+        .and(query_param("interval", "5m"))
+        .and(query_param("limit", "1000"))
+        .and(query_param("cursor", "1788036600000"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "success": true,
+            "data": [{
+                "session_date": "2026-08-28",
+                "calculated_at": "2026-08-28T20:54:00Z",
+                "value_pct": null,
+                "coverage_ratio": 0.0,
+                "counts": {
+                    "candidates": 0,
+                    "eligible": 0,
+                    "above": 0,
+                    "at": 0,
+                    "below": 0,
+                    "excluded_no_session_volume": 0,
+                    "excluded_stale_price": 0
+                },
+                "namespaces": {"eligible": {}, "above": {}, "at": {}, "below": {}}
+            }],
+            "meta": {
+                "count": 1,
+                "request_id": "breadth-history",
+                "next_cursor": "1788048000000"
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let client = OxArchive::builder("test-key")
+        .base_url(server.uri())
+        .build()
+        .unwrap();
+    let result = client
+        .hyperliquid
+        .hip3
+        .breadth
+        .history(BreadthHistoryParams {
+            start: Some(1787961600000_i64.into()),
+            end: Some(1788048000000_i64.into()),
+            interval: Some(OiFundingInterval::FiveMinutes),
+            cursor: Some("1788036600000".to_string()),
+            limit: Some(1000),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.data.len(), 1);
+    assert_eq!(result.data[0].value_pct, None);
+    assert_eq!(result.next_cursor.as_deref(), Some("1788048000000"));
+}
+
+#[test]
+fn current_copy_matches_breadth_cadence_and_funding_unit_contracts() {
+    let readme = include_str!("../README.md");
+    let normalized_readme = readme.split_whitespace().collect::<Vec<_>>().join(" ");
+    let changelog = include_str!("../CHANGELOG.md");
+    let normalized_changelog = changelog.split_whitespace().collect::<Vec<_>>().join(" ");
+    let funding = include_str!("../src/resources/funding.rs");
+    assert!(normalized_readme.contains("History begins on **2026-08-28**"));
+    assert!(normalized_readme.contains("decimal fractions, not percentages and not annualized"));
+    assert!(funding.contains("fractional"));
+    assert!(funding.contains("non-annualized"));
+    assert!(!normalized_changelog.contains("45-minute snapshots"));
+    assert!(normalized_changelog.contains("approximately five-minute"));
+    assert!(normalized_changelog.contains("fractional and non-annualized"));
 }

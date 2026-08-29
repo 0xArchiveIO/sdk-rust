@@ -5,11 +5,23 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
 ## [1.9.1] - Unreleased
 
+### Added
+- Typed HIP-3 breadth above current UTC-session VWAP through
+  `client.hyperliquid.hip3.breadth.current()` and cursor-paginated
+  `history(...)`. Recorded history begins on 2026-08-28.
+
 ### Changed
 - Lighter WebSocket channels are explicitly replay-only: current data remains
   available through REST, all six channels remain available for bounded
   historical replay, and live subscription requests fail fast with REST/replay
   guidance.
+- Hyperliquid core `l4_diffs` and `l4_orders` historical replay now documents
+  its initial `l4_snapshot` followed by ordered `l4_batch` pages; HIP-3,
+  HIP-4, and Spot L4 remain live-only.
+- Projected forced-liquidation price-level guidance now reflects an
+  approximately five-minute refresh cadence.
+- Lighter `funding_rate` values are fractional and non-annualized. Consumers
+  that compensated for the former raw percent representation must update.
 
 ## [1.9.0] - 2026-08-22
 
@@ -40,9 +52,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 ### Added
 - **Liquidation levels**: `liquidations.levels()` and `levels_history()` on
   the Hyperliquid and HIP-3 clients. Projected forced-liquidation levels
-  computed from clearinghouse positions and margin state (~45-minute
-  snapshots, `at` point-in-time reads, `side` filter, cursor-paginated
-  history with `summary` mode). History retained from 2026-07-27.
+  computed from clearinghouse positions and margin state (approximately
+  five-minute snapshots, `at` point-in-time reads, `side` filter,
+  cursor-paginated history with `summary` mode). History retained from
+  2026-07-27.
 - **Trigger levels**: `orders.trigger_levels()` and
   `trigger_levels_history()` — the pending stop-loss / take-profit map
   (15-minute snapshot history). Typed models exported at the crate root.

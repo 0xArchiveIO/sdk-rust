@@ -1,7 +1,10 @@
 #![cfg(feature = "websocket")]
 
 use oxarchive::error::Error;
-use oxarchive::ws::{is_lighter_replay_channel, OxArchiveWs, WsOptions};
+use oxarchive::ws::{
+    is_core_l4_replay_channel, is_lighter_replay_channel, is_live_only_l4_channel, OxArchiveWs,
+    WsOptions,
+};
 
 const LIGHTER_CHANNELS: [&str; 6] = [
     "lighter_orderbook",
@@ -57,4 +60,60 @@ async fn hyperliquid_live_subscription_remains_allowed() {
     ws.subscribe("orderbook", Some("BTC"))
         .await
         .expect("Hyperliquid live subscription must remain allowed");
+}
+
+#[test]
+fn only_hyperliquid_core_l4_channels_support_replay() {
+    for channel in ["l4_diffs", "l4_orders"] {
+        assert!(is_core_l4_replay_channel(channel));
+        assert!(!is_live_only_l4_channel(channel));
+    }
+    for channel in [
+        "hip3_l4_diffs",
+        "hip3_l4_orders",
+        "hip4_l4_diffs",
+        "hip4_l4_orders",
+        "spot_l4_diffs",
+        "spot_l4_orders",
+    ] {
+        assert!(!is_core_l4_replay_channel(channel));
+        assert!(is_live_only_l4_channel(channel));
+    }
+}
+
+#[tokio::test]
+async fn core_l4_replay_remains_allowed() {
+    let ws = OxArchiveWs::new(WsOptions::new("test-key"));
+    for channel in ["l4_diffs", "l4_orders"] {
+        ws.replay(channel, "BTC", 1, Some(2), None)
+            .await
+            .expect("core Hyperliquid L4 replay must remain allowed");
+    }
+}
+
+#[tokio::test]
+async fn non_core_l4_replay_is_rejected_before_send() {
+    let ws = OxArchiveWs::new(WsOptions::new("test-key"));
+    for channel in [
+        "hip3_l4_diffs",
+        "hip3_l4_orders",
+        "hip4_l4_diffs",
+        "hip4_l4_orders",
+        "spot_l4_diffs",
+        "spot_l4_orders",
+    ] {
+        let error = ws
+            .replay(channel, "BTC", 1, Some(2), None)
+            .await
+            .expect_err("non-core L4 replay must be rejected");
+        match error {
+            Error::InvalidParam(message) => {
+                assert!(
+                    message.contains("live-only"),
+                    "unexpected message: {message}"
+                );
+            }
+            other => panic!("expected invalid parameter error, got {other:?}"),
+        }
+    }
 }

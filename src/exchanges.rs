@@ -4,10 +4,10 @@
 use crate::error::Result;
 use crate::http::HttpClient;
 use crate::resources::{
-    CandlesResource, FundingResource, Hip3InstrumentsResource, Hip4InstrumentsResource,
-    InstrumentsResource, L2OrderBookResource, L3OrderBookResource, L4OrderBookResource,
-    LighterInstrumentsResource, LiquidationsResource, OpenInterestResource, OrderBookResource,
-    OrdersResource, SpotPairsResource, SpotTwapResource, TradesResource,
+    BreadthResource, CandlesResource, FundingResource, Hip3InstrumentsResource,
+    Hip4InstrumentsResource, InstrumentsResource, L2OrderBookResource, L3OrderBookResource,
+    L4OrderBookResource, LighterInstrumentsResource, LiquidationsResource, OpenInterestResource,
+    OrderBookResource, OrdersResource, SpotPairsResource, SpotTwapResource, TradesResource,
 };
 use crate::types::{
     CoinFreshness, CoinSummary, CursorResponse, Hip4OpenInterestRecord, Hip4Outcome,
@@ -131,6 +131,8 @@ pub struct Hip3Client {
     pub candles: CandlesResource,
     pub liquidations: LiquidationsResource,
     pub orders: OrdersResource,
+    /// Percent of eligible instruments above their current UTC-session VWAP.
+    pub breadth: BreadthResource,
     pub l4_orderbook: L4OrderBookResource,
     pub l2_orderbook: L2OrderBookResource,
 }
@@ -152,6 +154,7 @@ impl Hip3Client {
             ),
             liquidations: LiquidationsResource::new(http.clone(), prefix),
             orders: OrdersResource::new(http.clone(), prefix),
+            breadth: BreadthResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
             http,
