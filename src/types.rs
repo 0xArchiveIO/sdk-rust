@@ -1010,8 +1010,8 @@ pub struct LiquidationLevelBucket {
 }
 
 /// Projected forced-liquidation levels for one snapshot, computed from
-/// clearinghouse positions and margin state. Snapshots refresh roughly every
-/// 45 minutes; `snapshot_ts` identifies the snapshot served.
+/// clearinghouse positions and margin state.
+/// Snapshots refresh approximately every five minutes; `snapshot_ts` identifies the snapshot served.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiquidationLevels {
     /// Mark price at the snapshot, center of the requested range.

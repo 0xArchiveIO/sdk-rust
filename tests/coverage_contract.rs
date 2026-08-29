@@ -625,6 +625,14 @@ fn current_copy_matches_breadth_cadence_and_funding_unit_contracts() {
     let changelog = include_str!("../CHANGELOG.md");
     let normalized_changelog = changelog.split_whitespace().collect::<Vec<_>>().join(" ");
     let funding = include_str!("../src/resources/funding.rs");
+    let liquidations = include_str!("../src/resources/liquidations.rs")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let types = include_str!("../src/types.rs")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     assert!(normalized_readme.contains("History begins on **2026-08-28**"));
     assert!(normalized_readme.contains("decimal fractions, not percentages and not annualized"));
     assert!(funding.contains("fractional"));
@@ -632,4 +640,8 @@ fn current_copy_matches_breadth_cadence_and_funding_unit_contracts() {
     assert!(!normalized_changelog.contains("45-minute snapshots"));
     assert!(normalized_changelog.contains("approximately five-minute"));
     assert!(normalized_changelog.contains("fractional and non-annualized"));
+    assert!(!liquidations.contains("45 minutes"));
+    assert!(liquidations.contains("approximately every five minutes"));
+    assert!(!types.contains("45 minutes"));
+    assert!(types.contains("approximately every five minutes"));
 }

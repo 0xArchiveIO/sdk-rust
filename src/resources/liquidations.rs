@@ -232,7 +232,7 @@ impl LiquidationsResource {
 
     /// Get historical liquidation-levels snapshots with cursor pagination.
     ///
-    /// Ascending by snapshot time (about every 45 minutes, retained from
+    /// Ascending by snapshot time (approximately every five minutes, retained from
     /// 2026-07-27). Set `params.summary = Some(true)` to list snapshots
     /// without histograms.
     pub async fn levels_history(
