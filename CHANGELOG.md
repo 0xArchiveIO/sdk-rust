@@ -3,6 +3,13 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.9.1] - 2026-08-31
+
+### Changed
+- Entitlement copy: Free history is a rolling 30-day window (30-day span per
+  request or replay); Build and above keep the full retained archive. Route
+  families, schemas, and served depth remain available on every tier.
+
 ## [1.9.0] - 2026-08-22
 
 ### Added

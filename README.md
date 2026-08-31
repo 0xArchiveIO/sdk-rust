@@ -1018,7 +1018,7 @@ while let Some(msg) = rx.recv().await {
 
 ### Tier Limits
 
-All self-serve tiers reach the published route families and retained archive. Schema availability remains family-specific; tiers differ in capacity limits.
+All self-serve tiers reach the published route families; Free covers the most recent rolling 30 days of history (30-day span per request or replay), and Build and above keep the retained archive. Schema availability remains family-specific; plans gate capacity and Free's 30-day history window, not route families, schemas, or served depth.
 
 | Tier | Max Subscriptions | Max Connections | Max Replay Speed | Max Batch Size |
 |------|------------------|-----------------|------------------|----------------|
