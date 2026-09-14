@@ -11,6 +11,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `history(...)`. Recorded history begins on 2026-08-28.
 
 ### Changed
+
+- Correct Lighter per-fill trade history to the observed global floor of January 17, 2025; exact starts vary by market. This supersedes the August floor documented in the earlier release notes below.
 - Lighter WebSocket channels are explicitly replay-only: current data remains
   available through REST, all six channels remain available for bounded
   historical replay, and live subscription requests fail fast with REST/replay
