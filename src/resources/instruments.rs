@@ -94,10 +94,9 @@ impl Hip3InstrumentsResource {
 
 /// HIP-4 instruments resource. Returns per-side outcome rows (`#0`, `#1`, ...).
 ///
-/// The user-facing API takes the bare numeric form. The backend accepts the
-/// bare form, but raw `#` is the URL fragment delimiter per RFC 3986, so the
-/// SDK percent-encodes `#` to `%23` strictly for wire transport. Always pass
-/// the bare form (`"#0"`) in your code.
+/// Use the bare numeric path form (`"0"`) in new code. Legacy `#`-prefixed
+/// inputs remain accepted; the SDK percent-encodes `#` to `%23` for transport
+/// because raw `#` is the URL fragment delimiter per RFC 3986.
 #[derive(Debug, Clone)]
 pub struct Hip4InstrumentsResource {
     http: HttpClient,
@@ -119,8 +118,8 @@ impl Hip4InstrumentsResource {
             .await
     }
 
-    /// Get a single HIP-4 instrument by coin symbol (e.g. `"#0"`). Pass the
-    /// bare form; the SDK percent-encodes `#` for the URL wire path only.
+    /// Get a single HIP-4 instrument by path symbol (`"0"` is primary;
+    /// legacy `"#0"` remains supported and is URL-encoded).
     pub async fn get(&self, symbol: &str) -> Result<crate::types::Hip4Outcome> {
         let encoded = urlencoding::encode(symbol);
         self.http

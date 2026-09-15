@@ -13,6 +13,8 @@ pub struct FundingHistoryParams {
 }
 
 /// Access to funding rate endpoints for a specific exchange.
+///
+/// On Lighter routes, `funding_rate` values are fractional and non-annualized.
 #[derive(Debug, Clone)]
 pub struct FundingResource {
     http: HttpClient,

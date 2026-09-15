@@ -1,15 +1,18 @@
 use oxarchive::exchanges::Hip4HistoryRange;
+use oxarchive::resources::breadth::BreadthHistoryParams;
 use oxarchive::resources::candles::CandleHistoryParams;
-use oxarchive::types::{CandleInterval, Hip4OpenInterestRecord, Timestamp};
+use oxarchive::types::{
+    CandleInterval, Hip3BreadthSnapshot, Hip4OpenInterestRecord, OiFundingInterval, Timestamp,
+};
 use oxarchive::OxArchive;
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
-async fn hip4_candles_use_the_typed_resource_and_encoded_coin_path() {
+async fn hip4_candles_use_the_bare_numeric_path_and_numeric_cursor() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/v1/hyperliquid/hip4/candles/%230"))
+        .and(path("/v1/hyperliquid/hip4/candles/0"))
         .and(header("x-api-key", "test-key"))
         .and(query_param("start", "1777708800000"))
         .and(query_param("end", "1777712400000"))
@@ -28,7 +31,7 @@ async fn hip4_candles_use_the_typed_resource_and_encoded_coin_path() {
             "meta": {
                 "count": 1,
                 "request_id": "test-request",
-                "next_cursor": "next-cursor"
+                "next_cursor": "1777712400000"
             }
         })))
         .mount(&server)
@@ -43,7 +46,7 @@ async fn hip4_candles_use_the_typed_resource_and_encoded_coin_path() {
         .hip4
         .candles
         .history(
-            "#0",
+            "0",
             CandleHistoryParams {
                 start: Timestamp::from("2026-05-02T08:00:00Z"),
                 end: Timestamp::from("2026-05-02T09:00:00Z"),
@@ -56,7 +59,7 @@ async fn hip4_candles_use_the_typed_resource_and_encoded_coin_path() {
         .unwrap();
 
     assert_eq!(result.data.len(), 1);
-    assert_eq!(result.next_cursor.as_deref(), Some("next-cursor"));
+    assert_eq!(result.next_cursor.as_deref(), Some("1777712400000"));
 }
 
 #[tokio::test]
@@ -71,7 +74,7 @@ async fn hip4_candles_reject_limits_above_the_route_maximum() {
         .hip4
         .candles
         .history(
-            "#0",
+            "0",
             CandleHistoryParams {
                 start: Timestamp::from("2026-05-02T08:00:00Z"),
                 end: Timestamp::from("2026-05-02T09:00:00Z"),
@@ -87,7 +90,76 @@ async fn hip4_candles_reject_limits_above_the_route_maximum() {
 }
 
 #[tokio::test]
-async fn spot_candles_use_the_route_and_preserve_opaque_cursors() {
+async fn hyperliquid_hip3_and_lighter_use_the_10000_row_candle_cap() {
+    let server = MockServer::start().await;
+    for route in [
+        "/v1/hyperliquid/candles/BTC",
+        "/v1/hyperliquid/hip3/candles/BTC",
+        "/v1/lighter/candles/BTC",
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .and(query_param("limit", "10000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "success": true,
+                "data": [],
+                "meta": {"count": 0, "request_id": "candle-cap", "next_cursor": null}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+
+    let client = OxArchive::builder("test-key")
+        .base_url(server.uri())
+        .build()
+        .unwrap();
+    let params = |limit| CandleHistoryParams {
+        start: Timestamp::from("2026-05-02T08:00:00Z"),
+        end: Timestamp::from("2026-05-02T09:00:00Z"),
+        cursor: None,
+        limit: Some(limit),
+        interval: Some(CandleInterval::OneHour),
+    };
+
+    for result in [
+        client
+            .hyperliquid
+            .candles
+            .history("BTC", params(10_000))
+            .await,
+        client
+            .hyperliquid
+            .hip3
+            .candles
+            .history("BTC", params(10_000))
+            .await,
+        client.lighter.candles.history("BTC", params(10_000)).await,
+    ] {
+        result.unwrap();
+    }
+
+    for result in [
+        client
+            .hyperliquid
+            .candles
+            .history("BTC", params(10_001))
+            .await,
+        client
+            .hyperliquid
+            .hip3
+            .candles
+            .history("BTC", params(10_001))
+            .await,
+        client.lighter.candles.history("BTC", params(10_001)).await,
+    ] {
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("1 and 10000"));
+    }
+}
+
+#[tokio::test]
+async fn spot_candles_use_the_route_and_preserve_numeric_string_cursors() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/hyperliquid/spot/candles/HYPE-USDC"))
@@ -111,7 +183,7 @@ async fn spot_candles_use_the_route_and_preserve_opaque_cursors() {
             "meta": {
                 "count": 1,
                 "request_id": "spot-candles-1",
-                "next_cursor": "opaque-cursor:page/2"
+                "next_cursor": "1742644222000"
             }
         })))
         .expect(1)
@@ -122,7 +194,7 @@ async fn spot_candles_use_the_route_and_preserve_opaque_cursors() {
         .and(header("x-api-key", "test-key"))
         .and(query_param("start", "1742640622000"))
         .and(query_param("end", "1742644222000"))
-        .and(query_param("cursor", "opaque-cursor:page/2"))
+        .and(query_param("cursor", "1742644222000"))
         .and(query_param("interval", "1m"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "success": true,
@@ -162,7 +234,7 @@ async fn spot_candles_use_the_route_and_preserve_opaque_cursors() {
     assert_eq!(first.data[0].close, "0.26");
     assert_eq!(first.data[0].quote_volume.as_deref(), Some("3.12"));
     assert_eq!(first.data[0].trade_count, Some(4));
-    assert_eq!(first.next_cursor.as_deref(), Some("opaque-cursor:page/2"));
+    assert_eq!(first.next_cursor.as_deref(), Some("1742644222000"));
 
     let second = client
         .hyperliquid
@@ -287,19 +359,19 @@ async fn hip4_open_interest_uses_the_family_model_for_history_and_current() {
         "mid_price": "0.42"
     });
     Mock::given(method("GET"))
-        .and(path("/v1/hyperliquid/hip4/openinterest/%230"))
+        .and(path("/v1/hyperliquid/hip4/openinterest/0"))
         .and(query_param("start", "1777708800000"))
         .and(query_param("end", "1777712400000"))
         .and(query_param("limit", "100"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "success": true,
             "data": [record.clone()],
-            "meta": {"count": 1, "request_id": "history-oi", "next_cursor": "next-oi"}
+            "meta": {"count": 1, "request_id": "history-oi", "next_cursor": "1777712400000"}
         })))
         .mount(&server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/v1/hyperliquid/hip4/openinterest/%230/current"))
+        .and(path("/v1/hyperliquid/hip4/openinterest/0/current"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "success": true,
             "data": record
@@ -315,7 +387,7 @@ async fn hip4_open_interest_uses_the_family_model_for_history_and_current() {
         .hyperliquid
         .hip4
         .get_open_interest(
-            "#0",
+            "0",
             Hip4HistoryRange {
                 start: Timestamp::from("2026-05-02T08:00:00Z"),
                 end: Timestamp::from("2026-05-02T09:00:00Z"),
@@ -328,11 +400,11 @@ async fn hip4_open_interest_uses_the_family_model_for_history_and_current() {
     let current = client
         .hyperliquid
         .hip4
-        .get_open_interest_current("#0")
+        .get_open_interest_current("0")
         .await
         .unwrap();
 
-    assert_eq!(history.next_cursor.as_deref(), Some("next-oi"));
+    assert_eq!(history.next_cursor.as_deref(), Some("1777712400000"));
     for record in history.data.into_iter().chain(std::iter::once(current)) {
         assert_eq!(record.symbol.as_deref(), Some("#0"));
         assert_eq!(record.outcome_id, Some(0));
@@ -394,18 +466,15 @@ fn public_copy_keeps_family_specific_coverage() {
     assert!(spot_example.contains("2025-03-22T10:50:22Z"));
     assert!(readme.contains("Candles from 2025-08-01"));
     assert!(!readme.contains("SDK passes `symbol` straight through to the URL path"));
-    assert!(readme.contains("percent-encodes `#` only for URL wire transport"));
-    assert!(readme.contains(
-        "| `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Stored replay only |"
-    ));
-    assert!(readme.contains(
-        "| `hip4_open_interest` | HIP-4 open interest snapshots | No | Stored replay only |"
-    ));
+    assert!(readme.contains("use the bare numeric form (`\"0\"`"));
+    assert!(readme.contains("Legacy `\"#0\"`"));
+    assert!(readme.contains("| `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Yes |"));
+    assert!(readme.contains("| `hip4_open_interest` | HIP-4 open interest snapshots | No | Yes |"));
     assert!(!readme.contains(
         "| `hip4_orderbook` | HIP-4 outcome-market L2 order book | Yes | Stored replay only"
     ));
-    assert!(candles.contains("HIP-4 candles accept at most 1,000 rows per page"));
-    assert!(!candles.contains("max 10,000 for candles"));
+    assert!(candles.contains("Hyperliquid, HIP-3, and Lighter"));
+    assert!(candles.contains("HIP-4 and Spot accept at most 1,000"));
     let lighter_section_start = readme.find("### Lighter Orderbook Granularity").unwrap();
     let trades_section_start = readme.find("### Trades").unwrap();
     let lighter_section = &readme[lighter_section_start..trades_section_start];
@@ -430,4 +499,139 @@ fn public_copy_keeps_family_specific_coverage() {
     assert!(!hip4_oi_type.contains("pub oracle_price: Option<String>"));
     assert!(l3_resource.contains("1 and 250 orders per side"));
     assert!(source.contains("pub candles: CandlesResource"));
+}
+
+#[tokio::test]
+async fn hip3_breadth_current_is_typed_and_uses_the_exact_route() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/hip3/breadth/above-vwap/current"))
+        .and(header("x-api-key", "test-key"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "success": true,
+            "data": {
+                "session_date": "2026-08-28",
+                "calculated_at": "2026-08-28T20:54:00Z",
+                "value_pct": 20.93,
+                "coverage_ratio": 0.382,
+                "counts": {
+                    "candidates": 225,
+                    "eligible": 86,
+                    "above": 18,
+                    "at": 0,
+                    "below": 68,
+                    "excluded_no_session_volume": 75,
+                    "excluded_stale_price": 64
+                },
+                "namespaces": {
+                    "eligible": {"xyz": 41},
+                    "above": {"xyz": 9},
+                    "at": {},
+                    "below": {"xyz": 32}
+                }
+            },
+            "meta": {"count": 1, "request_id": "breadth-current", "next_cursor": null}
+        })))
+        .mount(&server)
+        .await;
+
+    let client = OxArchive::builder("test-key")
+        .base_url(server.uri())
+        .build()
+        .unwrap();
+    let result: Hip3BreadthSnapshot = client.hyperliquid.hip3.breadth.current().await.unwrap();
+
+    assert_eq!(result.session_date, "2026-08-28");
+    assert_eq!(result.value_pct, Some(20.93));
+    assert_eq!(result.counts.eligible, 86);
+    assert_eq!(result.namespaces.eligible["xyz"], 41);
+}
+
+#[tokio::test]
+async fn hip3_breadth_history_sends_exact_params_and_preserves_null_and_cursor() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/hip3/breadth/above-vwap"))
+        .and(header("x-api-key", "test-key"))
+        .and(query_param("start", "1787961600000"))
+        .and(query_param("end", "1788048000000"))
+        .and(query_param("interval", "5m"))
+        .and(query_param("limit", "1000"))
+        .and(query_param("cursor", "1788036600000"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "success": true,
+            "data": [{
+                "session_date": "2026-08-28",
+                "calculated_at": "2026-08-28T20:54:00Z",
+                "value_pct": null,
+                "coverage_ratio": 0.0,
+                "counts": {
+                    "candidates": 0,
+                    "eligible": 0,
+                    "above": 0,
+                    "at": 0,
+                    "below": 0,
+                    "excluded_no_session_volume": 0,
+                    "excluded_stale_price": 0
+                },
+                "namespaces": {"eligible": {}, "above": {}, "at": {}, "below": {}}
+            }],
+            "meta": {
+                "count": 1,
+                "request_id": "breadth-history",
+                "next_cursor": "1788048000000"
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let client = OxArchive::builder("test-key")
+        .base_url(server.uri())
+        .build()
+        .unwrap();
+    let result = client
+        .hyperliquid
+        .hip3
+        .breadth
+        .history(BreadthHistoryParams {
+            start: Some(1787961600000_i64.into()),
+            end: Some(1788048000000_i64.into()),
+            interval: Some(OiFundingInterval::FiveMinutes),
+            cursor: Some("1788036600000".to_string()),
+            limit: Some(1000),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.data.len(), 1);
+    assert_eq!(result.data[0].value_pct, None);
+    assert_eq!(result.next_cursor.as_deref(), Some("1788048000000"));
+}
+
+#[test]
+fn current_copy_matches_breadth_cadence_and_funding_unit_contracts() {
+    let readme = include_str!("../README.md");
+    let normalized_readme = readme.split_whitespace().collect::<Vec<_>>().join(" ");
+    let changelog = include_str!("../CHANGELOG.md");
+    let normalized_changelog = changelog.split_whitespace().collect::<Vec<_>>().join(" ");
+    let funding = include_str!("../src/resources/funding.rs");
+    let liquidations = include_str!("../src/resources/liquidations.rs")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let types = include_str!("../src/types.rs")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(normalized_readme.contains("History begins on **2026-08-28**"));
+    assert!(normalized_readme.contains("decimal fractions, not percentages and not annualized"));
+    assert!(funding.contains("fractional"));
+    assert!(funding.contains("non-annualized"));
+    assert!(!normalized_changelog.contains("45-minute snapshots"));
+    assert!(normalized_changelog.contains("approximately five-minute"));
+    assert!(normalized_changelog.contains("fractional and non-annualized"));
+    assert!(!liquidations.contains("45 minutes"));
+    assert!(liquidations.contains("approximately every five minutes"));
+    assert!(!types.contains("45 minutes"));
+    assert!(types.contains("approximately every five minutes"));
 }
