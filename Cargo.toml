@@ -25,6 +25,8 @@ tokio = { version = "1", features = ["rt", "macros"] }
 # These compatibility bounds stop transitive MSRV/edition-2024 widenings.
 url = ">=2.5.0, <2.5.3"
 urlencoding = "2"
+# reqwest's current encoding_rs release raises its MSRV to Rust 1.88.
+encoding_rs = ">=0.8.34, <0.8.40"
 zeroize = ">=1.8, <1.9"
 indexmap = ">=2.11.4, <2.12"
 native-tls = ">=0.2.13, <0.2.14"

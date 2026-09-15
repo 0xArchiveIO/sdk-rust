@@ -468,12 +468,8 @@ fn public_copy_keeps_family_specific_coverage() {
     assert!(!readme.contains("SDK passes `symbol` straight through to the URL path"));
     assert!(readme.contains("use the bare numeric form (`\"0\"`"));
     assert!(readme.contains("Legacy `\"#0\"`"));
-    assert!(readme.contains(
-        "| `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Yes |"
-    ));
-    assert!(readme.contains(
-        "| `hip4_open_interest` | HIP-4 open interest snapshots | No | Yes |"
-    ));
+    assert!(readme.contains("| `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Yes |"));
+    assert!(readme.contains("| `hip4_open_interest` | HIP-4 open interest snapshots | No | Yes |"));
     assert!(!readme.contains(
         "| `hip4_orderbook` | HIP-4 outcome-market L2 order book | Yes | Stored replay only"
     ));
@@ -543,13 +539,7 @@ async fn hip3_breadth_current_is_typed_and_uses_the_exact_route() {
         .base_url(server.uri())
         .build()
         .unwrap();
-    let result: Hip3BreadthSnapshot = client
-        .hyperliquid
-        .hip3
-        .breadth
-        .current()
-        .await
-        .unwrap();
+    let result: Hip3BreadthSnapshot = client.hyperliquid.hip3.breadth.current().await.unwrap();
 
     assert_eq!(result.session_date, "2026-08-28");
     assert_eq!(result.value_pct, Some(20.93));

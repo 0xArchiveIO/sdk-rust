@@ -3,7 +3,7 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
-## [1.9.1] - Unreleased
+## [1.9.1] - 2026-08-31
 
 ### Added
 - Typed HIP-3 breadth above current UTC-session VWAP through
@@ -11,7 +11,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `history(...)`. Recorded history begins on 2026-08-28.
 
 ### Changed
-
+- Entitlement copy: Free history is a rolling 30-day window (30-day span per
+  request or replay); Build and above keep the full retained archive. Route
+  families, schemas, and served depth remain available on every tier.
 - Correct Lighter per-fill trade history to the observed global floor of January 17, 2025; exact starts vary by market. This supersedes the August floor documented in the earlier release notes below.
 - Lighter WebSocket channels are explicitly replay-only: current data remains
   available through REST, all six channels remain available for bounded
