@@ -5,10 +5,27 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
 ## [1.9.1] - 2026-08-31
 
+### Added
+- Typed HIP-3 breadth above current UTC-session VWAP through
+  `client.hyperliquid.hip3.breadth.current()` and cursor-paginated
+  `history(...)`. Recorded history begins on 2026-08-28.
+
 ### Changed
 - Entitlement copy: Free history is a rolling 30-day window (30-day span per
   request or replay); Build and above keep the full retained archive. Route
   families, schemas, and served depth remain available on every tier.
+- Correct Lighter per-fill trade history to the observed global floor of January 17, 2025; exact starts vary by market. This supersedes the August floor documented in the earlier release notes below.
+- Lighter WebSocket channels are explicitly replay-only: current data remains
+  available through REST, all six channels remain available for bounded
+  historical replay, and live subscription requests fail fast with REST/replay
+  guidance.
+- Hyperliquid core `l4_diffs` and `l4_orders` historical replay now documents
+  its initial `l4_snapshot` followed by ordered `l4_batch` pages; HIP-3,
+  HIP-4, and Spot L4 remain live-only.
+- Projected forced-liquidation price-level guidance now reflects an
+  approximately five-minute refresh cadence.
+- Lighter `funding_rate` values are fractional and non-annualized. Consumers
+  that compensated for the former raw percent representation must update.
 
 ## [1.9.0] - 2026-08-22
 
@@ -18,7 +35,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 - Typed Hyperliquid Spot candle history at
   `client.hyperliquid.spot.candles.history()`; coverage starts exactly at
   2025-03-22T10:50:22Z, supports `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`,
-  and `1w`, and accepts at most 1,000 rows per page with opaque cursors.
+  and `1w`, and accepts at most 1,000 rows per page. API-returned cursor
+  strings are passed through unchanged.
 
 ### Changed
 - Coverage copy now states HIP-4 outcome-side OI at roughly 10-second cadence,
@@ -26,8 +44,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   March 5, 2026, and Lighter per-fill trade history from August 27, 2025.
 - HIP-4 WebSocket docs now distinguish live trades/L4/settlement delivery from
   stored-replay-only L2 and OI while those live bridges are paused.
-- HIP-4 symbol documentation now distinguishes the bare user form from the
-  percent-encoded URL wire path.
+- HIP-4 path documentation now uses the bare numeric form (`"0"`) as primary
+  while retaining legacy `"#0"` compatibility with percent-encoded transport.
+- Candle page validation now matches the served route caps: 10,000 rows for
+  Hyperliquid, HIP-3, and Lighter; 1,000 for HIP-4 and Spot.
 - `Hip4OpenInterestRecord` no longer advertises `oracle_price`, and Lighter L3
   `depth` is validated as 1 through 250 individual resting orders per side.
 
@@ -36,9 +56,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 ### Added
 - **Liquidation levels**: `liquidations.levels()` and `levels_history()` on
   the Hyperliquid and HIP-3 clients. Projected forced-liquidation levels
-  computed from clearinghouse positions and margin state (~45-minute
-  snapshots, `at` point-in-time reads, `side` filter, cursor-paginated
-  history with `summary` mode). History retained from 2026-07-27.
+  computed from clearinghouse positions and margin state (approximately
+  five-minute snapshots, `at` point-in-time reads, `side` filter,
+  cursor-paginated history with `summary` mode). History retained from
+  2026-07-27.
 - **Trigger levels**: `orders.trigger_levels()` and
   `trigger_levels_history()` — the pending stop-loss / take-profit map
   (15-minute snapshot history). Typed models exported at the crate root.

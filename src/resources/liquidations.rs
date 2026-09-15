@@ -201,8 +201,8 @@ impl LiquidationsResource {
     /// Get projected forced-liquidation levels for a symbol.
     ///
     /// Computed from clearinghouse positions and margin state, bucketed
-    /// around the snapshot mark price. Snapshots refresh roughly every 45
-    /// minutes; set `params.at` (epoch ms) for a point-in-time read. History
+    /// around the snapshot mark price. Snapshots refresh approximately every
+    /// five minutes; set `params.at` (epoch ms) for a point-in-time read. History
     /// begins 2026-07-27.
     ///
     /// These are projected forced liquidations, not the pending trigger-order
@@ -232,7 +232,7 @@ impl LiquidationsResource {
 
     /// Get historical liquidation-levels snapshots with cursor pagination.
     ///
-    /// Ascending by snapshot time (about every 45 minutes, retained from
+    /// Ascending by snapshot time (approximately every five minutes, retained from
     /// 2026-07-27). Set `params.summary = Some(true)` to list snapshots
     /// without histograms.
     pub async fn levels_history(

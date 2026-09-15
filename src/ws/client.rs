@@ -1,4 +1,4 @@
-/// WebSocket client for real-time streaming, historical replay, and bulk
+/// WebSocket client for supported live streaming, historical replay, and bulk
 /// data download.
 ///
 /// Requires the `websocket` feature:
@@ -48,6 +48,58 @@ impl WsOptions {
         self.auto_reconnect = enabled;
         self
     }
+}
+
+/// Lighter channels support historical replay but not live subscriptions.
+pub const LIGHTER_REPLAY_CHANNELS: [&str; 6] = [
+    "lighter_orderbook",
+    "lighter_trades",
+    "lighter_candles",
+    "lighter_open_interest",
+    "lighter_funding",
+    "lighter_l3_orderbook",
+];
+
+/// Canonical guidance returned when a Lighter live subscription is requested.
+pub const LIGHTER_SUBSCRIPTION_ERROR: &str =
+    "Lighter WebSocket channels support replay, not live subscriptions. Use REST for current data or a replay request for stored history.";
+
+/// Return whether a channel is available through replay but not live subscribe.
+pub fn is_lighter_replay_channel(channel: &str) -> bool {
+    LIGHTER_REPLAY_CHANNELS.contains(&channel)
+}
+
+/// Hyperliquid core L4 channels with checkpoint-anchored replay support.
+pub const CORE_L4_REPLAY_CHANNELS: [&str; 2] = ["l4_diffs", "l4_orders"];
+
+/// L4 channel families that are live-only and must not inherit core replay.
+pub const LIVE_ONLY_L4_CHANNELS: [&str; 6] = [
+    "hip3_l4_diffs",
+    "hip3_l4_orders",
+    "hip4_l4_diffs",
+    "hip4_l4_orders",
+    "spot_l4_diffs",
+    "spot_l4_orders",
+];
+
+/// Return whether a channel supports the core Hyperliquid L4 replay contract.
+pub fn is_core_l4_replay_channel(channel: &str) -> bool {
+    CORE_L4_REPLAY_CHANNELS.contains(&channel)
+}
+
+/// Return whether an L4 channel is explicitly live-only.
+pub fn is_live_only_l4_channel(channel: &str) -> bool {
+    LIVE_ONLY_L4_CHANNELS.contains(&channel)
+}
+
+const LIVE_ONLY_L4_REPLAY_ERROR: &str =
+    "HIP-3, HIP-4, and Spot L4 channels are live-only; replay is supported only for Hyperliquid core l4_diffs and l4_orders.";
+
+fn validate_replay_channel(channel: &str) -> Result<()> {
+    if is_live_only_l4_channel(channel) {
+        return Err(Error::InvalidParam(LIVE_ONLY_L4_REPLAY_ERROR.to_string()));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -124,10 +176,13 @@ pub enum ServerMsg {
         symbol: Option<String>,
         data: serde_json::Value,
     },
-    /// Initial L4 orderbook snapshot, sent once after subscribing to an
-    /// `l4_diffs`-family channel, before the batch stream begins. `data` is
-    /// the full book (`bids`/`asks` arrays of order objects); large symbols
-    /// can be tens of MB of JSON.
+    /// Initial order-level L4 state for a live subscription or core replay.
+    ///
+    /// For core Hyperliquid `l4_diffs` and `l4_orders` replay, this checkpoint
+    /// frame is emitted first and is followed by ordered [`ServerMsg::L4Batch`]
+    /// frames. `data` contains the full `bids`/`asks` book plus checkpoint
+    /// metadata; large symbols can be tens of MB of JSON. HIP-3, HIP-4, and
+    /// Spot L4 channels remain live-only and never use this replay sequence.
     L4Snapshot {
         channel: String,
         coin: String,
@@ -137,9 +192,12 @@ pub enum ServerMsg {
         timestamp: i64,
         data: serde_json::Value,
     },
-    /// Batched L4 data (real-time, ~100ms windows). Each element of `data`
-    /// is one diff or order event; diff objects deserialize into
-    /// [`crate::types::L4DiffEntry`].
+    /// Ordered L4 event batch for a live stream or core replay.
+    ///
+    /// In core Hyperliquid replay, apply every item in each batch in array
+    /// order after [`ServerMsg::L4Snapshot`]. Diff and order-lifecycle items
+    /// have channel-specific fields, so the payload remains JSON while the
+    /// envelope and event ordering are typed by this enum.
     L4Batch {
         channel: String,
         coin: String,
@@ -303,15 +361,22 @@ impl OxArchiveWs {
         let text = serde_json::to_string(&msg).map_err(|e| Error::WebSocket(e.to_string()))?;
         if let Some(ref mut writer) = *self.sink.lock().await {
             writer
-                .send(Message::Text(text.into()))
+                .send(Message::Text(text))
                 .await
                 .map_err(|e| Error::WebSocket(e.to_string()))?;
         }
         Ok(())
     }
 
-    /// Subscribe to a real-time channel.
+    /// Subscribe to a supported live channel.
+    ///
+    /// Lighter channels support replay, not live subscriptions. Use REST for
+    /// current data or a bounded replay request for stored history.
     pub async fn subscribe(&self, channel: &str, symbol: Option<&str>) -> Result<()> {
+        if is_lighter_replay_channel(channel) {
+            return Err(Error::InvalidParam(LIGHTER_SUBSCRIPTION_ERROR.to_string()));
+        }
+
         self.send(ClientMsg::Subscribe {
             channel: channel.to_string(),
             symbol: symbol.map(|s| s.to_string()),
@@ -328,7 +393,14 @@ impl OxArchiveWs {
         .await
     }
 
-    /// Start a historical replay on a single channel.
+    /// Start a bounded historical replay on a single channel.
+    ///
+    /// The six `lighter_*` channels support replay but not live subscriptions;
+    /// use the corresponding Lighter REST route for current data. Hyperliquid
+    /// core `l4_diffs` and `l4_orders` replay as `l4_snapshot` followed by
+    /// ordered `l4_batch` frames, and ignore `speed`. HIP-3, HIP-4, and Spot L4
+    /// channels are live-only and are rejected before a request is sent. A
+    /// successful replay terminates with a `replay_completed` server message.
     pub async fn replay(
         &self,
         channel: &str,
@@ -337,6 +409,7 @@ impl OxArchiveWs {
         end: Option<i64>,
         speed: Option<f64>,
     ) -> Result<()> {
+        validate_replay_channel(channel)?;
         self.send(ClientMsg::Replay {
             channel: channel.to_string(),
             symbol: symbol.to_string(),
@@ -347,10 +420,14 @@ impl OxArchiveWs {
         .await
     }
 
-    /// Start a multi-channel synchronized replay.
+    /// Start a multi-channel synchronized standard replay.
     ///
-    /// All channels are replayed together with data interleaved chronologically.
-    /// Initial `replay_snapshot` messages provide each channel's state at `start`.
+    /// All channels are replayed together with data interleaved chronologically,
+    /// including the six Lighter replay channels. Core L4 replay is single-
+    /// channel and cannot be included here. HIP-3, HIP-4, and Spot L4 channels
+    /// remain live-only. Initial `replay_snapshot` messages provide each
+    /// standard channel's state at `start`; the server terminates the bounded
+    /// replay with `replay_completed`.
     pub async fn replay_multi(
         &self,
         channels: &[&str],
@@ -359,6 +436,15 @@ impl OxArchiveWs {
         end: Option<i64>,
         speed: Option<f64>,
     ) -> Result<()> {
+        for channel in channels {
+            validate_replay_channel(channel)?;
+            if is_core_l4_replay_channel(channel) {
+                return Err(Error::InvalidParam(
+                    "Hyperliquid core L4 replay is single-channel; use replay() for l4_diffs or l4_orders."
+                        .to_string(),
+                ));
+            }
+        }
         self.send(ClientMsg::ReplayMulti {
             channels: channels.iter().map(|c| c.to_string()).collect(),
             symbol: symbol.to_string(),

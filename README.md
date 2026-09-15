@@ -92,7 +92,7 @@ When prototyping Rust services from Claude Code, ChatGPT Codex, or another codin
 | Hyperliquid HIP-3 | February 2026+ for served history | Builder perps; funding and OI update at roughly 10 seconds. |
 | Hyperliquid HIP-4 | May 2, 2026+ | Candles and outcome-side OI are served from 2026-05-02; OI updates at ~10s. No funding or liquidations. |
 | Hyperliquid Spot | Trades March 2025+; candles from exactly 2025-03-22T10:50:22Z; orderbook, L4, TWAP, and freshness from May 2026 | 326 authenticated inventory rows using dashed symbols (`HYPE-USDC`, `PURR-USDC`, ...). No funding, OI, or liquidations. |
-| Lighter.xyz | Candles from 2025-08-01; observed global per-fill trade floor August 27, 2025; exact starts vary by market. L3 from March 5, 2026+ | Maker/taker trade context; L3 caps at 250 orders per side; funding/OI update at ~10s. |
+| Lighter.xyz | Candles from 2025-08-01; observed global per-fill trade floor January 17, 2025; exact starts vary by market. L3 from March 5, 2026+ | Maker/taker trade context; L3 caps at 250 orders per side; funding/OI update at ~10s. |
 
 ## Configuration
 
@@ -119,6 +119,7 @@ The sections below show which resources are available on each exchange client:
 | `funding` | Yes | Yes | -- | Yes |
 | `open_interest` | Yes | Yes | -- | Yes |
 | `candles` | Yes | Yes | Yes | Yes |
+| `breadth` (above session VWAP) | -- | Yes | -- | -- |
 | `liquidations` | Yes | Yes | -- | -- |
 | `orders` | Yes | Yes | Yes | -- |
 | `l4_orderbook` | Yes | Yes | Yes | -- |
@@ -348,6 +349,32 @@ for inst in &hip3_instruments {
 }
 ```
 
+### HIP-3 Breadth Above Session VWAP
+
+HIP-3 breadth is the percentage of eligible instruments trading above their
+current UTC-session VWAP. The session resets at 00:00 UTC, uses the close of
+the most recently completed one-minute candle, and excludes instruments with
+no session volume or a price older than five minutes. History begins on
+**2026-08-28**. `value_pct` is unavailable (`None`) when no instrument is
+eligible; do not render it as 0%, and do not average percentages across
+snapshots because the eligible denominator varies.
+
+```rust
+use oxarchive::resources::breadth::BreadthHistoryParams;
+use oxarchive::types::OiFundingInterval;
+
+let current = client.hyperliquid.hip3.breadth.current().await?;
+println!("HIP-3 above session VWAP: {:?}%", current.value_pct);
+
+let history = client.hyperliquid.hip3.breadth.history(BreadthHistoryParams {
+    start: Some(1787961600000_i64.into()),
+    end: Some(1788048000000_i64.into()),
+    interval: Some(OiFundingInterval::FiveMinutes),
+    cursor: None,
+    limit: Some(1000),
+}).await?;
+```
+
 ### Funding Rates
 
 ```rust
@@ -367,6 +394,11 @@ let history = client.hyperliquid.funding.history("ETH", FundingHistoryParams {
     interval: Some(OiFundingInterval::OneHour),
 }).await?;
 ```
+
+Lighter `funding_rate` values are decimal fractions, not percentages and not
+annualized. For example, `0.0001` means `0.01%`. This is a breaking unit
+normalization from the former raw percent representation; consumers that
+applied a compensating conversion must update it.
 
 #### Aggregation Intervals
 
@@ -454,6 +486,9 @@ let hip3_vol = client.hyperliquid.hip3.liquidations.volume("km:US500", Liquidati
 }).await?;
 ```
 
+Projected forced-liquidation price levels refresh approximately every five
+minutes. This is an observed cadence, not an exact five-minute guarantee.
+
 ### Candles (OHLCV)
 
 ```rust
@@ -477,8 +512,9 @@ for candle in &candles.data {
 
 `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`, `1w`
 
-Lighter candle history is served from **2025-08-01**. HIP-4 candle history is
-served from **2026-05-02** and accepts at most 1,000 rows per page.
+Hyperliquid, HIP-3, and Lighter candle routes accept at most 10,000 rows per
+page. HIP-4 and Spot accept at most 1,000. Lighter candle history is served
+from **2025-08-01**; HIP-4 candle history is served from **2026-05-02**.
 
 ```rust
 let lighter_candles = client.lighter.candles.history("BTC", CandleHistoryParams {
@@ -645,10 +681,11 @@ let history = client.lighter.l3_orderbook.history("BTC", L3HistoryParams {
 
 ### HIP-4 Outcome Markets (Hyperliquid)
 
-Binary outcome perps deployed under the Hyperliquid namespace. Coin symbols
-use the bare `#<10*outcome_id + side>` form (`#0`, `#1`, `#55850`, ...). The
-SDK accepts the bare form and percent-encodes `#` only for URL wire transport. Use
-the bare form in your code; do not pre-encode `#` to `%23`.
+Binary outcome perps deployed under the Hyperliquid namespace. Responses use
+`#<10*outcome_id + side>` symbols (`#0`, `#1`, `#55850`, ...). For path
+inputs, use the bare numeric form (`"0"`, `"1"`, `"55850"`). Legacy `"#0"`
+inputs remain supported and are percent-encoded for transport; do not
+pre-encode them yourself.
 
 HIP-4 candles and outcome-side OI are served from **2026-05-02**, with raw OI
 updates at ~10s. HIP-4 has **no funding rates and no liquidations**.
@@ -683,15 +720,15 @@ let detail = client.hyperliquid.hip4.get_outcome(5585).await?;
 
 // Per-side instruments (`#0`, `#1`, ...)
 let insts = client.hyperliquid.hip4.get_instruments().await?;
-let inst = client.hyperliquid.hip4.get_instrument("#0").await?;
+let inst = client.hyperliquid.hip4.get_instrument("0").await?;
 
 // L2 orderbook
-let ob = client.hyperliquid.hip4.get_orderbook("#0", None).await?;
-let ob_at = client.hyperliquid.hip4.get_orderbook("#0", Some(Hip4OrderBookParams {
+let ob = client.hyperliquid.hip4.get_orderbook("0", None).await?;
+let ob_at = client.hyperliquid.hip4.get_orderbook("0", Some(Hip4OrderBookParams {
     timestamp: Some(1777680000000_i64.into()),
     depth: Some(20),
 })).await?;
-let ob_history = client.hyperliquid.hip4.get_orderbook_history("#0", Hip4HistoryRange {
+let ob_history = client.hyperliquid.hip4.get_orderbook_history("0", Hip4HistoryRange {
     start: 1777680000000_i64.into(),
     end:   1777766400000_i64.into(),
     cursor: None,
@@ -699,17 +736,17 @@ let ob_history = client.hyperliquid.hip4.get_orderbook_history("#0", Hip4History
 }).await?;
 
 // Trades (history + recent)
-let trades = client.hyperliquid.hip4.get_trades("#0", Hip4TradesParams {
+let trades = client.hyperliquid.hip4.get_trades("0", Hip4TradesParams {
     start: 1777680000000_i64.into(),
     end:   1777766400000_i64.into(),
     cursor: None,
     limit: Some(1000),
     side: None,
 }).await?;
-let recent = client.hyperliquid.hip4.get_trades_recent("#0", Some(50)).await?;
+let recent = client.hyperliquid.hip4.get_trades_recent("0", Some(50)).await?;
 
 // Implied-probability OHLCV candles
-let candles = client.hyperliquid.hip4.candles.history("#0", CandleHistoryParams {
+let candles = client.hyperliquid.hip4.candles.history("0", CandleHistoryParams {
     start: 1777680000000_i64.into(),
     end: 1777766400000_i64.into(),
     cursor: None,
@@ -718,24 +755,24 @@ let candles = client.hyperliquid.hip4.candles.history("#0", CandleHistoryParams 
 }).await?;
 
 // Open interest (per-side history + latest)
-let oi_hist = client.hyperliquid.hip4.get_open_interest("#0", Hip4HistoryRange {
+let oi_hist = client.hyperliquid.hip4.get_open_interest("0", Hip4HistoryRange {
     start: 1777680000000_i64.into(),
     end:   1777766400000_i64.into(),
     cursor: None,
     limit: None,
 }).await?;
-let oi_now = client.hyperliquid.hip4.get_open_interest_current("#0").await?;
+let oi_now = client.hyperliquid.hip4.get_open_interest_current("0").await?;
 // mark_price on HIP-4 is an implied probability in [0, 1].
 
 // Summary, freshness, prices
-let summary    = client.hyperliquid.hip4.get_summary("#0").await?;
-let freshness  = client.hyperliquid.hip4.get_freshness("#0").await?;
-let prices     = client.hyperliquid.hip4.get_prices("#0",
+let summary    = client.hyperliquid.hip4.get_summary("0").await?;
+let freshness  = client.hyperliquid.hip4.get_freshness("0").await?;
+let prices     = client.hyperliquid.hip4.get_prices("0",
     1777680000000_i64, 1777766400000_i64, Some("1h"), Some(100), None).await?;
 
 // L4 (current snapshot, diffs, checkpoint history)
-let l4_now     = client.hyperliquid.hip4.get_l4_orderbook("#0", None).await?;
-let l4_diffs   = client.hyperliquid.hip4.get_l4_diffs("#0", Hip4HistoryRange {
+let l4_now     = client.hyperliquid.hip4.get_l4_orderbook("0", None).await?;
+let l4_diffs   = client.hyperliquid.hip4.get_l4_diffs("0", Hip4HistoryRange {
     start: 1777680000000_i64.into(),
     end:   1777766400000_i64.into(),
     cursor: None,
@@ -915,10 +952,12 @@ let sub = client.web3.subscribe("build", "base64_payment_payload").await?;
 ## WebSocket Client
 
 Requires the `websocket` feature. Supports two modes on a single connection:
-- **Real-time**: subscribe to live market data
-- **Replay**: replay historical data with timing preserved
+- **Live subscriptions**: supported Hyperliquid live market channels
+- **Replay**: bounded historical data with timing preserved
 
 For file-based historical exports, use the [Data Catalog](https://www.0xarchive.io/data).
+
+> Lighter channels support historical replay but not live subscriptions through the 0xArchive WebSocket. Use REST for current data and REST, WebSocket replay, or exports for historical data.
 
 ### Real-time Streaming
 
@@ -945,11 +984,39 @@ while let Some(msg) = rx.recv().await {
 
 ### Historical Replay
 
-```rust
-// Replay BTC orderbook at 100x speed
-ws.replay("orderbook", "BTC", 1704067200000, Some(1704070800000), Some(100.0)).await?;
+Replay a bounded historical window with original timing preserved. Every replay
+ends with a `replay_completed` server message.
 
-// Control playback
+```rust
+use oxarchive::ws::{OxArchiveWs, ServerMsg, WsOptions};
+
+let mut ws = OxArchiveWs::new(WsOptions::new("your-api-key"));
+ws.connect().await?;
+let mut rx = ws.rx.take().expect("receiver");
+
+// Lighter channels are replay-only; use Lighter REST for current data.
+ws.replay(
+    "lighter_orderbook",
+    "BTC",
+    1704067200000,
+    Some(1704070800000),
+    Some(100.0),
+).await?;
+
+while let Some(msg) = rx.recv().await {
+    match msg {
+        ServerMsg::ReplayCompleted { channel, snapshots_sent, .. } => {
+            println!("Replay complete: {channel}, {snapshots_sent:?} records");
+            break;
+        }
+        ServerMsg::HistoricalData { channel, .. } => {
+            println!("Historical {channel} record");
+        }
+        _ => {}
+    }
+}
+
+// Control playback for the active bounded replay
 ws.replay_pause().await?;
 ws.replay_resume().await?;
 ws.replay_seek(1704069000000).await?;
@@ -958,42 +1025,44 @@ ws.replay_stop().await?;
 
 ### Available Channels
 
-| Channel | Description | Realtime | Replay |
-|---------|-------------|----------|--------|
+| Channel | Description | Live Subscription | Historical Replay |
+|---------|-------------|-------------------|-------------------|
 | `orderbook` | L2 order book (~1.2s resolution) | Yes | Yes |
 | `trades` | Trade/fill updates | Yes | Yes |
-| `candles` | OHLCV candle data | Yes | Yes |
+| `candles` | OHLCV candle data | No | Yes |
 | `liquidations` | Liquidation events. Each item is a fill row with `is_liquidation: true`. | Yes | Yes |
-| `open_interest` | Open interest snapshots | Yes | Yes |
-| `funding` | Funding rate snapshots | Yes | Yes |
+| `open_interest` | Open interest snapshots | No | Yes |
+| `funding` | Funding rate snapshots | No | Yes |
 | `ticker` | Price and 24h volume | Yes | No |
 | `all_tickers` | All market tickers | Yes | No |
-| `lighter_orderbook` | Lighter.xyz L2 order book | Yes | Yes |
-| `lighter_trades` | Lighter.xyz trades | Yes | Yes |
-| `lighter_candles` | Lighter.xyz candles | Yes | Yes |
-| `lighter_open_interest` | Lighter.xyz open interest | Yes | Yes |
-| `lighter_funding` | Lighter.xyz funding rates | Yes | Yes |
-| `lighter_l3_orderbook` | Lighter.xyz L3 order-level orderbook | Yes | Yes |
+| `lighter_orderbook` | Lighter.xyz L2 order book | No | Yes |
+| `lighter_trades` | Lighter.xyz trades | No | Yes |
+| `lighter_candles` | Lighter.xyz candles | No | Yes |
+| `lighter_open_interest` | Lighter.xyz open interest | No | Yes |
+| `lighter_funding` | Lighter.xyz funding rates | No | Yes |
+| `lighter_l3_orderbook` | Lighter.xyz L3 order-level orderbook | No | Yes |
 | `hip3_orderbook` | HIP-3 L2 order book | Yes | Yes |
 | `hip3_trades` | HIP-3 trades | Yes | Yes |
 | `hip3_candles` | HIP-3 candles | Yes | Yes |
-| `hip3_open_interest` | HIP-3 open interest | Yes | Yes |
-| `hip3_funding` | HIP-3 funding rates | Yes | Yes |
+| `hip3_open_interest` | HIP-3 open interest | No | Yes |
+| `hip3_funding` | HIP-3 funding rates | No | Yes |
 | `hip3_liquidations` | HIP-3 liquidation events. Same wire shape as `liquidations`. | Yes | Yes |
-| `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Stored replay only |
+| `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Yes |
 | `hip4_trades` | HIP-4 trade/fill updates | Yes | Yes |
-| `hip4_open_interest` | HIP-4 open interest snapshots | No | Stored replay only |
-| `l4_diffs` | Hyperliquid L4 orderbook diffs with user attribution | Yes | No |
-| `l4_orders` | Hyperliquid order lifecycle events | Yes | No |
-| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution | Yes | No |
-| `hip3_l4_orders` | HIP-3 order lifecycle events | Yes | No |
-| `hip4_l4_diffs` | HIP-4 L4 orderbook diffs with user attribution | Yes | No |
-| `hip4_l4_orders` | HIP-4 order lifecycle events | Yes | No |
+| `hip4_open_interest` | HIP-4 open interest snapshots | No | Yes |
+| `l4_diffs` | Hyperliquid core L4 orderbook diffs with user attribution | Yes | Yes, `l4_snapshot` then ordered `l4_batch` |
+| `l4_orders` | Hyperliquid core L4 order lifecycle events | Yes | Yes, `l4_snapshot` then ordered `l4_batch` |
+| `hip3_l4_diffs` | HIP-3 L4 orderbook diffs with user attribution | Yes | No, live-only |
+| `hip3_l4_orders` | HIP-3 order lifecycle events | Yes | No, live-only |
+| `hip4_l4_diffs` | HIP-4 L4 orderbook diffs with user attribution | Yes | No, live-only |
+| `hip4_l4_orders` | HIP-4 order lifecycle events | Yes | No, live-only |
 | `spot_orderbook` | Hyperliquid Spot L2 order book | Yes | No |
 | `spot_trades` | Hyperliquid Spot trades | Yes | No |
-| `spot_l4_diffs` | Hyperliquid Spot L4 orderbook diffs with user attribution | Yes | No |
-| `spot_l4_orders` | Hyperliquid Spot order lifecycle events | Yes | No |
+| `spot_l4_diffs` | Hyperliquid Spot L4 orderbook diffs with user attribution | Yes | No, live-only |
+| `spot_l4_orders` | Hyperliquid Spot order lifecycle events | Yes | No, live-only |
 | `spot_twap` | Hyperliquid Spot TWAP execution updates | Yes | No |
+
+Current Lighter data is available through the Lighter REST resources. Historical Lighter data is available through REST, WebSocket replay, or exports.
 
 HIP-4 has no funding or liquidation channels. HIP-4 candles and current outcome-side OI are available over REST from 2026-05-02; the live HIP-4 order-book and OI bridges are paused, while stored replay remains available. This HIP-4 channel set has no dedicated candle channel.
 

@@ -8,8 +8,8 @@ pub struct CandleHistoryParams {
     pub start: Timestamp,
     pub end: Timestamp,
     pub cursor: Option<String>,
-    /// Max results per page (default 100). The server maximum is route-specific;
-    /// HIP-4 candles accept at most 1,000 rows per page.
+    /// Max results per page (default 100). Hyperliquid, HIP-3, and Lighter
+    /// accept at most 10,000 rows; HIP-4 and Spot accept at most 1,000.
     pub limit: Option<i64>,
     pub interval: Option<CandleInterval>,
 }
@@ -24,10 +24,6 @@ pub struct CandlesResource {
 }
 
 impl CandlesResource {
-    pub(crate) fn new(http: HttpClient, prefix: &str) -> Self {
-        Self::new_with_transform_and_limit(http, prefix, |symbol| symbol.to_string(), None)
-    }
-
     pub(crate) fn new_with_transform_and_limit(
         http: HttpClient,
         prefix: &str,
