@@ -132,6 +132,58 @@ impl HttpClient {
         self.handle_response(resp).await
     }
 
+    /// Send a request and return the whole decoded JSON envelope rather than
+    /// just its `data` member.
+    ///
+    /// The management routes answer `{"success": true, "data": ..., ...}` and
+    /// put load-bearing information in siblings of `data`: the plan's watched
+    /// wallet cap arrives as `limit`, and the rotate route's overlap warning
+    /// arrives as `note`. Those are lost if only `data` is unwrapped. This
+    /// also covers the routes that answer `{"success": true}` with no `data`
+    /// at all, which the envelope-or-value path cannot deserialize.
+    pub(crate) async fn request_envelope(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: &[(&str, String)],
+        body: Option<&serde_json::Value>,
+    ) -> crate::error::Result<serde_json::Value> {
+        let url = format!("{}{}", self.config.base_url, path);
+
+        let filtered: Vec<(&str, &str)> = query
+            .iter()
+            .filter(|(_, v)| !v.is_empty())
+            .map(|(k, v)| (*k, v.as_str()))
+            .collect();
+
+        let mut req = self.inner.request(method, &url).query(&filtered);
+        if let Some(b) = body {
+            req = req.json(b);
+        }
+
+        let resp = req.send().await.map_err(|e| {
+            if e.is_timeout() {
+                Error::Timeout
+            } else {
+                Error::Http(e)
+            }
+        })?;
+
+        let status = resp.status();
+        let text = resp.text().await.map_err(Error::Http)?;
+
+        if !status.is_success() {
+            return Err(self.parse_error(status.as_u16(), &text));
+        }
+
+        // A 204 or an empty 200 is a success with nothing to read.
+        if text.trim().is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+
+        serde_json::from_str(&text).map_err(|e| Error::Deserialize(format!("{e}: {text}")))
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------

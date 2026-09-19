@@ -18,14 +18,14 @@ Or add directly to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.8"
+oxarchive = "1.9"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 For WebSocket support (real-time streaming, replay, bulk download):
 
 ```toml
-oxarchive = { version = "1.8", features = ["websocket"] }
+oxarchive = { version = "1.9", features = ["websocket"] }
 ```
 
 ## Quick Start
@@ -875,6 +875,255 @@ client.web3.revoke_key(&challenge.message, "0xSignature", "key-id").await?;
 let sub = client.web3.subscribe("build", "base64_payment_payload").await?;
 ```
 
+## Webhooks
+
+0xArchive pushes events to an HTTPS endpoint you own: fills and transfers on wallets you watch, liquidations and liquidation bursts, funding flips, oracle jumps, listings, ingest and chain health, export jobs finishing. `client.webhooks` covers the whole management surface, and `oxarchive::webhook_signature` verifies the deliveries that arrive.
+
+### What each plan gets
+
+| Plan | Endpoints | Subscriptions | Watched wallets | Deliveries a day |
+| --- | --- | --- | --- | --- |
+| Free | 0 | 0 | 0 | 0 |
+| Build | 1 | 8 | 2 | 5,000 |
+| Pro | 4 | 40 | 15 | 50,000 |
+| Scale | 12 | 200 | 50 | 500,000 |
+| Enterprise | negotiated | negotiated | negotiated | negotiated |
+
+Free has no webhook delivery at all. Not one endpoint, not one subscription, not one watched wallet, not one delivery.
+
+Free does keep both preview routes. `estimate` and `dry_run` answer on every plan, so you can design a rule, see how often it would have fired, and read the occurrences it would have sent before paying for anything. That is the intended way in: size the rule first, then buy the plan that fits it.
+
+When an account exceeds its deliveries a day, the subscription responsible is paused and reports that it is paused, rather than events being quietly dropped. Nothing is buffered while it is paused, so recover the gap by querying the REST archive over that window. The field names for the pause state are still settling, so this SDK keeps them in `WebhookSubscription::extra` rather than binding them to typed fields that would have to change.
+
+### Size a rule before you build it
+
+```rust
+use oxarchive::EstimateParams;
+use serde_json::json;
+
+let estimate = client.webhooks.estimate(
+    EstimateParams::new("market.liquidation")
+        .filters(json!({
+            "venue": "hyperliquid",
+            "conditions": [
+                {"metric": "notional_usd", "op": "greater_than_or_equal", "value": 250_000}
+            ]
+        }))
+        .lookback_days(30),
+).await?;
+
+println!("{} events over {} days", estimate.total, estimate.days);
+println!("median {:.1}/day, busiest {}/day", estimate.per_day_p50, estimate.per_day_max);
+
+// The ladder is the same rule at other thresholds, so you can pick one that
+// fits your plan's deliveries a day instead of discovering the cap in prod.
+for rung in &estimate.ladder {
+    println!("  at {:>12.0}: {:.1}/day", rung.value, rung.per_day);
+}
+```
+
+`dry_run` answers the narrower question: which occurrences in the last few hours would this rule actually have sent, payload and all.
+
+```rust
+use oxarchive::DryRunParams;
+
+let preview = client.webhooks.dry_run(
+    DryRunParams::new("market.liquidation")
+        .filters(json!({"venue": "hyperliquid"}))
+        .lookback_s(3_600)
+        .limit(20),
+).await?;
+
+println!("{} matched, showing {}", preview.matched, preview.occurrences.len());
+for occurrence in &preview.occurrences {
+    println!("  {} {}", occurrence.observed_at_estimate, occurrence.data);
+}
+```
+
+Both previews share a per-minute budget, and `dry_run` supports fewer event types than `estimate` does. A refusal names the types it does support.
+
+### The event-type catalog
+
+`event_types()` is the source of truth for what can be subscribed to and how. It declares, per type, the venues it covers, the filters it accepts, the parameters it takes with their defaults and bounds, and the metrics conditions can be written against. Subscribe-time validation reads the same declarations, so anything the catalog does not declare is refused rather than quietly ignored.
+
+```rust
+for event in client.webhooks.event_types().await? {
+    if !event.live {
+        continue; // published as coming soon; subscriptions are refused
+    }
+    println!("{} [{}] {}", event.event_type, event.scope, event.description);
+    for (name, metric) in &event.metrics {
+        println!("    metric {name}: {} {}", metric.value_type, metric.unit.clone().unwrap_or_default());
+    }
+}
+```
+
+`scope` tells you what a type reports on: `public` for market-wide events, `addresses` for events about wallets you watch, `user` for events about your own account such as an export finishing.
+
+### Endpoints
+
+```rust
+use oxarchive::CreateEndpointParams;
+
+let endpoint = client.webhooks.create_endpoint(
+    CreateEndpointParams::new("https://example.com/hooks/0xarchive")
+        .description("prod receiver"),
+).await?;
+
+// Shown exactly once, here and on rotate. No list or get call returns it again.
+let secret = endpoint.secret.clone().expect("create returns the secret once");
+store_somewhere_safe(&secret);
+```
+
+Private and loopback destinations are refused at create time and re-checked on every delivery attempt.
+
+`test_endpoint(id)` queues a real `webhook.test` delivery through the identical dispatch path, signed the same way as any other event, so it is a genuine end-to-end check of your receiver rather than a simulation.
+
+```rust
+let fired = client.webhooks.test_endpoint(&endpoint.id).await?;
+println!("queued delivery {} for event {}", fired.delivery_id, fired.event_id);
+```
+
+### Subscriptions
+
+A subscription is one event type plus the rule that decides which of its occurrences reach an endpoint.
+
+```rust
+use oxarchive::{CreateSubscriptionParams, UpdateSubscriptionParams};
+
+let sub = client.webhooks.create_subscription(
+    CreateSubscriptionParams::new(&endpoint.id, "market.liquidation")
+        .filters(json!({
+            "venue": "hyperliquid",
+            "symbols": ["BTC", "ETH"],
+            "conditions": [
+                {"metric": "notional_usd", "op": ">=", "value": 250_000}
+            ]
+        })),
+).await?;
+
+// Read the stored config back: operator spellings are canonicalised (">=" is
+// stored as "greater_than_or_equal"), addresses are lowercased, and declared
+// parameter defaults are filled in.
+println!("{}", sub.filters);
+
+// Edit in place; replacing a rule never needs delete and recreate.
+client.webhooks.update_subscription(&sub.id, UpdateSubscriptionParams::default().enabled(false)).await?;
+```
+
+### Watched wallets
+
+Address-scoped event types only report on wallets on your watched list, and a subscription cannot name an address that is not on it.
+
+```rust
+let wallet = "0x1111111111111111111111111111111111111111";
+let watched = client.webhooks.add_address(wallet, Some("treasury")).await?;
+
+let all = client.webhooks.list_addresses().await?;
+println!("{} of {:?} watched", all.addresses.len(), all.limit);
+
+client.webhooks.delete_address(&watched.id).await?;
+```
+
+Adding a wallet you already watch is idempotent: it updates the label and does not spend a second slot.
+
+### Verifying a delivery
+
+Every delivery carries these headers. Look them up case insensitively.
+
+| Header | Value |
+| --- | --- |
+| `0xa-signature` | `t=<unix seconds>,v1=<hex>[,v1=<hex>]` |
+| `0xa-event-id` | the event UUID, stable across retries and redelivery |
+| `0xa-event-type` | the event type, for example `webhook.test` |
+| `content-type` | `application/json` |
+
+There is no separate timestamp header. The timestamp lives inside `0xa-signature` as `t`, and since it is the first component of the signed string it cannot be moved without breaking the signature.
+
+The signed bytes are the timestamp, one ASCII full stop, and the raw body:
+
+```text
+signed_payload = <t> || "." || <raw request body>
+signature      = lowercase_hex(HMAC_SHA256(key = the whole whsec_... string, signed_payload))
+```
+
+```rust
+use oxarchive::webhook_signature::{SignatureError, WebhookVerifier};
+
+let verifier = WebhookVerifier::new(secret);
+
+match verifier.verify(raw_body_bytes, signature_header) {
+    Ok(_) => { /* deduplicate on 0xa-event-id, answer 2xx, process out of band */ }
+    Err(SignatureError::Stale { .. }) => { /* outside the replay window; refuse */ }
+    Err(_) => { /* refuse with a 4xx */ }
+}
+```
+
+Four things decide whether your verifier works:
+
+**Hash the bytes you received.** Do not re-serialise the JSON first. The body is rendered by PostgreSQL's `jsonb` output, so its key order and spacing match neither the emitter nor any JSON library's default, and `serde_json::to_string(&value)` will produce different bytes and fail. Capture the raw body before a parser touches it. In axum that means `bytes::Bytes` or `String` as the extractor rather than `Json<T>`; anything behind a proxy that pretty-prints or re-encodes JSON will break verification.
+
+**The key is the whole secret string.** `whsec_` included. Do not strip the prefix, do not hex-decode the 64 characters after it, do not base64-decode anything.
+
+**Read every `v1`, not the first.** During a rotation overlap the header carries two, and nothing says which secret each belongs to. `header.split("v1=")` style parsing passes in steady state and fails intermittently the moment somebody rotates.
+
+**Compare in constant time.** `WebhookVerifier` does, through the HMAC crate's own comparison. A plain `==` on hex strings leaks the position of the first differing byte.
+
+The verifier also enforces a replay window, 300 seconds by default and configurable with `tolerance_secs`. `t` is generated per attempt rather than per event, so even an hour-late retry arrives with a fresh timestamp and nothing legitimate is ever stale. Keep the window tight: the destination URL is not part of the signed string, so an observed delivery could otherwise be replayed at a different path on the same host forever.
+
+### Rotating the signing secret
+
+```rust
+let rotated = client.webhooks.rotate_secret(&endpoint.id).await?;
+// The previous secret keeps verifying for 24 hours.
+let verifier = WebhookVerifier::with_secrets([rotated.secret.clone(), old_secret]);
+```
+
+During the overlap every delivery carries two `v1` values over the same payload, one per secret, so a receiver that has not rolled yet keeps verifying. Store the new secret alongside the old one, deploy, then drop the old one before the window closes.
+
+Only one previous secret is ever carried. Rotating twice inside the same window overwrites it, and the original stops verifying immediately, so do not rotate twice in a day unless you mean to.
+
+### Deliveries, retries, and redelivery
+
+```rust
+for attempt in client.webhooks.deliveries(&endpoint.id, Some(50)).await? {
+    println!("{} {} attempts={} status={:?}",
+        attempt.created_at, attempt.state, attempt.attempts, attempt.last_status_code);
+}
+
+// Same event id on purpose, so a receiver that already handled it deduplicates.
+client.webhooks.redeliver(&delivery_id).await?;
+```
+
+Your receiver has 10 seconds to answer. Acknowledge with a 2xx immediately and do the work out of band. Anything outside 200 to 299 counts as a failure, redirects included, and enters the retry ladder: 5s, 30s, 2m, 10m, 1h, then hourly, giving up after 24 hours. Ten consecutive failures spanning at least six hours auto disable the endpoint, which `enable_endpoint(id)` clears.
+
+If a delivery fails to verify, answer 4xx and log it. A 5xx just replays the same bad delivery at you for a day.
+
+Delivery is at least once. Deduplicate on `0xa-event-id`, never on the signature or on `t`, both of which change on every attempt.
+
+### Route reference
+
+| SDK method | Route |
+| --- | --- |
+| `event_types()` | `GET /v1/webhooks/event-types` |
+| `list_endpoints()` | `GET /v1/webhooks/endpoints` |
+| `create_endpoint(params)` | `POST /v1/webhooks/endpoints` |
+| `delete_endpoint(id)` | `DELETE /v1/webhooks/endpoints/{id}` |
+| `rotate_secret(id)` | `POST /v1/webhooks/endpoints/{id}/rotate` |
+| `enable_endpoint(id)` | `POST /v1/webhooks/endpoints/{id}/enable` |
+| `test_endpoint(id)` | `POST /v1/webhooks/endpoints/{id}/test` |
+| `deliveries(id, limit)` | `GET /v1/webhooks/endpoints/{id}/deliveries` |
+| `redeliver(delivery_id)` | `POST /v1/webhooks/deliveries/{id}/redeliver` |
+| `list_subscriptions()` | `GET /v1/webhooks/subscriptions` |
+| `create_subscription(params)` | `POST /v1/webhooks/subscriptions` |
+| `update_subscription(id, params)` | `PATCH /v1/webhooks/subscriptions/{id}` |
+| `delete_subscription(id)` | `DELETE /v1/webhooks/subscriptions/{id}` |
+| `dry_run(params)` | `POST /v1/webhooks/subscriptions/dry-run` |
+| `estimate(params)` | `POST /v1/webhooks/subscriptions/estimate` |
+| `list_addresses()` | `GET /v1/webhooks/addresses` |
+| `add_address(address, label)` | `POST /v1/webhooks/addresses` |
+| `delete_address(id)` | `DELETE /v1/webhooks/addresses/{id}` |
+
 ## WebSocket Client
 
 Requires the `websocket` feature. Supports two modes on a single connection:
@@ -1039,6 +1288,9 @@ cargo run --example pagination
 
 # Hyperliquid Spot
 cargo run --example spot
+
+# Webhooks: size a rule, create an endpoint, verify deliveries
+cargo run --example webhooks
 
 # WebSocket (requires websocket feature)
 cargo run --example websocket --features websocket

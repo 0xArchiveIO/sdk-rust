@@ -1,6 +1,6 @@
 [package]
 name = "oxarchive"
-version = "1.8.0"
+version = "1.9.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Rust SDK for async 0xArchive market data clients"
@@ -31,6 +31,12 @@ tokio = { version = "1", features = ["rt", "macros"] }
 url = "2"
 urlencoding = "2"
 
+# Webhook signature verification. Both are small, pure-Rust RustCrypto crates
+# with no transitive weight, and `hmac`'s `verify_slice` is the constant-time
+# comparison the verifier needs, so no third dependency is required for it.
+hmac = "0.12"
+sha2 = "0.10"
+
 # WebSocket (optional)
 tokio-tungstenite = { version = "0.24", features = ["native-tls"], optional = true }
 futures-util = { version = "0.3", optional = true }
@@ -54,6 +60,10 @@ path = "examples/pagination.rs"
 [[example]]
 name = "spot"
 path = "examples/spot.rs"
+
+[[example]]
+name = "webhooks"
+path = "examples/webhooks.rs"
 
 [[example]]
 name = "websocket"

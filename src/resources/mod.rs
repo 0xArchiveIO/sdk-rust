@@ -12,6 +12,7 @@ pub mod l4_orderbook;
 pub mod l2_orderbook;
 pub mod l3_orderbook;
 pub mod spot;
+pub mod webhooks;
 
 pub use orderbook::OrderBookResource;
 pub use trades::TradesResource;
@@ -30,3 +31,7 @@ pub use l4_orderbook::L4OrderBookResource;
 pub use l2_orderbook::L2OrderBookResource;
 pub use l3_orderbook::L3OrderBookResource;
 pub use spot::{SpotPairsResource, SpotTwapResource};
+pub use webhooks::{
+    CreateEndpointParams, CreateSubscriptionParams, DryRunParams, EstimateParams,
+    UpdateSubscriptionParams, WebhooksResource,
+};

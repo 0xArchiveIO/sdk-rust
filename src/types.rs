@@ -1114,3 +1114,317 @@ pub struct OrderHistoryEntry {
     pub is_position_tpsl: bool,
     pub cloid: Option<String>,
 }
+
+// ---------------------------------------------------------------------------
+// Webhooks
+// ---------------------------------------------------------------------------
+
+/// One entry in the served event-type catalog
+/// (`GET /v1/webhooks/event-types`).
+///
+/// The catalog is the single source the dashboard, the docs and the MCP all
+/// render from. Read `params` and `metrics` from here rather than hardcoding
+/// thresholds: subscribe-time validation checks a config against exactly this
+/// declaration, so anything it does not declare is refused.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookEventType {
+    /// The event type, for example `account.fill`.
+    #[serde(rename = "type")]
+    pub event_type: String,
+    /// Payload schema version for this type.
+    pub schema_version: i64,
+    /// `true` when the type accepts subscriptions. The rest are published as
+    /// coming soon and are refused at create time.
+    pub live: bool,
+    /// `public`, `addresses` (scoped to your watched wallets) or `user`
+    /// (about your own account, such as an export finishing).
+    pub scope: String,
+    /// Venues the type covers. Empty when the type is not venue scoped.
+    #[serde(default)]
+    pub venues: Vec<String>,
+    /// Filter keys this type accepts: some of `venue`, `symbols`, `addresses`.
+    #[serde(default)]
+    pub filters: Vec<String>,
+    /// Declared parameters, keyed by parameter name.
+    #[serde(default)]
+    pub params: std::collections::HashMap<String, WebhookParamSpec>,
+    /// Declared metrics that conditions may be written against, keyed by
+    /// metric name.
+    #[serde(default)]
+    pub metrics: std::collections::HashMap<String, WebhookMetricSpec>,
+    /// The exchange-wide scan floor for the type, when it has one. A
+    /// subscription cannot ask for occurrences below it.
+    pub cost_floor: Option<WebhookCostFloor>,
+    /// Rough delivery latency: `seconds` or `minutes`.
+    pub latency_class: String,
+    /// Human description of what fires the event.
+    pub description: String,
+    /// A ready-to-send example config for this type.
+    #[serde(default)]
+    pub filters_example: serde_json::Value,
+    /// The operator vocabulary, grouped by metric type (`number`, `text`,
+    /// `boolean`, `timestamp`, `any`).
+    #[serde(default)]
+    pub operators: std::collections::HashMap<String, Vec<String>>,
+}
+
+/// A declared subscription parameter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookParamSpec {
+    /// `number`, `integer`, `string` or `array_of_number`.
+    #[serde(rename = "type")]
+    pub value_type: String,
+    /// The value used when the subscription does not set the parameter.
+    pub default: Option<serde_json::Value>,
+    /// Unit the value is expressed in, for example `USD`, `s` or `%`.
+    pub unit: Option<String>,
+    /// Closed set of accepted values, when the parameter has one.
+    #[serde(rename = "enum")]
+    pub allowed: Option<Vec<serde_json::Value>>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub description: Option<String>,
+}
+
+/// A declared metric, which is what a condition is written against.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookMetricSpec {
+    /// `number`, `integer`, `string`, `enum`, `boolean` or `timestamp`.
+    #[serde(rename = "type")]
+    pub value_type: String,
+    /// Unit the metric is expressed in.
+    pub unit: Option<String>,
+    /// Accepted members, for enum metrics.
+    pub values: Option<Vec<String>>,
+    pub description: Option<String>,
+}
+
+/// The exchange-wide scan floor declared by an event type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookCostFloor {
+    /// The metric the floor applies to.
+    pub metric: String,
+    /// The lowest value the detector scans for.
+    pub min: f64,
+    pub unit: Option<String>,
+    pub note: Option<String>,
+}
+
+/// A delivery endpoint: one HTTPS URL 0xArchive posts events to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookEndpoint {
+    pub id: String,
+    pub url: String,
+    pub description: String,
+    /// `active`, `disabled`, or `auto_disabled` after a sustained failure run.
+    pub status: String,
+    /// Failed attempts since the last success. Ten of them spanning at least
+    /// six hours auto disable the endpoint.
+    pub consecutive_failures: i32,
+    pub created_at: String,
+    /// The signing secret, returned **only** by create and rotate. Store it on
+    /// the spot; no list or get call will ever return it again.
+    #[serde(default)]
+    pub secret: Option<String>,
+}
+
+/// The result of rotating an endpoint's signing secret.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RotatedSecret {
+    /// The new secret. Shown once.
+    pub secret: String,
+    /// The server's note about the overlap window, when it sends one.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// A subscription: one event type plus the config that decides which
+/// occurrences of it reach an endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookSubscription {
+    pub id: String,
+    pub endpoint_id: String,
+    pub event_type: String,
+    /// The stored, normalised config: `venue`, `symbols`, `addresses`,
+    /// `params` with declared defaults filled in, and `conditions`. The API
+    /// calls this object `filters` here and on create, and `config` on the
+    /// dry-run and estimate bodies; it is the same object in all four places.
+    #[serde(default)]
+    pub filters: serde_json::Value,
+    pub enabled: bool,
+    pub created_at: String,
+    /// Any field the API adds that this SDK version does not name yet.
+    ///
+    /// Pause state lands here for now. When an account exceeds its plan's
+    /// deliveries per day the offending subscription is paused and says so,
+    /// rather than events being dropped without a signal, but the field names
+    /// for that state are still settling, so they are deliberately not bound
+    /// to typed fields yet. Read them out of this map if you need them early,
+    /// and expect named fields in a later release.
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+/// One delivery attempt record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookDelivery {
+    pub id: String,
+    /// The event UUID. Stable across retries and manual redelivery, and what
+    /// a receiver deduplicates on.
+    pub event_id: String,
+    pub event_type: String,
+    /// `pending`, `delivered` or `exhausted`.
+    pub state: String,
+    pub attempts: i32,
+    pub last_status_code: Option<i32>,
+    pub last_error: Option<String>,
+    pub last_latency_ms: Option<i32>,
+    pub next_attempt_at: String,
+    pub delivered_at: Option<String>,
+    pub created_at: String,
+    /// The exact JSON body that was or will be posted.
+    pub payload: serde_json::Value,
+}
+
+/// The result of queueing a `webhook.test` delivery.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookTestFire {
+    pub delivery_id: String,
+    pub event_id: String,
+}
+
+/// The result of asking for a past delivery to be sent again.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookRedelivery {
+    pub delivery_id: String,
+    /// Unchanged from the original delivery, which is the point: a receiver
+    /// that already processed this event should deduplicate on it.
+    #[serde(default)]
+    pub event_id: Option<String>,
+    #[serde(default)]
+    pub event_type: Option<String>,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub attempts: Option<i32>,
+    #[serde(default)]
+    pub next_attempt_at: Option<String>,
+}
+
+/// A wallet the account watches, which is what address-scoped event types
+/// report on.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchedAddress {
+    pub id: String,
+    /// Stored lowercase, `0x` prefixed.
+    pub address: String,
+    pub label: String,
+    pub created_at: String,
+}
+
+/// Watched wallets plus the plan's cap, which the list and add routes both
+/// report alongside the rows.
+#[derive(Debug, Clone)]
+pub struct WatchedAddressList {
+    pub addresses: Vec<WatchedAddress>,
+    /// Watched wallets this plan allows. `0` on a plan without webhooks.
+    pub limit: Option<i64>,
+}
+
+/// The window an answer vouches for.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookWindow {
+    pub from: String,
+    pub to: String,
+}
+
+/// One occurrence a preview found.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookOccurrence {
+    /// The occurrence's own timestamp. A real delivery's `observed_at` would
+    /// be this plus the detector's ingest lag.
+    pub observed_at_estimate: String,
+    /// The `data` a delivery would have carried.
+    pub data: serde_json::Value,
+}
+
+/// What a subscription would have delivered over a recent window
+/// (`POST /v1/webhooks/subscriptions/dry-run`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookDryRun {
+    pub event_type: String,
+    /// `from` moves up when a capped scan did not reach the requested start.
+    pub window: WebhookWindow,
+    /// Occurrences that matched inside the window, before `limit` is applied.
+    pub matched: usize,
+    /// `true` when fewer occurrences are returned than matched, or a scan hit
+    /// its row cap and the window was narrowed.
+    pub truncated: bool,
+    /// Newest first.
+    #[serde(default)]
+    pub occurrences: Vec<WebhookOccurrence>,
+}
+
+/// How often a subscription would have fired over a longer window
+/// (`POST /v1/webhooks/subscriptions/estimate`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookEstimate {
+    pub event_type: String,
+    pub window: WebhookWindow,
+    pub days: i64,
+    /// Occurrences over the whole window.
+    pub total: i64,
+    /// Exactly `days` entries, oldest first, zero filled.
+    #[serde(default)]
+    pub per_day: Vec<WebhookDayCount>,
+    pub per_day_p50: f64,
+    pub per_day_max: i64,
+    /// The metric the ladder and the distribution are about.
+    pub primary_metric: Option<String>,
+    /// Ascending: the daily rate this config would have had at each
+    /// threshold on `primary_metric`, everything else unchanged. This is how
+    /// you tune a rule to a delivery budget before you create it.
+    #[serde(default)]
+    pub ladder: Vec<WebhookLadderRung>,
+    /// Quantiles of `primary_metric` over the matched occurrences.
+    pub distribution: Option<WebhookDistribution>,
+    /// Newest matches first, same shape as the dry-run.
+    #[serde(default)]
+    pub sample: Vec<WebhookOccurrence>,
+    pub basis: WebhookEstimateBasis,
+}
+
+/// One 24 hour bin of an estimate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookDayCount {
+    /// The UTC date the bin ends on, so the last entry is today.
+    pub date: String,
+    pub count: i64,
+}
+
+/// One rung of the threshold ladder.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookLadderRung {
+    /// The threshold on the estimate's `primary_metric`.
+    pub value: f64,
+    /// Deliveries a day this config would have averaged at that threshold.
+    pub per_day: f64,
+}
+
+/// Quantiles of an estimate's primary metric.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookDistribution {
+    pub n: i64,
+    pub p50: f64,
+    pub p90: f64,
+    pub p99: f64,
+    pub max: f64,
+}
+
+/// How an estimate was arrived at.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookEstimateBasis {
+    /// Whether the answer is exact or replayed from history.
+    pub mode: String,
+    pub note: Option<String>,
+}

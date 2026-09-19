@@ -65,13 +65,46 @@
 //! # }
 //! ```
 //!
+//! ## Webhooks
+//!
+//! `client.webhooks` covers the whole management surface: the event-type
+//! catalog, endpoints, subscriptions, watched wallets, the delivery log, and
+//! the two preview routes. [`webhook_signature`] verifies the deliveries that
+//! arrive.
+//!
+//! ```no_run
+//! # use oxarchive::{CreateEndpointParams, EstimateParams, OxArchive};
+//! # use serde_json::json;
+//! # async fn example() -> oxarchive::Result<()> {
+//! # let client = OxArchive::new("key")?;
+//! // How often would this rule have fired over the last week?
+//! let estimate = client.webhooks.estimate(
+//!     EstimateParams::new("market.liquidation")
+//!         .filters(json!({"venue": "hyperliquid", "min_notional_usd": 250_000}))
+//!         .lookback_days(7),
+//! ).await?;
+//! println!("{} in {} days", estimate.total, estimate.days);
+//!
+//! // Then point it somewhere. The secret is shown exactly once.
+//! let endpoint = client.webhooks.create_endpoint(
+//!     CreateEndpointParams::new("https://example.com/hooks/0xarchive"),
+//! ).await?;
+//! let secret = endpoint.secret.expect("create returns the secret once");
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Webhook delivery is a paid feature: Free plans get no endpoints,
+//! subscriptions, watched wallets or deliveries. The estimate and dry-run
+//! previews answer on every plan. See [`resources::webhooks`] for the grid.
+//!
 //! ## WebSocket (optional)
 //!
 //! Enable the `websocket` feature for real-time streaming, historical replay,
 //! and bulk data download:
 //!
 //! ```toml
-//! oxarchive = { version = "1.8", features = ["websocket"] }
+//! oxarchive = { version = "1.9", features = ["websocket"] }
 //! ```
 
 pub mod client;
@@ -82,6 +115,7 @@ pub mod l4_reconstructor;
 pub mod orderbook_reconstructor;
 pub mod resources;
 pub mod types;
+pub mod webhook_signature;
 pub mod ws;
 
 // Re-export the main entry points at the crate root.
@@ -101,6 +135,21 @@ pub use types::{
 };
 pub use resources::liquidations::{LevelsHistoryParams, LiquidationLevelsParams};
 pub use resources::orders::TriggerLevelsParams;
+pub use resources::webhooks::{
+    CreateEndpointParams, CreateSubscriptionParams, DryRunParams, EstimateParams,
+    UpdateSubscriptionParams, WebhooksResource,
+};
+pub use types::{
+    RotatedSecret, WatchedAddress, WatchedAddressList, WebhookCostFloor, WebhookDayCount,
+    WebhookDelivery, WebhookDistribution, WebhookDryRun, WebhookEndpoint, WebhookEstimate,
+    WebhookEstimateBasis, WebhookEventType, WebhookLadderRung, WebhookMetricSpec,
+    WebhookOccurrence, WebhookParamSpec, WebhookRedelivery, WebhookSubscription, WebhookTestFire,
+    WebhookWindow,
+};
+pub use webhook_signature::{
+    parse_signature_header, ParsedSignature, SignatureError, WebhookVerifier,
+    DEFAULT_TOLERANCE_SECS, EVENT_ID_HEADER, EVENT_TYPE_HEADER, SIGNATURE_HEADER,
+};
 
 #[cfg(feature = "websocket")]
 pub use ws::{ClientMsg, OxArchiveWs, ServerMsg, WsOptions};

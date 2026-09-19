@@ -3,6 +3,32 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.9.0] - 2026-09-19
+
+### Added
+- **Webhooks**: `client.webhooks` covers the whole management surface under
+  `/v1/webhooks`. Endpoints (create, list, delete, rotate, enable, test-fire),
+  subscriptions (create, list, patch, delete), watched wallets, the delivery
+  log, manual redelivery, the event-type catalog, and the two preview routes
+  `estimate` and `dry_run`. Typed models for all of them, including the
+  catalog's per-type parameter and metric declarations.
+- **`webhook_signature`**: `WebhookVerifier` verifies an inbound delivery from
+  the raw body bytes and the `0xa-signature` header. HMAC-SHA256 over
+  `<t>.<body>`, constant-time comparison, a configurable replay window
+  defaulting to 300 seconds, and multi-secret support so a receiver keeps
+  verifying through the 24-hour rotation overlap (the header carries one `v1`
+  per valid secret, and reading only the first one is the bug this is built to
+  avoid). `parse_signature_header` is public for anyone who wants the parts.
+- Plan entitlements are documented in the README. Webhook delivery is a paid
+  feature: Free accounts get no endpoints, subscriptions, watched wallets or
+  deliveries, but both preview routes answer on every plan, so a rule can be
+  designed and sized before it is paid for.
+
+### Changed
+- New dependencies `hmac` and `sha2`, used only by `webhook_signature`. Both
+  are small pure-Rust RustCrypto crates, and `hmac`'s own `verify_slice` is
+  the constant-time comparison, so no separate crate is pulled in for that.
+
 ## [1.8.0] - 2026-07-27
 
 ### Added
