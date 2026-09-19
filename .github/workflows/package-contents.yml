@@ -1,0 +1,25 @@
+name: Package contents
+
+# Cargo's `exclude` is a denylist: anything new in the directory ships by
+# default. This repo uses an `include` allowlist instead, and this job fails
+# if that ever regresses.
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+jobs:
+  crate-scope:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Plant a stray directory the way an agent would
+        run: mkdir -p .claude/worktrees/probe && echo leak > .claude/worktrees/probe/leak.rs
+      - name: The crate must contain only src, examples and metadata
+        run: |
+          set -euo pipefail
+          cargo package --list --allow-dirty | awk -F/ '{print $1}' | sort -u > /tmp/top.txt
+          echo "top-level entries in the crate:"; cat /tmp/top.txt
+          if grep -qE '^\.claude|^\.codex|^backend|^crates|^migrations' /tmp/top.txt; then
+            echo "::error::the crate contains files from outside the package"; exit 1
+          fi

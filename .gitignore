@@ -31,3 +31,7 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agent working directories. Never source, never packaged.
+.claude/
+.codex/

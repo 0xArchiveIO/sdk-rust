@@ -11,6 +11,14 @@ documentation = "https://docs.rs/oxarchive"
 keywords = ["market-data", "hyperliquid", "lighterxyz", "orderbook", "trading"]
 categories = ["api-bindings", "finance"]
 readme = "README.md"
+include = [
+    "/src",
+    "/examples",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/Cargo.toml",
+]
 exclude = ["examples/test_all.rs"]
 
 [dependencies]
