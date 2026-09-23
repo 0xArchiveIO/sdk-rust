@@ -18,14 +18,14 @@ Or add directly to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.9"
+oxarchive = "1.10"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 For WebSocket support (real-time streaming, replay, bulk download):
 
 ```toml
-oxarchive = { version = "1.9", features = ["websocket"] }
+oxarchive = { version = "1.10", features = ["websocket"] }
 ```
 
 ## Quick Start
