@@ -3,6 +3,22 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.10.0] - 2026-09-23
+
+Versions 1.9.0 and 1.9.1 were not published to crates.io. This release
+includes their changes, listed in the sections below, and aligns the Rust,
+TypeScript and Python SDKs on one version.
+
+### Changed
+- `Trade::fee`, `closed_pnl` and `start_position` are now returned as `"0"`
+  when the venue recorded a zero, instead of being omitted. `None` now means
+  the source did not record the value (for example fills from 2025-03-22 to
+  2025-05-25), never zero. This is a server-side change and applies to every
+  SDK version.
+- HIP-3 and HIP-4 trades now include `fee`, `fee_token`, `closed_pnl` and
+  `start_position`.
+- Install snippets and rustdoc examples reference `1.10`.
+
 ## [1.9.1] - 2026-08-31
 
 ### Added
