@@ -1,4 +1,4 @@
-//! Quick live smoke test for the 1.9.0 additions and fixes.
+//! Quick live smoke test for the price-level, candle and coverage endpoints.
 //! Run: OXARCHIVE_API_KEY=... cargo run --example levels_smoke
 
 use oxarchive::resources::candles::CandleHistoryParams;

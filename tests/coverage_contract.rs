@@ -447,8 +447,17 @@ fn public_copy_keeps_family_specific_coverage() {
     let websocket_example = include_str!("../examples/websocket.rs");
 
     assert!(readme.contains("client.hyperliquid.hip4.candles.history"));
-    assert!(readme.contains("oxarchive = \"1.9\""));
-    assert!(!readme.contains("oxarchive = \"1.8\""));
+    // Install snippets must track the crate's own major.minor, so a release
+    // cannot ship a README that points at the previous version.
+    let mut version = env!("CARGO_PKG_VERSION").split('.');
+    let major_minor = format!("{}.{}", version.next().unwrap(), version.next().unwrap());
+    let pin = format!("oxarchive = \"{major_minor}\"");
+    let ws_pin = format!("oxarchive = {{ version = \"{major_minor}\", features = [\"websocket\"] }}");
+    assert!(readme.contains(&pin), "README must pin {pin}");
+    assert!(readme.contains(&ws_pin), "README must pin {ws_pin}");
+    for doc in [include_str!("../src/lib.rs"), include_str!("../src/ws/client.rs")] {
+        assert!(doc.contains(&ws_pin), "rustdoc snippets must pin {ws_pin}");
+    }
     assert!(readme.contains("2026-05-02"));
     assert!(readme.contains("~10s"));
     assert!(readme.contains("250 orders per side"));

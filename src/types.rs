@@ -188,10 +188,18 @@ pub struct Trade {
     pub order_id: Option<i64>,
     /// `true` for taker (crossed the spread), `false` for maker.
     pub crossed: Option<bool>,
+    /// Fee paid on this fill in `fee_token`, including any builder fee; negative is a rebate.
+    /// `"0"` is a recorded zero fee. `None` when the source did not record fees, for example
+    /// fills from 2025-03-22 to 2025-05-25.
     pub fee: Option<String>,
+    /// Fee denomination (e.g. USDC). Present exactly when `fee` and `closed_pnl` were recorded.
     pub fee_token: Option<String>,
+    /// Realized PnL on this fill. `"0"` when the fill opened or added to a position. `None` when
+    /// the source did not record it (same cases as `fee`).
     pub closed_pnl: Option<String>,
     pub direction: Option<String>,
+    /// Position size (spot: balance) before this fill; negative is short. `"0"` means flat.
+    /// `None` when the source did not record it.
     pub start_position: Option<String>,
     pub user_address: Option<String>,
     pub maker_address: Option<String>,
