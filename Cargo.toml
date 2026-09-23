@@ -11,7 +11,21 @@ documentation = "https://docs.rs/oxarchive"
 keywords = ["market-data", "hyperliquid", "lighterxyz", "orderbook", "trading"]
 categories = ["api-bindings", "finance"]
 readme = "README.md"
-exclude = ["examples/test_all.rs"]
+# An allowlist of what ships. Cargo ignores `exclude` once `include` is set, and
+# `include` does not consult .gitignore, so examples are named one by one: a
+# directory pattern would also pick up untracked local files.
+include = [
+    "/src/**/*.rs",
+    "/examples/basic.rs",
+    "/examples/levels_smoke.rs",
+    "/examples/pagination.rs",
+    "/examples/spot.rs",
+    "/examples/websocket.rs",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/Cargo.toml",
+]
 
 [dependencies]
 reqwest = { version = "0.12", features = ["json"] }
