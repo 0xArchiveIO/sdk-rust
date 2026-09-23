@@ -1,0 +1,29 @@
+name: Package contents
+
+# Plants untracked files in the tree, then fails unless every file in the
+# crate is a tracked source file or metadata cargo generates while packaging.
+# The check is an allowlist on purpose: anything else is a failure.
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+jobs:
+  crate-scope:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Plant untracked files that must not be packaged
+        run: |
+          mkdir -p .claude/worktrees/probe && echo stray > .claude/worktrees/probe/stray.rs
+          echo stray > examples/stray.rs
+          echo stray > src/stray.txt
+      - name: The crate contains only tracked files and cargo metadata
+        run: |
+          set -euo pipefail
+          cargo package --list --allow-dirty | sort > /tmp/crate.txt
+          { git ls-files; printf '%s\n' Cargo.lock Cargo.toml.orig .cargo_vcs_info.json; } | sort -u > /tmp/allowed.txt
+          echo "files in the crate:"; cat /tmp/crate.txt
+          bad=$(comm -23 /tmp/crate.txt /tmp/allowed.txt)
+          if [ -n "$bad" ]; then echo "::error::unexpected crate files: $bad"; exit 1; fi
+          grep -q '^src/lib.rs$' /tmp/crate.txt || { echo "::error::crate has no src/lib.rs"; exit 1; }
