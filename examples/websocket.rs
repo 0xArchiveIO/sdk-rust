@@ -1,4 +1,5 @@
 use oxarchive::ws::{OxArchiveWs, ServerMsg, WsOptions};
+use oxarchive::LighterLiveData;
 
 #[tokio::main]
 async fn main() -> oxarchive::Result<()> {
@@ -60,6 +61,64 @@ async fn main() -> oxarchive::Result<()> {
     ws.unsubscribe("hip4_trades", Some("#0")).await?;
     ws.disconnect().await;
 
+    // --- Lighter.xyz live streaming (order book, trades, funding) ---
+    // Served on the default wss://api.0xarchive.io/ws endpoint.
+    // lighter_candles and lighter_l3_orderbook remain replay-only.
+    let mut ws = OxArchiveWs::new(WsOptions::new(&api_key));
+    ws.connect().await?;
+
+    // Four books a second instead of the default one (interval_ms 100 to 5000).
+    ws.subscribe_with_interval("lighter_orderbook", "BTC", 250)
+        .await?;
+    ws.subscribe("lighter_trades", Some("BTC")).await?;
+    ws.subscribe("lighter_funding", Some("BTC")).await?;
+
+    let mut rx = ws.rx.take().expect("receiver");
+    let mut updates = 0u32;
+
+    while let Some(msg) = rx.recv().await {
+        match msg.lighter_live_data() {
+            Some(Ok(LighterLiveData::OrderBook(book))) => {
+                let best_bid = book.bids().first().map(|l| l.px.clone());
+                let best_ask = book.asks().first().map(|l| l.px.clone());
+                println!("Lighter {} book: {best_bid:?} / {best_ask:?}", book.coin);
+            }
+            Some(Ok(LighterLiveData::Trades(fills))) => {
+                // Two fills per trade share a tid; print the taker fill only.
+                for fill in fills.iter().filter(|f| f.crossed) {
+                    println!(
+                        "Lighter {} trade {}: {} @ {}",
+                        fill.coin, fill.tid, fill.sz, fill.px
+                    );
+                }
+            }
+            Some(Ok(LighterLiveData::Funding(stats) | LighterLiveData::OpenInterest(stats))) => {
+                println!(
+                    "Lighter {} funding {:?}, mark {:?}",
+                    stats.coin, stats.ctx.funding, stats.ctx.mark_px
+                );
+            }
+            Some(Err(e)) => eprintln!("Unexpected Lighter payload: {e}"),
+            None => {
+                if let ServerMsg::Error { message } = &msg {
+                    // Lag notices ("Dropped ...") keep the subscription open;
+                    // a "Stopped ..." notice ends it until you subscribe again.
+                    eprintln!("Notice: {message}");
+                }
+                continue;
+            }
+        }
+        updates += 1;
+        if updates >= 10 {
+            break;
+        }
+    }
+
+    ws.unsubscribe("lighter_orderbook", Some("BTC")).await?;
+    ws.unsubscribe("lighter_trades", Some("BTC")).await?;
+    ws.unsubscribe("lighter_funding", Some("BTC")).await?;
+    ws.disconnect().await;
+
     // --- Historical replay ---
     let mut ws = OxArchiveWs::new(WsOptions::new(&api_key));
     ws.connect().await?;
@@ -99,44 +158,8 @@ async fn main() -> oxarchive::Result<()> {
 
     ws.disconnect().await;
 
-    // --- Bulk streaming ---
-    let mut ws = OxArchiveWs::new(WsOptions::new(&api_key));
-    ws.connect().await?;
-
-    ws.stream(
-        "trades",
-        "ETH",
-        1704067200000, // 2024-01-01 00:00 UTC
-        1704153600000, // 2024-01-02 00:00 UTC
-        Some(5000),    // batch size
-    )
-    .await?;
-
-    let mut rx = ws.rx.take().expect("receiver");
-    let mut total = 0u64;
-
-    while let Some(msg) = rx.recv().await {
-        match &msg {
-            ServerMsg::StreamStarted { .. } => println!("Stream started"),
-            ServerMsg::HistoricalBatch { data, .. } => {
-                total += data.len() as u64;
-                println!("Batch: {} records (total: {total})", data.len());
-            }
-            ServerMsg::StreamProgress { snapshots_sent } => {
-                println!("Progress: {} sent", snapshots_sent.unwrap_or(0));
-            }
-            ServerMsg::StreamCompleted { snapshots_sent, .. } => {
-                println!("Stream complete: {} records", snapshots_sent.unwrap_or(0));
-                break;
-            }
-            ServerMsg::Error { message } => {
-                eprintln!("Stream error: {message}");
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    ws.disconnect().await;
+    // For large historical downloads, use the S3 Parquet bulk export at
+    // https://www.0xarchive.io/data. Bulk streaming over WebSocket has been
+    // discontinued.
     Ok(())
 }
