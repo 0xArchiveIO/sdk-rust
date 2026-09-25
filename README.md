@@ -989,7 +989,7 @@ Live Lighter data uses the same envelope as Hyperliquid live data and is served 
 Symbols are the same as `client.lighter.instruments.list()`; they are case-insensitive
 on subscribe and echoed uppercase. Live Lighter channels are available on every tier and
 are metered per message like Hyperliquid live data; the tier subscription and connection
-limits below apply.
+limits below apply, and each connection accepts at most 10 subscribe operations per second.
 
 ```rust
 use oxarchive::ws::{OxArchiveWs, ServerMsg, WsOptions};
@@ -1167,6 +1167,9 @@ All self-serve tiers reach the published route families; Free covers the most re
 | Pro | 3,000 | 5 | 100x | 5,000 |
 | Scale | 20,000 | 16 | 300x | 10,000 |
 | Enterprise | Custom | Custom | from 500x | 10,000 |
+
+On every tier, each WebSocket connection accepts at most 10 subscribe operations per second;
+faster bursts are rejected with a "Subscription rate limit exceeded" error.
 
 ## Timestamp Formats
 
