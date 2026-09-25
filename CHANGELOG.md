@@ -3,6 +3,57 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.11.0] - 2026-09-25
+
+Versions 1.9.0, 1.9.1 and 1.10.0 were not published to crates.io. This
+release includes their changes, listed in the sections below.
+
+### Added
+- Live WebSocket subscriptions for four Lighter.xyz channels:
+  `lighter_orderbook`, `lighter_trades`, `lighter_open_interest` and
+  `lighter_funding`, served on `wss://api.0xarchive.io/ws`. `subscribe()`
+  now sends these requests instead of rejecting them. They use the same
+  envelope as Hyperliquid live data and the same symbols as
+  `client.lighter.instruments.list()`.
+- `OxArchiveWs::subscribe_with_interval()` and
+  `ClientMsg::SubscribeWithInterval` set `interval_ms` on
+  `lighter_orderbook` (100 to 5000). Without it the server sends one book per
+  second. Other channels and out-of-range values are rejected before a
+  request is sent.
+- Typed live payloads: `LighterLiveOrderBook` (full top-20 book per message,
+  with `bids()` and `asks()`), `LighterLiveTrade` (two fills per trade that
+  share `tid`), and `LighterLiveMarketStats` / `LighterLiveAssetCtx` for the
+  open-interest and funding channels, which carry the same message. Decode a
+  message with `ServerMsg::lighter_live_data()` or `LighterLiveData::decode()`.
+- `LIGHTER_LIVE_CHANNELS`, `LIGHTER_REPLAY_ONLY_CHANNELS`,
+  `is_lighter_live_channel()` and `is_lighter_replay_only_channel()`.
+
+### Changed
+- `lighter_candles` and `lighter_l3_orderbook` remain replay-only.
+  `subscribe()` still rejects them before sending, and
+  `LIGHTER_SUBSCRIPTION_ERROR` now names these two channels.
+- `is_lighter_replay_channel()` still returns `true` for all six Lighter
+  channels, since all six support replay, but no longer means that live
+  subscription is unavailable. Use `is_lighter_replay_only_channel()` for that.
+- Lighter replay is unchanged. Replay rows keep their existing shapes, which
+  differ from the live payloads.
+- Install snippets and rustdoc examples reference `1.11`.
+- `examples/websocket.rs` no longer includes a bulk streaming section, and the
+  README no longer describes bulk download or a per-tier batch size.
+
+### Deprecated
+- `OxArchiveWs::stream()` and `OxArchiveWs::stream_stop()`. The server has
+  discontinued bulk streaming over WebSocket and now answers these requests
+  with an error message instead of data. Both methods still compile and send
+  the request, so existing code keeps building, with a deprecation warning.
+  For large historical downloads, use the S3 Parquet bulk export at
+  https://www.0xarchive.io/data. For bounded windows over WebSocket, use
+  `replay()`. The `ServerMsg::Stream*` variants are no longer sent.
+
+### Fixed
+- The README WebSocket channel table now lists Hyperliquid `open_interest`
+  and `funding` as available for live subscription as well as replay.
+
 ## [1.10.0] - 2026-09-23
 
 Versions 1.9.0 and 1.9.1 were not published to crates.io. This release
