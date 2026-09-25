@@ -1102,8 +1102,8 @@ ws.replay_stop().await?;
 | `trades` | Trade/fill updates | Yes | Yes |
 | `candles` | OHLCV candle data | No | Yes |
 | `liquidations` | Liquidation events. Each item is a fill row with `is_liquidation: true`. | Yes | Yes |
-| `open_interest` | Open interest snapshots | No | Yes |
-| `funding` | Funding rate snapshots | No | Yes |
+| `open_interest` | Open interest snapshots | Yes | Yes |
+| `funding` | Funding rate snapshots | Yes | Yes |
 | `ticker` | Price and 24h volume | Yes | No |
 | `all_tickers` | All market tickers | Yes | No |
 | `lighter_orderbook` | Lighter.xyz L2 order book | Yes | Yes |

@@ -39,6 +39,10 @@ release includes their changes, listed in the sections below.
   differ from the live payloads.
 - Install snippets and rustdoc examples reference `1.11`.
 
+### Fixed
+- The README WebSocket channel table now lists Hyperliquid `open_interest`
+  and `funding` as available for live subscription as well as replay.
+
 ## [1.10.0] - 2026-09-23
 
 Versions 1.9.0 and 1.9.1 were not published to crates.io. This release
