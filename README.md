@@ -18,14 +18,14 @@ Or add directly to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.10"
+oxarchive = "1.11"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 For WebSocket support (real-time streaming, replay, bulk download):
 
 ```toml
-oxarchive = { version = "1.10", features = ["websocket"] }
+oxarchive = { version = "1.11", features = ["websocket"] }
 ```
 
 ## Quick Start
@@ -952,12 +952,12 @@ let sub = client.web3.subscribe("build", "base64_payment_payload").await?;
 ## WebSocket Client
 
 Requires the `websocket` feature. Supports two modes on a single connection:
-- **Live subscriptions**: supported Hyperliquid live market channels
+- **Live subscriptions**: supported Hyperliquid and Lighter.xyz live market channels
 - **Replay**: bounded historical data with timing preserved
 
 For file-based historical exports, use the [Data Catalog](https://www.0xarchive.io/data).
 
-> Lighter channels support historical replay but not live subscriptions through the 0xArchive WebSocket. Use REST for current data and REST, WebSocket replay, or exports for historical data.
+> Lighter.xyz live subscriptions are available for `lighter_orderbook`, `lighter_trades`, `lighter_open_interest`, and `lighter_funding`. `lighter_candles` and `lighter_l3_orderbook` remain replay-only. All six Lighter channels support historical replay.
 
 ### Real-time Streaming
 
@@ -982,6 +982,76 @@ while let Some(msg) = rx.recv().await {
 }
 ```
 
+### Lighter Live Streaming
+
+Live Lighter data uses the same envelope as Hyperliquid live data and is served on
+`wss://api.0xarchive.io/ws`, the default `ws_url` (not `wss://stream.0xarchive.io/ws`).
+Symbols are the same as `client.lighter.instruments.list()`; they are case-insensitive
+on subscribe and echoed uppercase. Live Lighter channels are available on every tier and
+are metered per message like Hyperliquid live data; the tier subscription and connection
+limits below apply.
+
+```rust
+use oxarchive::ws::{OxArchiveWs, ServerMsg, WsOptions};
+use oxarchive::LighterLiveData;
+
+let mut ws = OxArchiveWs::new(WsOptions::new("your-api-key"));
+ws.connect().await?;
+let mut rx = ws.rx.take().expect("receiver");
+
+// One full book per second by default...
+ws.subscribe("lighter_orderbook", Some("BTC")).await?;
+// ...or set interval_ms (100 to 5000) on lighter_orderbook only.
+ws.subscribe_with_interval("lighter_orderbook", "ETH", 250).await?;
+ws.subscribe("lighter_trades", Some("BTC")).await?;
+ws.subscribe("lighter_funding", Some("BTC")).await?;
+
+while let Some(msg) = rx.recv().await {
+    match msg.lighter_live_data() {
+        Some(Ok(LighterLiveData::OrderBook(book))) => {
+            let best_bid = book.bids().first().map(|l| l.px.as_str());
+            let best_ask = book.asks().first().map(|l| l.px.as_str());
+            println!("{} {best_bid:?} / {best_ask:?} at {}", book.coin, book.time);
+        }
+        Some(Ok(LighterLiveData::Trades(fills))) => {
+            // Two fills per trade (one per side) share a tid.
+            for fill in fills.iter().filter(|f| f.crossed) {
+                println!("{} trade {}: {} @ {}", fill.coin, fill.tid, fill.sz, fill.px);
+            }
+        }
+        Some(Ok(LighterLiveData::OpenInterest(stats) | LighterLiveData::Funding(stats))) => {
+            println!("{} funding {:?} OI {:?}", stats.coin, stats.ctx.funding, stats.ctx.open_interest);
+        }
+        Some(Err(e)) => eprintln!("Unexpected Lighter payload: {e}"),
+        None => {
+            if let ServerMsg::Error { message } = msg {
+                // Lag notices do not always end the subscription (see below).
+                eprintln!("{message}");
+            }
+        }
+    }
+}
+```
+
+| Channel | `data` payload | Rate |
+|---------|----------------|------|
+| `lighter_orderbook` | `LighterLiveOrderBook`: `coin`, `time` (ms), `levels` = `[bids, asks]`, best first, up to 20 levels per side. Each level has `px` and `sz` as decimal strings exactly as Lighter publishes them, and `n`, which is always `1` (Lighter does not publish per-level order counts). Every message is a full book, not a diff. | The newest book at most once per interval (default 1000 ms, `interval_ms` 100 to 5000). The current book is sent right after subscribing when one is available. |
+| `lighter_trades` | `Vec<LighterLiveTrade>`: two fills per trade, one per side, with the same `tid`. `side` is `"A"` (ask side) or `"B"` (bid side), `crossed: true` is the taker fill, `users` holds the Lighter account index as a string, `oid` is that side's order id, `start_position` is that account's signed position before the trade, and `hash` is the Lighter transaction hash. `fee`, `fee_token`, `closed_pnl`, and `dir` are always `None`. | As trades happen, typically batched within about 100 ms. |
+| `lighter_open_interest`, `lighter_funding` | `LighterLiveMarketStats`: both channels carry the same message, `coin` plus `ctx` with `openInterest`, `funding`, `premium`, `markPx`, `oraclePx` (Lighter's index price), `midPx`, `dayNtlVlm` (24h quote volume), `dayBaseVlm` (24h base volume), `prevDayPx`, and `impactPxs` (always `null`). `funding` and `premium` are decimal fractions, the same unit as REST `funding_rate`. | As Lighter publishes them, about once per second per market. The latest values are sent right after subscribing when available. |
+
+Count trades by distinct `tid`, not by array length, and compute volume by summing
+`sz` over one fill per `tid`. Live trades are preliminary. The finalized record,
+including fields the live stream does not carry such as fees, is served by
+`client.lighter.trades.list(...)` (`GET /v1/lighter/trades/{symbol}`), which returns
+reconciled trades only; `client.lighter.trades.recent(...)` serves the preliminary tier.
+
+If your connection falls behind `lighter_trades`, `lighter_open_interest`, or
+`lighter_funding`, the server sends an `error` notice such as
+`Dropped ~N live lighter_trades messages for BTC: ...` and the subscription continues.
+If the lag persists, a notice such as `Stopped the lighter_trades stream for BTC: ...`
+ends that subscription; subscribe again to resume. `lighter_orderbook` never sends an
+older book in place of a newer one.
+
 ### Historical Replay
 
 Replay a bounded historical window with original timing preserved. Every replay
@@ -994,12 +1064,13 @@ let mut ws = OxArchiveWs::new(WsOptions::new("your-api-key"));
 ws.connect().await?;
 let mut rx = ws.rx.take().expect("receiver");
 
-// Lighter channels are replay-only; use Lighter REST for current data.
+// All six Lighter channels support replay. Replay rows keep their stored
+// shapes, which differ from the live Lighter payloads above.
 ws.replay(
     "lighter_orderbook",
     "BTC",
-    1704067200000,
-    Some(1704070800000),
+    1788048000000,       // 2026-08-30 00:00 UTC
+    Some(1788051600000), // 2026-08-30 01:00 UTC
     Some(100.0),
 ).await?;
 
@@ -1019,7 +1090,7 @@ while let Some(msg) = rx.recv().await {
 // Control playback for the active bounded replay
 ws.replay_pause().await?;
 ws.replay_resume().await?;
-ws.replay_seek(1704069000000).await?;
+ws.replay_seek(1788049800000).await?;
 ws.replay_stop().await?;
 ```
 
@@ -1035,11 +1106,11 @@ ws.replay_stop().await?;
 | `funding` | Funding rate snapshots | No | Yes |
 | `ticker` | Price and 24h volume | Yes | No |
 | `all_tickers` | All market tickers | Yes | No |
-| `lighter_orderbook` | Lighter.xyz L2 order book | No | Yes |
-| `lighter_trades` | Lighter.xyz trades | No | Yes |
+| `lighter_orderbook` | Lighter.xyz L2 order book | Yes | Yes |
+| `lighter_trades` | Lighter.xyz trades | Yes | Yes |
 | `lighter_candles` | Lighter.xyz candles | No | Yes |
-| `lighter_open_interest` | Lighter.xyz open interest | No | Yes |
-| `lighter_funding` | Lighter.xyz funding rates | No | Yes |
+| `lighter_open_interest` | Lighter.xyz open interest | Yes | Yes |
+| `lighter_funding` | Lighter.xyz funding rates | Yes | Yes |
 | `lighter_l3_orderbook` | Lighter.xyz L3 order-level orderbook | No | Yes |
 | `hip3_orderbook` | HIP-3 L2 order book | Yes | Yes |
 | `hip3_trades` | HIP-3 trades | Yes | Yes |
@@ -1062,7 +1133,7 @@ ws.replay_stop().await?;
 | `spot_l4_orders` | Hyperliquid Spot order lifecycle events | Yes | No, live-only |
 | `spot_twap` | Hyperliquid Spot TWAP execution updates | Yes | No |
 
-Current Lighter data is available through the Lighter REST resources. Historical Lighter data is available through REST, WebSocket replay, or exports.
+Current Lighter order books, trades, open interest, and funding are available as live subscriptions and through the Lighter REST resources; current Lighter candles and L3 order books are available through REST. Historical Lighter data is available through REST, WebSocket replay, or exports.
 
 HIP-4 has no funding or liquidation channels. HIP-4 candles and current outcome-side OI are available over REST from 2026-05-02; the live HIP-4 order-book and OI bridges are paused, while stored replay remains available. This HIP-4 channel set has no dedicated candle channel.
 

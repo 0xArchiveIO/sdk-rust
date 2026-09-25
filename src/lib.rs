@@ -71,8 +71,14 @@
 //! and bulk data download:
 //!
 //! ```toml
-//! oxarchive = { version = "1.10", features = ["websocket"] }
+//! oxarchive = { version = "1.11", features = ["websocket"] }
 //! ```
+//!
+//! Live subscriptions cover the supported Hyperliquid channels and four
+//! Lighter.xyz channels: `lighter_orderbook`, `lighter_trades`,
+//! `lighter_open_interest` and `lighter_funding`. Their payloads decode into
+//! [`LighterLiveData`]. `lighter_candles` and `lighter_l3_orderbook` remain
+//! replay-only.
 
 pub mod client;
 pub mod error;
@@ -98,6 +104,8 @@ pub use types::{
     L2OrderBookSnapshot, L2PriceLevel, L2DiffEntry, OrderHistoryEntry,
     LiquidationLevelBucket, LiquidationLevels, LiquidationLevelsHistoryItem,
     TriggerLevelBucket, TriggerLevels, TriggerLevelsHistoryItem,
+    LighterLiveAssetCtx, LighterLiveData, LighterLiveLevel, LighterLiveMarketStats,
+    LighterLiveOrderBook, LighterLiveTrade,
 };
 pub use resources::liquidations::{LevelsHistoryParams, LiquidationLevelsParams};
 pub use resources::orders::TriggerLevelsParams;
