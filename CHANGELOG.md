@@ -38,6 +38,17 @@ release includes their changes, listed in the sections below.
 - Lighter replay is unchanged. Replay rows keep their existing shapes, which
   differ from the live payloads.
 - Install snippets and rustdoc examples reference `1.11`.
+- `examples/websocket.rs` no longer includes a bulk streaming section, and the
+  README no longer describes bulk download or a per-tier batch size.
+
+### Deprecated
+- `OxArchiveWs::stream()` and `OxArchiveWs::stream_stop()`. The server has
+  discontinued bulk streaming over WebSocket and now answers these requests
+  with an error message instead of data. Both methods still compile and send
+  the request, so existing code keeps building, with a deprecation warning.
+  For large historical downloads, use the S3 Parquet bulk export at
+  https://www.0xarchive.io/data. For bounded windows over WebSocket, use
+  `replay()`. The `ServerMsg::Stream*` variants are no longer sent.
 
 ### Fixed
 - The README WebSocket channel table now lists Hyperliquid `open_interest`
