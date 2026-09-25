@@ -675,6 +675,180 @@ impl LighterGranularity {
 }
 
 // ---------------------------------------------------------------------------
+// Lighter live WebSocket payloads
+// ---------------------------------------------------------------------------
+
+/// One price level in a live `lighter_orderbook` message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LighterLiveLevel {
+    /// Price as a decimal string, exactly as Lighter publishes it.
+    pub px: String,
+    /// Size as a decimal string, exactly as Lighter publishes it.
+    pub sz: String,
+    /// Always `1`. Lighter does not publish per-level order counts.
+    pub n: i64,
+}
+
+/// The `data` payload of a live `lighter_orderbook` message.
+///
+/// Every message is a full book of up to 20 levels per side, not a diff. The
+/// server sends the newest book at most once per subscription interval (one
+/// second by default, see `OxArchiveWs::subscribe_with_interval`), and sends
+/// the current book right after subscribing when one is available.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LighterLiveOrderBook {
+    /// Symbol, uppercase.
+    pub coin: String,
+    /// Lighter's book update time in Unix milliseconds.
+    pub time: i64,
+    /// `[bids, asks]`: bids best (highest) first, asks best (lowest) first.
+    /// Use [`bids`](Self::bids) and [`asks`](Self::asks) to read each side.
+    pub levels: Vec<Vec<LighterLiveLevel>>,
+}
+
+impl LighterLiveOrderBook {
+    /// Bid levels, best (highest price) first.
+    pub fn bids(&self) -> &[LighterLiveLevel] {
+        self.levels.first().map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// Ask levels, best (lowest price) first.
+    pub fn asks(&self) -> &[LighterLiveLevel] {
+        self.levels.get(1).map(Vec::as_slice).unwrap_or(&[])
+    }
+}
+
+/// One fill in a live `lighter_trades` message.
+///
+/// Each `lighter_trades` message carries an array of fills with two fills per
+/// trade, one for each side, sharing the same `tid`. Count trades by distinct
+/// `tid`, not by array length, and compute volume by summing `sz` over one
+/// fill per `tid`.
+///
+/// Live fills are preliminary. The finalized record, including fields the
+/// live stream does not carry (such as fees), is served by
+/// `client.lighter.trades.list(...)`, which returns reconciled trades only;
+/// `client.lighter.trades.recent(...)` serves the preliminary tier.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LighterLiveTrade {
+    /// Symbol, uppercase.
+    pub coin: String,
+    /// `"A"` for the ask side, `"B"` for the bid side.
+    pub side: String,
+    /// Price as a decimal string.
+    pub px: String,
+    /// Size as a decimal string.
+    pub sz: String,
+    /// Trade time in Unix milliseconds.
+    pub time: i64,
+    /// Lighter transaction hash.
+    pub hash: Option<String>,
+    /// Trade id, shared by both fills of the trade.
+    pub tid: i64,
+    /// This side's order id.
+    pub oid: Option<i64>,
+    /// `true` for the taker fill, `false` for the maker fill.
+    pub crossed: bool,
+    /// Always `None` in live messages.
+    pub dir: Option<String>,
+    /// Always `None` in live messages. Fees are on the finalized REST record.
+    pub fee: Option<String>,
+    /// Always `None` in live messages.
+    pub fee_token: Option<String>,
+    /// Always `None` in live messages.
+    pub closed_pnl: Option<String>,
+    /// This account's signed position before the trade, as a decimal string.
+    pub start_position: Option<String>,
+    /// The Lighter account index for this fill, as a one-element list of
+    /// strings.
+    #[serde(default)]
+    pub users: Vec<String>,
+}
+
+/// The `data` payload of a live `lighter_open_interest` or `lighter_funding`
+/// message. Both channels carry the same message.
+///
+/// Updates arrive as Lighter publishes them, about once per second per
+/// market. The latest values are sent right after subscribing when available.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LighterLiveMarketStats {
+    /// Symbol, uppercase.
+    pub coin: String,
+    /// The market statistics.
+    pub ctx: LighterLiveAssetCtx,
+}
+
+/// Market statistics in a live Lighter open-interest or funding message.
+///
+/// Wire keys are camelCase (`openInterest`, `markPx`, ...). All values are
+/// decimal strings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LighterLiveAssetCtx {
+    /// Lighter's reported open interest, the same value as `open_interest`
+    /// from `client.lighter.open_interest.current(...)`.
+    pub open_interest: Option<String>,
+    /// Current funding rate as a decimal fraction, the same unit as
+    /// `funding_rate` from `client.lighter.funding.current(...)`. Lighter
+    /// publishes a percent; this value is that percent divided by 100.
+    pub funding: Option<String>,
+    /// Premium as a decimal fraction.
+    pub premium: Option<String>,
+    /// Mark price.
+    pub mark_px: Option<String>,
+    /// Lighter's index price.
+    pub oracle_px: Option<String>,
+    /// Mid price.
+    pub mid_px: Option<String>,
+    /// 24-hour quote volume.
+    pub day_ntl_vlm: Option<String>,
+    /// 24-hour base volume.
+    pub day_base_vlm: Option<String>,
+    /// Derived from the last trade price and Lighter's 24-hour percent change.
+    pub prev_day_px: Option<String>,
+    /// Always `None`. Lighter has no impact prices.
+    pub impact_pxs: Option<Vec<String>>,
+}
+
+/// A typed payload from a live Lighter WebSocket `data` message.
+///
+/// Decode with [`LighterLiveData::decode`], or with `ServerMsg::lighter_live_data`
+/// when the `websocket` feature is enabled. Replay messages keep their
+/// existing replay row shapes, which differ from these live payloads, so they
+/// are not decoded by this type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LighterLiveData {
+    /// A `lighter_orderbook` book.
+    OrderBook(LighterLiveOrderBook),
+    /// A `lighter_trades` batch: two fills per trade.
+    Trades(Vec<LighterLiveTrade>),
+    /// A `lighter_open_interest` update.
+    OpenInterest(LighterLiveMarketStats),
+    /// A `lighter_funding` update (same message as `lighter_open_interest`).
+    Funding(LighterLiveMarketStats),
+}
+
+impl LighterLiveData {
+    /// Decode the `data` field of a live `data` message.
+    ///
+    /// Returns `None` when `channel` is not one of `lighter_orderbook`,
+    /// `lighter_trades`, `lighter_open_interest` or `lighter_funding`, and
+    /// `Some(Err(..))` when the payload does not match the live shape.
+    pub fn decode(channel: &str, data: &serde_json::Value) -> Option<crate::Result<Self>> {
+        let decoded = match channel {
+            "lighter_orderbook" => LighterLiveOrderBook::deserialize(data).map(Self::OrderBook),
+            "lighter_trades" => Vec::<LighterLiveTrade>::deserialize(data).map(Self::Trades),
+            "lighter_open_interest" => {
+                LighterLiveMarketStats::deserialize(data).map(Self::OpenInterest)
+            }
+            "lighter_funding" => LighterLiveMarketStats::deserialize(data).map(Self::Funding),
+            _ => return None,
+        };
+        Some(decoded.map_err(|e| crate::Error::Deserialize(e.to_string())))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Convenience / summary types
 // ---------------------------------------------------------------------------
 
@@ -1163,4 +1337,47 @@ pub struct OrderHistoryEntry {
     pub is_trigger: bool,
     pub is_position_tpsl: bool,
     pub cloid: Option<String>,
+}
+
+#[cfg(test)]
+mod lighter_live_payload_tests {
+    use super::LighterLiveData;
+
+    #[test]
+    fn decode_works_without_the_websocket_feature() {
+        let book = serde_json::json!({
+            "coin": "BTC",
+            "time": 1790294171459_i64,
+            "levels": [
+                [{"px": "84368.7", "sz": "0.00020", "n": 1}],
+                [{"px": "84368.8", "sz": "0.05720", "n": 1}]
+            ]
+        });
+        match LighterLiveData::decode("lighter_orderbook", &book) {
+            Some(Ok(LighterLiveData::OrderBook(book))) => {
+                assert_eq!(book.bids()[0].px, "84368.7");
+                assert_eq!(book.asks()[0].sz, "0.05720");
+            }
+            other => panic!("unexpected decode result: {other:?}"),
+        }
+
+        let stats = serde_json::json!({
+            "coin": "BTC",
+            "ctx": {"openInterest": "172706178.266310", "funding": "0.000012", "impactPxs": null}
+        });
+        match LighterLiveData::decode("lighter_funding", &stats) {
+            Some(Ok(LighterLiveData::Funding(stats))) => {
+                assert_eq!(stats.ctx.funding.as_deref(), Some("0.000012"));
+                assert_eq!(stats.ctx.mark_px, None);
+            }
+            other => panic!("unexpected decode result: {other:?}"),
+        }
+
+        assert!(LighterLiveData::decode("lighter_candles", &stats).is_none());
+        assert!(LighterLiveData::decode("orderbook", &book).is_none());
+        assert!(matches!(
+            LighterLiveData::decode("lighter_trades", &stats),
+            Some(Err(crate::Error::Deserialize(_)))
+        ));
+    }
 }
