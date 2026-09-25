@@ -158,44 +158,8 @@ async fn main() -> oxarchive::Result<()> {
 
     ws.disconnect().await;
 
-    // --- Bulk streaming ---
-    let mut ws = OxArchiveWs::new(WsOptions::new(&api_key));
-    ws.connect().await?;
-
-    ws.stream(
-        "trades",
-        "ETH",
-        1704067200000, // 2024-01-01 00:00 UTC
-        1704153600000, // 2024-01-02 00:00 UTC
-        Some(5000),    // batch size
-    )
-    .await?;
-
-    let mut rx = ws.rx.take().expect("receiver");
-    let mut total = 0u64;
-
-    while let Some(msg) = rx.recv().await {
-        match &msg {
-            ServerMsg::StreamStarted { .. } => println!("Stream started"),
-            ServerMsg::HistoricalBatch { data, .. } => {
-                total += data.len() as u64;
-                println!("Batch: {} records (total: {total})", data.len());
-            }
-            ServerMsg::StreamProgress { snapshots_sent } => {
-                println!("Progress: {} sent", snapshots_sent.unwrap_or(0));
-            }
-            ServerMsg::StreamCompleted { snapshots_sent, .. } => {
-                println!("Stream complete: {} records", snapshots_sent.unwrap_or(0));
-                break;
-            }
-            ServerMsg::Error { message } => {
-                eprintln!("Stream error: {message}");
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    ws.disconnect().await;
+    // For large historical downloads, use the S3 Parquet bulk export at
+    // https://www.0xarchive.io/data. Bulk streaming over WebSocket has been
+    // discontinued.
     Ok(())
 }

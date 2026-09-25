@@ -1,5 +1,8 @@
-//! WebSocket client for supported live streaming, historical replay, and bulk
-//! data download.
+//! WebSocket client for supported live subscriptions and historical replay.
+//!
+//! For large historical downloads, use the S3 Parquet bulk export at
+//! <https://www.0xarchive.io/data>. The server no longer supports bulk
+//! streaming over WebSocket.
 //!
 //! Requires the `websocket` feature:
 //! ```toml
@@ -199,6 +202,9 @@ pub enum ClientMsg {
     ReplaySeek { timestamp: i64 },
     #[serde(rename = "replay.stop")]
     ReplayStop,
+    /// Bulk stream request. The server discontinued bulk streaming and
+    /// answers this message with an error; it is kept so existing code
+    /// still compiles.
     #[serde(rename = "stream")]
     Stream {
         channel: String,
@@ -207,6 +213,9 @@ pub enum ClientMsg {
         end: i64,
         batch_size: Option<usize>,
     },
+    /// Bulk stream stop request. The server discontinued bulk streaming and
+    /// answers this message with an error; it is kept so existing code
+    /// still compiles.
     #[serde(rename = "stream.stop")]
     StreamStop,
 }
@@ -317,20 +326,28 @@ pub enum ServerMsg {
         snapshots_sent: Option<i64>,
     },
     ReplayStopped,
+    /// No longer sent: the server discontinued bulk streaming. Kept so
+    /// existing matches still compile.
     StreamStarted {
         channel: String,
         coin: Option<String>,
         symbol: Option<String>,
     },
+    /// No longer sent: the server discontinued bulk streaming. Kept so
+    /// existing matches still compile.
     StreamProgress {
         snapshots_sent: Option<i64>,
     },
+    /// No longer sent: the server discontinued bulk streaming. Kept so
+    /// existing matches still compile.
     StreamCompleted {
         channel: String,
         coin: Option<String>,
         symbol: Option<String>,
         snapshots_sent: Option<i64>,
     },
+    /// No longer sent: the server discontinued bulk streaming. Kept so
+    /// existing matches still compile.
     StreamStopped {
         snapshots_sent: Option<i64>,
     },
@@ -385,10 +402,13 @@ type WsSink =
 
 /// A WebSocket client for the 0xArchive streaming API.
 ///
-/// Supports three modes on a single connection:
-/// - **Real-time** — subscribe to live market data
-/// - **Replay** — replay historical data with timing preserved
-/// - **Stream** — bulk-download historical data as fast as possible
+/// Supports two modes on a single connection:
+/// - **Real-time**: subscribe to live market data
+/// - **Replay**: replay historical data with timing preserved
+///
+/// Bulk streaming ([`stream`](Self::stream)) has been discontinued by the
+/// server. For large historical downloads, use the S3 Parquet bulk export at
+/// <https://www.0xarchive.io/data>.
 pub struct OxArchiveWs {
     options: WsOptions,
     sink: Arc<Mutex<Option<WsSink>>>,
@@ -610,7 +630,22 @@ impl OxArchiveWs {
         self.send(ClientMsg::ReplayStop).await
     }
 
-    /// Start a bulk data stream.
+    /// Start a bulk data stream. Deprecated: the server has discontinued bulk
+    /// streaming.
+    ///
+    /// This method still sends the request, but the server now answers it
+    /// with a [`ServerMsg::Error`] on the receiver instead of streaming data.
+    /// The message says bulk streaming has been discontinued and points to the
+    /// S3 Parquet bulk export. The returned `Result` only reports whether the
+    /// request was sent.
+    ///
+    /// For large historical downloads, use the S3 Parquet bulk export at
+    /// <https://www.0xarchive.io/data>. For bounded windows over WebSocket,
+    /// use [`replay`](Self::replay).
+    #[deprecated(
+        since = "1.11.0",
+        note = "the server has discontinued bulk streaming and answers this request with an error message; use the S3 Parquet bulk export at https://www.0xarchive.io/data for large downloads, or replay() for bounded windows"
+    )]
     pub async fn stream(
         &self,
         channel: &str,
@@ -629,7 +664,16 @@ impl OxArchiveWs {
         .await
     }
 
-    /// Stop an active bulk stream.
+    /// Stop an active bulk stream. Deprecated: the server has discontinued
+    /// bulk streaming.
+    ///
+    /// No bulk stream can be active, so the server answers this request with
+    /// a [`ServerMsg::Error`] on the receiver. To stop a replay, use
+    /// [`replay_stop`](Self::replay_stop).
+    #[deprecated(
+        since = "1.11.0",
+        note = "the server has discontinued bulk streaming and answers this request with an error message; use the S3 Parquet bulk export at https://www.0xarchive.io/data for large downloads"
+    )]
     pub async fn stream_stop(&self) -> Result<()> {
         self.send(ClientMsg::StreamStop).await
     }

@@ -22,7 +22,7 @@ oxarchive = "1.11"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
-For WebSocket support (real-time streaming, replay, bulk download):
+For WebSocket support (real-time streaming and replay):
 
 ```toml
 oxarchive = { version = "1.11", features = ["websocket"] }
@@ -955,7 +955,7 @@ Requires the `websocket` feature. Supports two modes on a single connection:
 - **Live subscriptions**: supported Hyperliquid and Lighter.xyz live market channels
 - **Replay**: bounded historical data with timing preserved
 
-For file-based historical exports, use the [Data Catalog](https://www.0xarchive.io/data).
+For large historical downloads, use the S3 Parquet bulk export in the [Data Catalog](https://www.0xarchive.io/data). Bulk streaming over WebSocket has been discontinued, and the deprecated `stream()` and `stream_stop()` methods now receive an error from the server.
 
 > Lighter.xyz live subscriptions are available for `lighter_orderbook`, `lighter_trades`, `lighter_open_interest`, and `lighter_funding`. `lighter_candles` and `lighter_l3_orderbook` remain replay-only. All six Lighter channels support historical replay.
 
@@ -1160,13 +1160,13 @@ while let Some(msg) = rx.recv().await {
 
 All self-serve tiers reach the published route families; Free covers the most recent rolling 30 days of history (30-day span per request or replay), and Build and above keep the retained archive. Schema availability remains family-specific; plans gate capacity and Free's 30-day history window, not route families, schemas, or served depth.
 
-| Tier | Max Subscriptions | Max Connections | Max Replay Speed | Max Batch Size |
-|------|------------------|-----------------|------------------|----------------|
-| Free | 10 | 2 | 10x | 2,000 |
-| Build | 500 | 3 | 50x | 2,000 |
-| Pro | 3,000 | 5 | 100x | 5,000 |
-| Scale | 20,000 | 16 | 300x | 10,000 |
-| Enterprise | Custom | Custom | from 500x | 10,000 |
+| Tier | Max Subscriptions | Max Connections | Max Replay Speed |
+|------|------------------|-----------------|------------------|
+| Free | 10 | 2 | 10x |
+| Build | 500 | 3 | 50x |
+| Pro | 3,000 | 5 | 100x |
+| Scale | 20,000 | 16 | 300x |
+| Enterprise | Custom | Custom | from 500x |
 
 On every tier, each WebSocket connection accepts at most 10 subscribe operations per second;
 faster bursts are rejected with a "Subscription rate limit exceeded" error.

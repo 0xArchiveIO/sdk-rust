@@ -67,8 +67,8 @@
 //!
 //! ## WebSocket (optional)
 //!
-//! Enable the `websocket` feature for real-time streaming, historical replay,
-//! and bulk data download:
+//! Enable the `websocket` feature for real-time streaming and historical
+//! replay:
 //!
 //! ```toml
 //! oxarchive = { version = "1.11", features = ["websocket"] }
@@ -79,6 +79,10 @@
 //! `lighter_open_interest` and `lighter_funding`. Their payloads decode into
 //! [`LighterLiveData`]. `lighter_candles` and `lighter_l3_orderbook` remain
 //! replay-only.
+//!
+//! Bulk streaming over WebSocket has been discontinued, so
+//! `OxArchiveWs::stream` is deprecated. For large historical downloads, use
+//! the S3 Parquet bulk export at <https://www.0xarchive.io/data>.
 
 pub mod client;
 pub mod error;
