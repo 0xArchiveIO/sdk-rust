@@ -33,6 +33,19 @@ async fn main() -> oxarchive::Result<()> {
     let lighter = client.lighter.instruments.list().await?;
     println!("\nLighter: {} instruments", lighter.len());
 
+    // Lighter on Robinhood Chain, the second Lighter deployment
+    let rh = client.rh_lighter.instruments.list().await?;
+    println!("Lighter (Robinhood Chain): {} instruments", rh.len());
+
+    // Account positions: BTC long/short summary from the latest live snapshot
+    let summary = client.hyperliquid.positions.market_summary("BTC", None).await?;
+    if let Some(s) = summary.data.first() {
+        println!(
+            "BTC positions: {} long, {} short (as of {:?})",
+            s.long_count, s.short_count, summary.meta.as_of
+        );
+    }
+
     // HIP-3
     let hip3 = client.hyperliquid.hip3.instruments.list().await?;
     println!("HIP-3: {} instruments", hip3.len());

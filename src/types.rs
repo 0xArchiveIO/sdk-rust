@@ -93,6 +93,123 @@ pub struct CursorResponse<T> {
     pub next_cursor: Option<String>,
 }
 
+/// The full `meta` block of a response.
+///
+/// Returned by the methods that give snapshot or finalization context with
+/// their data, such as the account positions resources. Every field is
+/// optional on the wire and is `None` (or `0` / empty for `count` and
+/// `request_id`) when the server did not send it. Instants are RFC 3339 UTC
+/// strings with milliseconds.
+///
+/// New fields may be added in minor releases, so the struct cannot be built
+/// with a literal outside this crate; start from `ResponseMeta::default()`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ResponseMeta {
+    /// Number of rows in `data`.
+    #[serde(default)]
+    pub count: usize,
+    /// Request identifier, useful when contacting support.
+    #[serde(default)]
+    pub request_id: String,
+    /// Pass this value as the `cursor` parameter to fetch the next page.
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+    /// Instant the returned state describes: the snapshot tick, the hour, or
+    /// the requested as-of time. Taken from the data, never the request time.
+    #[serde(default)]
+    pub as_of: Option<String>,
+    /// Committed snapshot the rows were read from. Market routes echo the
+    /// resolved `hour` here.
+    #[serde(default)]
+    pub snapshot_ts: Option<String>,
+    /// How the rows were produced: `snapshot`, `reconstructed` or `changes`.
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Completeness of the snapshot the response was read from: `complete`,
+    /// `partial` or `degraded`. Each row also carries its own `quality`.
+    #[serde(default)]
+    pub quality: Option<String>,
+    /// `true` when the latest live snapshot is older than 12 minutes. Paired
+    /// with `notice`.
+    #[serde(default)]
+    pub stale: Option<bool>,
+    /// Every event before this instant is built into the position change log
+    /// and the as-of state. Reads are clamped to it.
+    #[serde(default)]
+    pub built_through: Option<String>,
+    /// Every event before this instant is final and will not change. Data
+    /// after it is preliminary.
+    #[serde(default)]
+    pub finalized_through: Option<String>,
+    /// The `end` (or `timestamp`) you asked for, set only when it was clamped.
+    #[serde(default)]
+    pub requested_end: Option<String>,
+    /// The boundary the request was clamped to, set only when it was clamped.
+    /// On positions routes this is `built_through`; on Lighter trades it is
+    /// `finalized_through`.
+    #[serde(default)]
+    pub clamped_to: Option<String>,
+    /// Number of preliminary (not yet final) rows in this response.
+    #[serde(default)]
+    pub preliminary_row_count: Option<usize>,
+    /// Totals over the whole filtered result set, not just this page. Sent on
+    /// the first page of market position listings; read them typed with
+    /// [`ResponseMeta::position_totals`].
+    #[serde(default)]
+    pub totals: Option<serde_json::Value>,
+    /// Advisory about the response, for example that the requested time is
+    /// before coverage begins or that the live snapshot is stale.
+    #[serde(default)]
+    pub notice: Option<String>,
+    /// Coverage start for the requested data, sent with `notice`.
+    #[serde(default)]
+    pub coverage_from: Option<String>,
+}
+
+impl ResponseMeta {
+    /// Decode `totals` of a market position listing.
+    ///
+    /// Returns `None` when `totals` is absent (every page after the first) or
+    /// does not have the market summary shape.
+    pub fn position_totals(&self) -> Option<MarketPositionsSummary> {
+        self.totals
+            .as_ref()
+            .and_then(|t| MarketPositionsSummary::deserialize(t).ok())
+    }
+}
+
+/// Response envelope that keeps the whole `meta` block (internal use).
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct MetaEnvelope<T> {
+    pub data: T,
+    #[serde(default)]
+    pub meta: Option<ResponseMeta>,
+}
+
+/// A response with its data, the cursor for the next page, and the full
+/// `meta` block.
+#[derive(Debug, Clone)]
+pub struct MetaResponse<T> {
+    /// The response data.
+    pub data: T,
+    /// Pass this value as the `cursor` parameter to fetch the next page.
+    /// `None` means there are no more pages.
+    pub next_cursor: Option<String>,
+    /// Snapshot context, finalization boundaries and notices.
+    pub meta: ResponseMeta,
+}
+
+impl<T> MetaResponse<T> {
+    pub(crate) fn new(data: T, meta: ResponseMeta) -> Self {
+        Self {
+            data,
+            next_cursor: meta.next_cursor.clone(),
+            meta,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Timestamp helpers
 // ---------------------------------------------------------------------------
@@ -621,6 +738,111 @@ pub struct LiquidationVolume {
 }
 
 // ---------------------------------------------------------------------------
+// Lighter liquidations (mainnet and Robinhood Chain)
+// ---------------------------------------------------------------------------
+
+/// A single Lighter liquidation trade, from `client.lighter.liquidations` or
+/// `client.rh_lighter.liquidations`.
+///
+/// Lighter liquidation rows carry both accounts of the trade rather than a
+/// single liquidated user. `ask_account` and `bid_account` are Lighter
+/// account indices as strings. Rows backfilled from the venue's historical
+/// export have `source` `"bucket"` and an empty `raw_json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LighterLiquidation {
+    /// Market symbol, uppercase for perps (`BTC`).
+    pub symbol: String,
+    /// Trade time in Unix milliseconds.
+    pub timestamp: i64,
+    /// Transaction time in microseconds, for ordering within a block.
+    #[serde(default)]
+    pub transaction_time_us: Option<i64>,
+    pub trade_id: i64,
+    /// Liquidation type as published by Lighter.
+    #[serde(default)]
+    pub liquidation_type: Option<String>,
+    /// Price as a decimal string.
+    #[serde(deserialize_with = "deserialize_number_or_string")]
+    pub price: String,
+    /// Size in base units as a decimal string.
+    #[serde(deserialize_with = "deserialize_number_or_string")]
+    pub size: String,
+    /// Notional in the quote asset (USDC on mainnet, USDG on Robinhood Chain).
+    #[serde(default, deserialize_with = "deserialize_opt_number_or_string")]
+    pub usd_amount: Option<String>,
+    /// Account index on the ask side of the trade.
+    #[serde(default)]
+    pub ask_account: Option<String>,
+    /// Account index on the bid side of the trade.
+    #[serde(default)]
+    pub bid_account: Option<String>,
+    #[serde(default)]
+    pub ask_order_id: Option<i64>,
+    #[serde(default)]
+    pub bid_order_id: Option<i64>,
+    /// `true` when the maker was on the ask side.
+    #[serde(default)]
+    pub is_maker_ask: Option<bool>,
+    /// Taker's signed position before the trade.
+    #[serde(default)]
+    pub taker_position_size_before: Option<f64>,
+    /// Maker's signed position before the trade.
+    #[serde(default)]
+    pub maker_position_size_before: Option<f64>,
+    #[serde(default)]
+    pub taker_entry_quote_before: Option<f64>,
+    #[serde(default)]
+    pub maker_entry_quote_before: Option<f64>,
+    #[serde(default)]
+    pub taker_initial_margin_fraction_before: Option<i64>,
+    #[serde(default)]
+    pub maker_initial_margin_fraction_before: Option<i64>,
+    #[serde(default)]
+    pub taker_allocated_margin_usdc_before: Option<i64>,
+    #[serde(default)]
+    pub taker_allocated_margin_usdc_after: Option<i64>,
+    #[serde(default)]
+    pub maker_allocated_margin_usdc_before: Option<i64>,
+    #[serde(default)]
+    pub maker_allocated_margin_usdc_after: Option<i64>,
+    #[serde(default)]
+    pub taker_fee: Option<i64>,
+    #[serde(default)]
+    pub maker_fee: Option<i64>,
+    #[serde(default)]
+    pub taker_position_sign_changed: Option<bool>,
+    #[serde(default)]
+    pub maker_position_sign_changed: Option<bool>,
+    #[serde(default)]
+    pub block_height: Option<u64>,
+    #[serde(default)]
+    pub tx_hash: Option<String>,
+    /// The original trade object as JSON text. Empty on rows backfilled from
+    /// the venue's historical export (`source` `"bucket"`).
+    #[serde(default)]
+    pub raw_json: String,
+    /// Where the row came from: `"bucket"` for the venue's historical export,
+    /// `"ws"` for the live capture.
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+/// Lighter liquidation volume for one time bucket.
+///
+/// Lighter buckets carry the total and the count only; there is no long/short
+/// split.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LighterLiquidationVolume {
+    pub symbol: String,
+    /// Bucket start in Unix milliseconds.
+    pub timestamp: i64,
+    /// Total liquidated notional in the quote asset, as a decimal string.
+    #[serde(deserialize_with = "deserialize_number_or_string")]
+    pub total_usd: String,
+    pub count: i64,
+}
+
+// ---------------------------------------------------------------------------
 // Aggregation intervals (OI / funding)
 // ---------------------------------------------------------------------------
 
@@ -727,8 +949,9 @@ impl LighterLiveOrderBook {
 ///
 /// Live fills are preliminary. The finalized record, including fields the
 /// live stream does not carry (such as fees), is served by
-/// `client.lighter.trades.list(...)`, which returns reconciled trades only;
-/// `client.lighter.trades.recent(...)` serves the preliminary tier.
+/// `client.lighter.trades.list(...)` (Robinhood Chain:
+/// `client.rh_lighter.trades.list(...)`), which returns reconciled trades
+/// only; `trades.recent(...)` serves the preliminary tier.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LighterLiveTrade {
     /// Symbol, uppercase.
@@ -812,36 +1035,43 @@ pub struct LighterLiveAssetCtx {
 
 /// A typed payload from a live Lighter WebSocket `data` message.
 ///
+/// Both Lighter deployments use these shapes: the mainnet `lighter_*`
+/// channels and the Robinhood Chain `rh_lighter_*` channels. The message's
+/// `channel` tells the deployments apart.
+///
 /// Decode with [`LighterLiveData::decode`], or with `ServerMsg::lighter_live_data`
 /// when the `websocket` feature is enabled. Replay messages keep their
 /// existing replay row shapes, which differ from these live payloads, so they
 /// are not decoded by this type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LighterLiveData {
-    /// A `lighter_orderbook` book.
+    /// A `lighter_orderbook` or `rh_lighter_orderbook` book.
     OrderBook(LighterLiveOrderBook),
-    /// A `lighter_trades` batch: two fills per trade.
+    /// A `lighter_trades` or `rh_lighter_trades` batch: two fills per trade.
     Trades(Vec<LighterLiveTrade>),
-    /// A `lighter_open_interest` update.
+    /// A `lighter_open_interest` or `rh_lighter_open_interest` update.
     OpenInterest(LighterLiveMarketStats),
-    /// A `lighter_funding` update (same message as `lighter_open_interest`).
+    /// A `lighter_funding` or `rh_lighter_funding` update (same message as
+    /// the open-interest channel of the same deployment).
     Funding(LighterLiveMarketStats),
 }
 
 impl LighterLiveData {
     /// Decode the `data` field of a live `data` message.
     ///
-    /// Returns `None` when `channel` is not one of `lighter_orderbook`,
-    /// `lighter_trades`, `lighter_open_interest` or `lighter_funding`, and
+    /// Returns `None` when `channel` is not one of the live Lighter channels
+    /// (`lighter_orderbook`, `lighter_trades`, `lighter_open_interest`,
+    /// `lighter_funding`, or the same four with the `rh_lighter_` prefix), and
     /// `Some(Err(..))` when the payload does not match the live shape.
     pub fn decode(channel: &str, data: &serde_json::Value) -> Option<crate::Result<Self>> {
-        let decoded = match channel {
-            "lighter_orderbook" => LighterLiveOrderBook::deserialize(data).map(Self::OrderBook),
-            "lighter_trades" => Vec::<LighterLiveTrade>::deserialize(data).map(Self::Trades),
-            "lighter_open_interest" => {
-                LighterLiveMarketStats::deserialize(data).map(Self::OpenInterest)
-            }
-            "lighter_funding" => LighterLiveMarketStats::deserialize(data).map(Self::Funding),
+        let kind = channel
+            .strip_prefix("rh_lighter_")
+            .or_else(|| channel.strip_prefix("lighter_"))?;
+        let decoded = match kind {
+            "orderbook" => LighterLiveOrderBook::deserialize(data).map(Self::OrderBook),
+            "trades" => Vec::<LighterLiveTrade>::deserialize(data).map(Self::Trades),
+            "open_interest" => LighterLiveMarketStats::deserialize(data).map(Self::OpenInterest),
+            "funding" => LighterLiveMarketStats::deserialize(data).map(Self::Funding),
             _ => return None,
         };
         Some(decoded.map_err(|e| crate::Error::Deserialize(e.to_string())))
@@ -1337,6 +1567,353 @@ pub struct OrderHistoryEntry {
     pub is_trigger: bool,
     pub is_position_tpsl: bool,
     pub cloid: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Account positions
+// ---------------------------------------------------------------------------
+//
+// Numbers are decimal strings: sizes at the market's size precision, prices
+// at its price precision, USD values at 6 decimals. A flat position is "0".
+// Instants are RFC 3339 UTC strings with milliseconds.
+
+/// Leverage of a position.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PositionLeverage {
+    /// `cross` or `isolated`; `unknown` on reconstructed Hyperliquid rows.
+    /// Lighter reports its margin mode here.
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    /// Leverage multiple as a decimal string, when known.
+    #[serde(default)]
+    pub value: Option<String>,
+}
+
+/// Cumulative funding on a position, in USD.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CumulativeFunding {
+    pub all_time: Option<String>,
+    pub since_open: Option<String>,
+    pub since_change: Option<String>,
+}
+
+/// One open position, from the wallet or account routes.
+///
+/// `size` is signed (negative is short) and `side` is `long` or `short`.
+/// Hyperliquid rows identify the market with `symbol` (and `dex` on HIP-3);
+/// Lighter rows add `account_index`, `account_kind` and the Lighter margin
+/// fields. Fields a response cannot state are `None`: a reconstructed row
+/// (`meta.source` `reconstructed`) has exact size, entry and `opened_at`, a
+/// mark at the requested time, and no snapshot-only fields.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Position {
+    /// Hour the row describes, on history rows.
+    #[serde(default)]
+    pub snapshot_ts: Option<String>,
+    /// Lighter account index as a string.
+    #[serde(default)]
+    pub account_index: Option<String>,
+    /// Lighter account kind: `user`, `insurance`, `settlement` or `system`.
+    #[serde(default)]
+    pub account_kind: Option<String>,
+    pub symbol: String,
+    /// Same value as `symbol`.
+    #[serde(default)]
+    pub coin: String,
+    /// HIP-3 dex name. `None` on other venues.
+    #[serde(default)]
+    pub dex: Option<String>,
+    /// Signed size; negative is short.
+    pub size: String,
+    /// `long` or `short`.
+    pub side: String,
+    pub entry_price: Option<String>,
+    pub mark_price: Option<String>,
+    /// Time of `mark_price`.
+    #[serde(default)]
+    pub mark_time: Option<String>,
+    /// Absolute size times mark, in USD.
+    pub position_value: Option<String>,
+    pub unrealized_pnl: Option<String>,
+    #[serde(default)]
+    pub return_on_equity: Option<String>,
+    #[serde(default)]
+    pub leverage: PositionLeverage,
+    #[serde(default)]
+    pub max_leverage: Option<u32>,
+    #[serde(default)]
+    pub margin_used: Option<String>,
+    #[serde(default)]
+    pub liquidation_price: Option<String>,
+    /// How `liquidation_price` was determined: `exact`,
+    /// `not_published_cross`, `changed_since_snapshot` or `unavailable`.
+    #[serde(default)]
+    pub liquidation_price_status: String,
+    #[serde(default)]
+    pub cum_funding: CumulativeFunding,
+    /// Start of the current position lifecycle (the last open from flat).
+    /// `None` when it opened before coverage.
+    #[serde(default)]
+    pub opened_at: Option<String>,
+    /// Time the leverage, funding and margin fields describe, when it differs
+    /// from the snapshot.
+    #[serde(default)]
+    pub snapshot_as_of: Option<String>,
+    /// Row quality. Hyperliquid: `complete`, `partial` or `degraded`.
+    /// Lighter adds `preliminary`, `unreconciled` and `incomplete`.
+    pub quality: String,
+    /// Lighter: initial margin fraction at the last trade, as a fraction.
+    #[serde(default)]
+    pub initial_margin_fraction: Option<String>,
+    /// Lighter: allocated margin for an isolated position.
+    #[serde(default)]
+    pub allocated_margin: Option<String>,
+    /// Lighter: margin mode.
+    #[serde(default)]
+    pub margin_mode: Option<String>,
+    /// Lighter: where `mark_price` came from.
+    #[serde(default)]
+    pub mark_source: Option<String>,
+    /// Lighter: `true` once every trade behind the row is final.
+    #[serde(default)]
+    pub finalized: Option<bool>,
+}
+
+/// One position in a market-wide listing (`market` and `all`).
+///
+/// A lean record: Hyperliquid rows carry `user_address`, Lighter rows carry
+/// `account_index` and `account_kind`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MarketPosition {
+    /// Hour the row describes, on bulk rows.
+    #[serde(default)]
+    pub snapshot_ts: Option<String>,
+    /// Hyperliquid wallet address.
+    #[serde(default)]
+    pub user_address: Option<String>,
+    /// Lighter account index as a string.
+    #[serde(default)]
+    pub account_index: Option<String>,
+    #[serde(default)]
+    pub account_kind: Option<String>,
+    pub symbol: String,
+    #[serde(default)]
+    pub coin: String,
+    #[serde(default)]
+    pub dex: Option<String>,
+    /// Signed size; negative is short.
+    pub size: String,
+    /// `long` or `short`.
+    pub side: String,
+    pub entry_price: Option<String>,
+    pub mark_price: Option<String>,
+    pub position_value: Option<String>,
+    pub unrealized_pnl: Option<String>,
+    /// `cross` or `isolated` (Lighter: its margin mode).
+    #[serde(default)]
+    pub leverage_type: String,
+    #[serde(default)]
+    pub liquidation_price: Option<String>,
+    pub quality: String,
+}
+
+/// One position change (one fill leg) from the change log.
+///
+/// `side` is `B` or `A` exactly as on trades. Hyperliquid rows carry
+/// `direction`, `closed_pnl` and `crossed`; Lighter rows carry `realized_pnl`,
+/// `is_maker`, `fee_rate`, `fee_usdc`, `usdc_amount` and the
+/// `position_size_before` / `position_size_after` aliases.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PositionChange {
+    pub timestamp: String,
+    #[serde(default)]
+    pub account_index: Option<String>,
+    #[serde(default)]
+    pub account_kind: Option<String>,
+    pub symbol: String,
+    #[serde(default)]
+    pub coin: String,
+    #[serde(default)]
+    pub dex: Option<String>,
+    /// `B` (bid) or `A` (ask).
+    pub side: String,
+    pub price: Option<String>,
+    pub size: Option<String>,
+    /// Signed position before the leg.
+    pub start_position: Option<String>,
+    /// Signed position after the leg.
+    pub end_position: Option<String>,
+    /// Entry price after the leg; `None` when the position is flat.
+    #[serde(default)]
+    pub entry_price_after: Option<String>,
+    /// What the leg did to the position, for example `open`, `increase`,
+    /// `reduce`, `close` or `flip`. On Lighter, a leg that leaves the
+    /// position unchanged is `settlement` or `unchanged`.
+    pub event_type: String,
+    /// Why the leg happened: `trade`, `liquidation`,
+    /// `liquidation_counterparty`, `adl`, `settlement`, or `unknown` where
+    /// the source cannot tell.
+    #[serde(default)]
+    pub cause: String,
+    /// Hyperliquid trade direction, for example `Open Long`.
+    #[serde(default)]
+    pub direction: Option<String>,
+    /// Hyperliquid realized PnL on the leg.
+    #[serde(default)]
+    pub closed_pnl: Option<String>,
+    /// Lighter realized PnL on the leg.
+    #[serde(default)]
+    pub realized_pnl: Option<String>,
+    #[serde(default)]
+    pub fee: Option<String>,
+    #[serde(default)]
+    pub fee_token: String,
+    /// Hyperliquid: `true` for the taker leg.
+    #[serde(default)]
+    pub crossed: Option<bool>,
+    /// Lighter: `true` for the maker leg.
+    #[serde(default)]
+    pub is_maker: Option<bool>,
+    pub trade_id: i64,
+    #[serde(default)]
+    pub order_id: Option<i64>,
+    #[serde(default)]
+    pub opened_at: Option<String>,
+    /// Hyperliquid: execution order of the legs that share a timestamp.
+    #[serde(default)]
+    pub seq: Option<u64>,
+    /// Hyperliquid block number, when known.
+    #[serde(default)]
+    pub block_number: Option<u64>,
+    /// Position of the event within its block, when known.
+    #[serde(default)]
+    pub event_index: Option<u64>,
+    /// `ok`, `inferred`, `first_seen` or `quarantined`.
+    #[serde(default)]
+    pub continuity: String,
+    #[serde(default)]
+    pub position_size_before: Option<String>,
+    #[serde(default)]
+    pub position_size_after: Option<String>,
+    #[serde(default)]
+    pub fee_rate: Option<String>,
+    #[serde(default)]
+    pub fee_usdc: Option<String>,
+    #[serde(default)]
+    pub usdc_amount: Option<String>,
+    /// `true` once the leg is final.
+    #[serde(default)]
+    pub finalized: Option<bool>,
+}
+
+/// Account summary.
+///
+/// Hyperliquid returns one per (address, dex): the margin fields describe
+/// that clearinghouse. `withdrawable` is only recorded for part of the
+/// history. Lighter summaries carry the position aggregates only.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AccountSummary {
+    /// Hour the row describes, on history rows.
+    #[serde(default)]
+    pub snapshot_ts: Option<String>,
+    #[serde(default)]
+    pub account_index: Option<String>,
+    /// HIP-3 dex name.
+    #[serde(default)]
+    pub dex: Option<String>,
+    #[serde(default)]
+    pub account_value: Option<String>,
+    #[serde(default)]
+    pub cross_account_value: Option<String>,
+    #[serde(default)]
+    pub collateral: Option<String>,
+    #[serde(default)]
+    pub total_margin_used: Option<String>,
+    #[serde(default)]
+    pub cross_maintenance_margin_used: Option<String>,
+    #[serde(default)]
+    pub withdrawable: Option<String>,
+    pub total_position_value: Option<String>,
+    pub total_unrealized_pnl: Option<String>,
+    pub long_value: Option<String>,
+    pub short_value: Option<String>,
+    pub n_positions: u64,
+    #[serde(default)]
+    pub account_mode: Option<String>,
+    #[serde(default)]
+    pub snapshot_as_of: Option<String>,
+    pub quality: String,
+}
+
+/// Long and short aggregates of one market at one snapshot.
+///
+/// Returned by `market_summary` and, for market listings, in `meta.totals`
+/// (see [`ResponseMeta::position_totals`]). Average entries cover exactly
+/// the positions counted in `*_positions_with_entry`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MarketPositionsSummary {
+    #[serde(default)]
+    pub snapshot_ts: Option<String>,
+    pub symbol: String,
+    #[serde(default)]
+    pub coin: String,
+    #[serde(default)]
+    pub dex: Option<String>,
+    pub long_count: u64,
+    pub short_count: u64,
+    pub long_size: String,
+    pub short_size: String,
+    pub long_value: Option<String>,
+    pub short_value: Option<String>,
+    pub long_avg_entry_price: Option<String>,
+    pub short_avg_entry_price: Option<String>,
+    #[serde(default)]
+    pub long_positions_with_entry: u64,
+    #[serde(default)]
+    pub short_positions_with_entry: u64,
+    /// Share of long value held by the ten largest long positions, 0 to 1.
+    pub long_top10_value_share: Option<String>,
+    /// Share of short value held by the ten largest short positions, 0 to 1.
+    pub short_top10_value_share: Option<String>,
+    /// Share of total value held by the ten largest positions, 0 to 1.
+    pub top10_value_share: Option<String>,
+    pub quality: String,
+}
+
+/// `data` of the current or as-of wallet (account) positions route.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WalletPositions {
+    pub positions: Vec<Position>,
+    /// Account summary on the first page. Hyperliquid core always has one;
+    /// HIP-3 has one only when the request names a `dex`. `None` on
+    /// reconstructed responses.
+    #[serde(default)]
+    pub account: Option<AccountSummary>,
+    /// Set when `positions` is empty: `flat` (seen before, no open
+    /// positions), `never_seen` (no recorded activity in the covered history;
+    /// see `meta.notice` and `meta.coverage_from`), or `outside_coverage`.
+    #[serde(default)]
+    pub account_seen: Option<String>,
+}
+
+/// One Lighter account owned by an L1 address.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LighterL1Account {
+    /// Account index as a string.
+    pub account_index: String,
+    /// Lighter account type.
+    pub account_type: u32,
+    #[serde(default)]
+    pub first_seen: Option<String>,
+}
+
+/// Lighter accounts owned by an L1 address.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LighterL1Accounts {
+    pub l1_address: String,
+    /// Accounts owned in total, across every page.
+    pub total_accounts: u64,
+    pub accounts: Vec<LighterL1Account>,
 }
 
 #[cfg(test)]

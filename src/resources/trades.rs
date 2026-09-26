@@ -56,7 +56,8 @@ impl TradesResource {
 
     /// Get recent trades.
     ///
-    /// Only available on Lighter.xyz (`/v1/lighter`) and HIP-3
+    /// Only available on Lighter.xyz (`/v1/lighter` and `/v1/rh-lighter`),
+    /// where it serves the preliminary tier, and HIP-3
     /// (`/v1/hyperliquid/hip3`). The Hyperliquid base namespace
     /// (`/v1/hyperliquid`) does **not** expose a `/recent` endpoint;
     /// calling `client.hyperliquid.trades.recent(...)` returns

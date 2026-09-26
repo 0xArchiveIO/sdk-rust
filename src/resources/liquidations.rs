@@ -1,8 +1,8 @@
 use crate::error::Result;
 use crate::http::HttpClient;
 use crate::types::{
-    CursorResponse, Liquidation, LiquidationLevels, LiquidationLevelsHistoryItem,
-    LiquidationVolume, Timestamp,
+    CursorResponse, LighterLiquidation, LighterLiquidationVolume, Liquidation, LiquidationLevels,
+    LiquidationLevelsHistoryItem, LiquidationVolume, Timestamp,
 };
 
 /// Parameters for paginated liquidation history.
@@ -102,7 +102,9 @@ impl LevelsHistoryParams {
     }
 }
 
-/// Access to liquidation endpoints (Hyperliquid only).
+/// Access to Hyperliquid and HIP-3 liquidation endpoints.
+///
+/// Lighter uses [`LighterLiquidationsResource`], which has its own row shape.
 #[derive(Debug, Clone)]
 pub struct LiquidationsResource {
     http: HttpClient,
@@ -245,6 +247,83 @@ impl LiquidationsResource {
             .http
             .get_with_cursor(
                 &format!("{}/liquidations/{}/levels/history", self.prefix, symbol),
+                &qp,
+            )
+            .await?;
+        Ok(CursorResponse { data, next_cursor })
+    }
+}
+
+/// Access to Lighter liquidation endpoints, on both deployments
+/// (`client.lighter.liquidations` and `client.rh_lighter.liquidations`).
+///
+/// Mainnet history starts on 2026-06-10. Robinhood Chain history starts at
+/// the venue launch, 2026-06-26 20:10:26 UTC. Rows backfilled from the
+/// venue's historical export have `source` `"bucket"` and an empty
+/// `raw_json`.
+#[derive(Debug, Clone)]
+pub struct LighterLiquidationsResource {
+    http: HttpClient,
+    prefix: String,
+}
+
+impl LighterLiquidationsResource {
+    pub(crate) fn new(http: HttpClient, prefix: &str) -> Self {
+        Self {
+            http,
+            prefix: prefix.to_string(),
+        }
+    }
+
+    /// Get paginated liquidation trades for a market, oldest first.
+    pub async fn history(
+        &self,
+        symbol: &str,
+        params: LiquidationHistoryParams,
+    ) -> Result<CursorResponse<Vec<LighterLiquidation>>> {
+        let mut qp = vec![
+            ("start", params.start.to_millis().to_string()),
+            ("end", params.end.to_millis().to_string()),
+        ];
+        if let Some(c) = &params.cursor {
+            qp.push(("cursor", c.clone()));
+        }
+        if let Some(l) = params.limit {
+            qp.push(("limit", l.to_string()));
+        }
+        let (data, next_cursor) = self
+            .http
+            .get_with_cursor(&format!("{}/liquidations/{}", self.prefix, symbol), &qp)
+            .await?;
+        Ok(CursorResponse { data, next_cursor })
+    }
+
+    /// Get liquidation volume by time bucket (`interval` defaults to `1h`).
+    ///
+    /// Each bucket carries the total notional and the count; Lighter buckets
+    /// have no long/short split.
+    pub async fn volume(
+        &self,
+        symbol: &str,
+        params: LiquidationVolumeParams,
+    ) -> Result<CursorResponse<Vec<LighterLiquidationVolume>>> {
+        let mut qp = vec![
+            ("start", params.start.to_millis().to_string()),
+            ("end", params.end.to_millis().to_string()),
+        ];
+        if let Some(i) = &params.interval {
+            qp.push(("interval", i.clone()));
+        }
+        if let Some(c) = &params.cursor {
+            qp.push(("cursor", c.clone()));
+        }
+        if let Some(l) = params.limit {
+            qp.push(("limit", l.to_string()));
+        }
+        let (data, next_cursor) = self
+            .http
+            .get_with_cursor(
+                &format!("{}/liquidations/{}/volume", self.prefix, symbol),
                 &qp,
             )
             .await?;
