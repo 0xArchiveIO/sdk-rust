@@ -1081,8 +1081,8 @@ impl LighterClient {
 /// pairs (`AAPL-USDG`). Market ids and symbols are separate from mainnet, so
 /// the same symbol can name a different market on each deployment.
 ///
-/// Coverage: trades from 2026-06-26 20:10:26 UTC (the venue launch);
-/// liquidations, order book, open interest and funding from
+/// Coverage: trades and liquidations from 2026-06-26 20:10:26 UTC (the venue
+/// launch); order book, open interest and funding from
 /// 2026-08-22 18:43 UTC; candles from 2026-06-26 once candle history is
 /// enabled for this deployment. Trades behave as on mainnet: `list` is final
 /// up to the finalization boundary and `recent` is the preliminary tier; read
@@ -1104,7 +1104,8 @@ pub struct RhLighterClient {
     pub open_interest: OpenInterestResource,
     /// OHLCV candle history (maximum 10,000 rows per page).
     pub candles: CandlesResource,
-    /// Liquidation trades and liquidation volume (from 2026-08-22 18:43 UTC).
+    /// Liquidation trades and liquidation volume (from the venue launch,
+    /// 2026-06-26 20:10:26 UTC).
     pub liquidations: LighterLiquidationsResource,
     /// Account positions by account index, market listings and summaries.
     pub positions: LighterPositionsResource,

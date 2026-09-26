@@ -288,11 +288,11 @@ async fn hyperliquid_recent_with_meta_is_rejected_before_sending() {
 // Lighter liquidations (both deployments)
 // ---------------------------------------------------------------------------
 
-fn liquidation_row(source: &str, raw_json: &str) -> Value {
+fn liquidation_row(timestamp: i64, source: &str, raw_json: &str) -> Value {
     json!({
         "symbol": "BTC",
-        "timestamp": 1788221000123_i64,
-        "transaction_time_us": 1788221000123456_i64,
+        "timestamp": timestamp,
+        "transaction_time_us": timestamp * 1000 + 456,
         "trade_id": 987654321,
         "liquidation_type": "liquidation",
         "price": 108250.5,
@@ -330,13 +330,15 @@ async fn both_lighter_clients_expose_liquidation_history_and_volume() {
     for prefix in ["/v1/lighter", "/v1/rh-lighter"] {
         Mock::given(method("GET"))
             .and(path(format!("{prefix}/liquidations/BTC")))
-            .and(query_param("start", "1788220800000"))
+            .and(query_param("start", "1782504626000"))
             .and(query_param("end", "1788307200000"))
             .and(query_param("limit", "500"))
             .respond_with(ok(
+                // Robinhood Chain's first liquidation, from before live
+                // capture (backfilled), then a live-captured row.
                 json!([
-                    liquidation_row("bucket", ""),
-                    liquidation_row("ws", "{\"trade_id\":1}")
+                    liquidation_row(1782602083534, "bucket", ""),
+                    liquidation_row(1788221000123, "ws", "{\"trade_id\":1}")
                 ]),
                 json!({"count": 2, "request_id": "liq", "next_cursor": "1788221000123_987654321"}),
             ))
@@ -361,7 +363,8 @@ async fn both_lighter_clients_expose_liquidation_history_and_volume() {
             .history(
                 "BTC",
                 LiquidationHistoryParams {
-                    start: 1788220800000_i64.into(),
+                    // The Robinhood Chain floor: 2026-06-26 20:10:26 UTC.
+                    start: 1782504626000_i64.into(),
                     end: 1788307200000_i64.into(),
                     cursor: None,
                     limit: Some(500),
@@ -373,7 +376,7 @@ async fn both_lighter_clients_expose_liquidation_history_and_volume() {
         let backfilled = &page.data[0];
         assert_eq!(backfilled.source.as_deref(), Some("bucket"));
         assert_eq!(backfilled.raw_json, "");
-        assert_eq!(backfilled.timestamp, 1788221000123);
+        assert_eq!(backfilled.timestamp, 1782602083534);
         assert_eq!(backfilled.price, "108250.5");
         assert_eq!(backfilled.size, "0.25");
         assert_eq!(backfilled.usd_amount.as_deref(), Some("27062.625"));
@@ -1223,11 +1226,14 @@ fn public_copy_describes_robinhood_chain_as_a_lighter_deployment() {
     assert!(normalized.contains("Lighter has two deployments: mainnet"));
     assert!(normalized.contains("2026-06-26 20:10:26 UTC"));
     assert!(normalized.contains("2026-08-22 18:43 UTC"));
-    // Robinhood Chain liquidations are served from 2026-08-22 18:43 UTC, like
-    // the order book; the API refuses an earlier start.
+    // Robinhood Chain liquidations share the trades floor (the venue launch);
+    // only the order book, open interest and funding start at live capture.
     assert!(normalized.contains(
-        "Robinhood Chain history on 2026-08-22 18:43 UTC; a `start` before that returns an error"
+        "Robinhood Chain history at the venue launch, 2026-06-26 20:10:26 UTC; a `start` before that returns an error"
     ));
+    assert!(
+        normalized.contains("Trades and liquidations from 2026-06-26 20:10:26 UTC (venue launch)")
+    );
     let changelog = include_str!("../CHANGELOG.md")
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -1238,8 +1244,15 @@ fn public_copy_describes_robinhood_chain_as_a_lighter_deployment() {
         include_str!("../src/exchanges.rs"),
         include_str!("../src/resources/liquidations.rs"),
     ] {
-        assert!(!text.contains("rades and liquidations from 2026-06-26"));
-        assert!(!text.contains("rades and liquidations are served from"));
+        let flat = text
+            .replace("///", " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(!flat.contains("liquidations, order book, open interest"));
+        assert!(!flat.contains("liquidations, order book, OI"));
+        assert!(!flat.contains("history on 2026-08-22"));
+        assert!(!flat.contains("volume (from 2026-08-22"));
     }
     assert!(normalized
         .contains("| `rh_lighter_orderbook` | Lighter on Robinhood Chain L2 order book | Yes |"));

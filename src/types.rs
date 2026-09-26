@@ -749,8 +749,10 @@ pub struct LiquidationVolume {
 ///
 /// Lighter liquidation rows carry both accounts of the trade rather than a
 /// single liquidated user. `ask_account` and `bid_account` are Lighter
-/// account indices as strings. A row backfilled from the venue's historical
-/// export has `source` `"bucket"` and an empty `raw_json`.
+/// account indices as strings. A row backfilled from the venue's finalized
+/// export (on Robinhood Chain, the span before live capture) has `source`
+/// `"bucket"` and an empty `raw_json`; a row captured live has `source`
+/// `"ws"` and the venue's raw JSON.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LighterLiquidation {
     /// Market symbol, uppercase for perps (`BTC`).
@@ -821,11 +823,12 @@ pub struct LighterLiquidation {
     #[serde(default)]
     pub tx_hash: Option<String>,
     /// The original trade object as JSON text. Empty on rows backfilled from
-    /// the venue's historical export (`source` `"bucket"`).
+    /// the venue's finalized export (`source` `"bucket"`).
     #[serde(default)]
     pub raw_json: String,
-    /// Where the row came from: `"bucket"` for the venue's historical export,
-    /// `"ws"` for the live capture.
+    /// Where the row came from: `"ws"` for the live capture, `"bucket"` for
+    /// rows backfilled from the venue's finalized export (on Robinhood Chain,
+    /// the span before live capture).
     #[serde(default)]
     pub source: Option<String>,
 }

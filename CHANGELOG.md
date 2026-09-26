@@ -12,8 +12,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `trades`, `instruments`, `funding`, `open_interest`, `candles`,
   `liquidations`, `positions`, `freshness()`, `summary()` and
   `price_history()`. Markets are quoted in USDG, with uppercase perp symbols
-  (`BTC`) and dashed spot pairs (`AAPL-USDG`). Trades are served from the
-  venue launch on 2026-06-26 20:10:26 UTC; liquidations, order book, open
+  (`BTC`) and dashed spot pairs (`AAPL-USDG`). Trades and liquidations are
+  served from the venue launch on 2026-06-26 20:10:26 UTC; order book, open
   interest and funding from 2026-08-22 18:43 UTC; candles from 2026-06-26
   once candle history is enabled for this deployment. `trades.list()` is
   final up to the finalization boundary and `trades.recent()` is the
@@ -21,9 +21,11 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 - `liquidations` on both Lighter clients (`LighterLiquidationsResource`), with
   `history()` returning `LighterLiquidation` rows and `volume()` returning
   `LighterLiquidationVolume` buckets. Mainnet history starts on 2026-06-10
-  and Robinhood Chain history on 2026-08-22 18:43 UTC. A row backfilled from
-  the venue's historical export has `source` `"bucket"` and an empty
-  `raw_json`.
+  and Robinhood Chain history at the venue launch, 2026-06-26 20:10:26 UTC.
+  On Robinhood Chain, rows from before live capture were backfilled from the
+  venue's finalized export and have `source` `"bucket"` and an empty
+  `raw_json`; rows captured live have `source` `"ws"` and the venue's raw
+  JSON.
 - `TradesResource::list_with_meta()` and `TradesResource::recent_with_meta()`,
   which return the same rows as `list()` and `recent()` as a
   `MetaResponse<Vec<Trade>>` with the full response `meta`. On both Lighter

@@ -102,7 +102,7 @@ When prototyping Rust services from Claude Code, ChatGPT Codex, or another codin
 | Hyperliquid HIP-4 | May 2, 2026+ | Candles and outcome-side OI are served from 2026-05-02; OI updates at ~10s. No funding or liquidations. |
 | Hyperliquid Spot | Trades March 2025+; candles from exactly 2025-03-22T10:50:22Z; orderbook, L4, TWAP, and freshness from May 2026 | 326 authenticated inventory rows using dashed symbols (`HYPE-USDC`, `PURR-USDC`, ...). No funding, OI, or liquidations. |
 | Lighter.xyz (mainnet) | Candles from 2025-08-01; observed global per-fill trade floor January 17, 2025; exact starts vary by market. L3 from March 5, 2026+; liquidations from 2026-06-10 | Maker/taker trade context; L3 caps at 250 orders per side; funding/OI update at ~10s. |
-| Lighter.xyz (Robinhood Chain) | Trades from 2026-06-26 20:10:26 UTC (venue launch); liquidations, order book, OI, and funding from 2026-08-22 18:43 UTC; candles from 2026-06-26 once enabled | Second Lighter deployment, quoted in USDG: 84 markets, 57 perps (`BTC`) and 27 spot pairs (`AAPL-USDG`). No L3. |
+| Lighter.xyz (Robinhood Chain) | Trades and liquidations from 2026-06-26 20:10:26 UTC (venue launch); order book, OI, and funding from 2026-08-22 18:43 UTC; candles from 2026-06-26 once enabled | Second Lighter deployment, quoted in USDG: 84 markets, 57 perps (`BTC`) and 27 spot pairs (`AAPL-USDG`). No L3. |
 | Account positions | Hyperliquid core change log from 2025-05-25, HIP-3 from 2025-10-13, hourly snapshots from 2026-06-07, live every 5 minutes. Lighter mainnet from 2025-01-17, Robinhood Chain from 2026-06-26, hourly, live every 2 minutes | Perp positions per wallet or account, as of any time in coverage. See [Account Positions](#account-positions). |
 
 ## Configuration
@@ -534,15 +534,18 @@ minutes. This is an observed cadence, not an exact five-minute guarantee.
 
 Liquidation trades and liquidation volume on both Lighter deployments, through
 `client.lighter.liquidations` and `client.rh_lighter.liquidations`. Mainnet
-history starts on 2026-06-10 and Robinhood Chain history on
-2026-08-22 18:43 UTC; a `start` before that returns an error.
+history starts on 2026-06-10 and Robinhood Chain history at the venue launch,
+2026-06-26 20:10:26 UTC; a `start` before that returns an error.
 
 Lighter rows have their own shape, `LighterLiquidation`: both accounts of the
 trade (`ask_account`, `bid_account`, as account indices), each side's
 position before the trade, `usd_amount`, `tx_hash`, and `source`, which says
-where the row came from. A row backfilled from the venue's historical export
-has `source` `"bucket"` and an empty `raw_json`. Volume buckets (`LighterLiquidationVolume`) carry
-`total_usd` and `count`, with no long/short split.
+where the row came from. On Robinhood Chain, rows from before live capture
+were backfilled from the venue's finalized export and have `source`
+`"bucket"` and an empty `raw_json`; rows captured live have `source` `"ws"`
+and the venue's raw JSON in `raw_json`. Volume buckets
+(`LighterLiquidationVolume`) carry `total_usd` and `count`, with no
+long/short split.
 
 ```rust
 use oxarchive::resources::liquidations::{LiquidationHistoryParams, LiquidationVolumeParams};
@@ -957,8 +960,8 @@ this deployment.
   (`BTC`, `ETH`) and 27 spot pairs with dashed symbols (`AAPL-USDG`). List them
   with `client.rh_lighter.instruments.list()`. Market ids and symbols are
   separate from mainnet, so query each deployment through its own client.
-- **Coverage:** trades from 2026-06-26 20:10:26 UTC (the venue launch);
-  liquidations, order book, open interest, and funding from
+- **Coverage:** trades and liquidations from 2026-06-26 20:10:26 UTC (the
+  venue launch); order book, open interest, and funding from
   2026-08-22 18:43 UTC; candles from 2026-06-26 once candle history is enabled
   for this deployment.
 - **Trades:** as on mainnet, `trades.list()` returns final trades up to the

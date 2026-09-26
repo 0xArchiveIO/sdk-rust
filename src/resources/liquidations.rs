@@ -257,10 +257,12 @@ impl LiquidationsResource {
 /// Access to Lighter liquidation endpoints, on both deployments
 /// (`client.lighter.liquidations` and `client.rh_lighter.liquidations`).
 ///
-/// Mainnet history starts on 2026-06-10 and Robinhood Chain history on
-/// 2026-08-22 18:43 UTC; a `start` before that returns an error. `source`
-/// says where each row came from: a row backfilled from the venue's
-/// historical export has `source` `"bucket"` and an empty `raw_json`.
+/// Mainnet history starts on 2026-06-10 and Robinhood Chain history at the
+/// venue launch, 2026-06-26 20:10:26 UTC; a `start` before that returns an
+/// error. `source` says where each row came from: on Robinhood Chain, rows
+/// from before live capture were backfilled from the venue's finalized export
+/// and have `source` `"bucket"` and an empty `raw_json`; rows captured live
+/// have `source` `"ws"` and the venue's raw JSON in `raw_json`.
 #[derive(Debug, Clone)]
 pub struct LighterLiquidationsResource {
     http: HttpClient,
