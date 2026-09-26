@@ -997,7 +997,9 @@ pub struct LighterClient {
     pub orderbook: OrderBookResource,
     /// Trades. `list` returns final trades only and clamps `end` to the
     /// finalization boundary (about a day behind); `recent` serves the
-    /// preliminary tier.
+    /// preliminary tier. `list_with_meta` and `recent_with_meta` also return
+    /// the boundary (`meta.finalized_through`), the clamp (`meta.clamped_to`)
+    /// and `meta.preliminary_row_count`.
     pub trades: TradesResource,
     pub instruments: LighterInstrumentsResource,
     pub funding: FundingResource,
@@ -1079,25 +1081,30 @@ impl LighterClient {
 /// pairs (`AAPL-USDG`). Market ids and symbols are separate from mainnet, so
 /// the same symbol can name a different market on each deployment.
 ///
-/// Coverage: trades and liquidations from 2026-06-26 20:10:26 UTC (the
-/// venue launch); order book, open interest and funding from
+/// Coverage: trades from 2026-06-26 20:10:26 UTC (the venue launch);
+/// liquidations, order book, open interest and funding from
 /// 2026-08-22 18:43 UTC; candles from 2026-06-26 once candle history is
 /// enabled for this deployment. Trades behave as on mainnet: `list` is final
-/// up to `meta.finalized_through`, and `recent` is the preliminary tier.
+/// up to the finalization boundary and `recent` is the preliminary tier; read
+/// the boundary with `trades.list_with_meta()` (`meta.finalized_through`,
+/// `meta.clamped_to`) and `trades.recent_with_meta()`
+/// (`meta.preliminary_row_count`).
 #[derive(Debug, Clone)]
 pub struct RhLighterClient {
     http: HttpClient,
     pub orderbook: OrderBookResource,
     /// Trades. `list` returns final trades only and clamps `end` to the
     /// finalization boundary (about a day behind); `recent` serves the
-    /// preliminary tier.
+    /// preliminary tier. `list_with_meta` and `recent_with_meta` also return
+    /// the boundary (`meta.finalized_through`), the clamp (`meta.clamped_to`)
+    /// and `meta.preliminary_row_count`.
     pub trades: TradesResource,
     pub instruments: LighterInstrumentsResource,
     pub funding: FundingResource,
     pub open_interest: OpenInterestResource,
     /// OHLCV candle history (maximum 10,000 rows per page).
     pub candles: CandlesResource,
-    /// Liquidation trades and liquidation volume.
+    /// Liquidation trades and liquidation volume (from 2026-08-22 18:43 UTC).
     pub liquidations: LighterLiquidationsResource,
     /// Account positions by account index, market listings and summaries.
     pub positions: LighterPositionsResource,

@@ -188,6 +188,102 @@ async fn rh_lighter_history_routes_send_the_same_params_as_mainnet() {
         .unwrap();
 }
 
+#[tokio::test]
+async fn trades_with_meta_expose_the_lighter_finalization_boundary() {
+    let server = MockServer::start().await;
+    let trade = json!({
+        "coin": "BTC",
+        "side": "B",
+        "price": "100",
+        "size": "1",
+        "timestamp": "2026-09-25T09:00:00Z"
+    });
+    for prefix in ["/v1/lighter", "/v1/rh-lighter"] {
+        Mock::given(method("GET"))
+            .and(path(format!("{prefix}/trades/BTC")))
+            .and(query_param("start", "1790294400000"))
+            .and(query_param("end", "1790380800000"))
+            .and(query_param("limit", "1000"))
+            .respond_with(ok(
+                json!([trade.clone()]),
+                json!({
+                    "count": 1,
+                    "request_id": "t",
+                    "finalized_through": "2026-09-25T10:00:00.000Z",
+                    "requested_end": "2026-09-26T00:00:00.000Z",
+                    "clamped_to": "2026-09-25T10:00:00.000Z"
+                }),
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("{prefix}/trades/BTC/recent")))
+            .and(query_param("limit", "50"))
+            .respond_with(ok(
+                json!([trade.clone(), trade.clone()]),
+                json!({
+                    "count": 2,
+                    "request_id": "r",
+                    "finalized_through": "2026-09-25T10:00:00.000Z",
+                    "preliminary_row_count": 2
+                }),
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+
+    let c = client(&server);
+    for trades in [&c.lighter.trades, &c.rh_lighter.trades] {
+        let page = trades
+            .list_with_meta(
+                "BTC",
+                GetTradesParams {
+                    start: 1790294400000_i64.into(),
+                    end: 1790380800000_i64.into(),
+                    cursor: None,
+                    limit: Some(1000),
+                    side: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.next_cursor, None);
+        assert_eq!(
+            page.meta.finalized_through.as_deref(),
+            Some("2026-09-25T10:00:00.000Z")
+        );
+        assert_eq!(
+            page.meta.requested_end.as_deref(),
+            Some("2026-09-26T00:00:00.000Z")
+        );
+        assert_eq!(page.meta.clamped_to.as_deref(), Some("2026-09-25T10:00:00.000Z"));
+        assert_eq!(page.meta.preliminary_row_count, None);
+
+        let recent = trades.recent_with_meta("BTC", Some(50)).await.unwrap();
+        assert_eq!(recent.data.len(), 2);
+        assert_eq!(recent.meta.preliminary_row_count, Some(2));
+        assert_eq!(
+            recent.meta.finalized_through.as_deref(),
+            Some("2026-09-25T10:00:00.000Z")
+        );
+        assert_eq!(recent.meta.clamped_to, None);
+    }
+}
+
+#[tokio::test]
+async fn hyperliquid_recent_with_meta_is_rejected_before_sending() {
+    let error = offline_client()
+        .hyperliquid
+        .trades
+        .recent_with_meta("BTC", Some(10))
+        .await
+        .unwrap_err();
+    assert!(matches!(error, Error::InvalidParam(_)), "{error:?}");
+}
+
 // ---------------------------------------------------------------------------
 // Lighter liquidations (both deployments)
 // ---------------------------------------------------------------------------
@@ -316,7 +412,7 @@ fn core_position() -> Value {
         "side": "short",
         "entry_price": "108000",
         "mark_price": "107500",
-        "mark_time": "2026-09-25T00:00:00.000Z",
+        "mark_time": "2026-09-25T00:00:00Z",
         "position_value": "53750",
         "unrealized_pnl": "250",
         "return_on_equity": "0.0463",
@@ -327,7 +423,7 @@ fn core_position() -> Value {
         "liquidation_price_status": "exact",
         "cum_funding": {"all_time": "-12.5", "since_open": "-3.1", "since_change": "0"},
         "opened_at": "2026-09-20T08:15:00.123Z",
-        "snapshot_as_of": "2026-09-24T23:58:00.000Z",
+        "snapshot_as_of": "2026-09-24T23:58:00Z",
         "quality": "complete"
     })
 }
@@ -346,7 +442,7 @@ fn core_account() -> Value {
         "short_value": "53750",
         "n_positions": 1,
         "account_mode": "standard",
-        "snapshot_as_of": "2026-09-24T23:58:00.000Z",
+        "snapshot_as_of": "2026-09-24T23:58:00Z",
         "quality": "complete"
     })
 }
@@ -516,7 +612,7 @@ async fn history_changes_and_account_routes_map_their_params() {
         .mount(&server)
         .await;
     let mut history_row = core_position();
-    history_row["snapshot_ts"] = json!("2026-09-25T00:00:00.000Z");
+    history_row["snapshot_ts"] = json!("2026-09-25T00:00:00Z");
     history_row["dex"] = json!("xyz");
     Mock::given(method("GET"))
         .and(path(format!("{prefix}/positions/history")))
@@ -536,7 +632,7 @@ async fn history_changes_and_account_routes_map_their_params() {
         .expect(1)
         .mount(&server)
         .await;
-    account["snapshot_ts"] = json!("2026-09-25T00:00:00.000Z");
+    account["snapshot_ts"] = json!("2026-09-25T00:00:00Z");
     Mock::given(method("GET"))
         .and(path(format!("{prefix}/account/history")))
         .and(query_param("start", "1790294400000"))
@@ -586,7 +682,7 @@ async fn history_changes_and_account_routes_map_their_params() {
         .unwrap();
     assert_eq!(
         history.data[0].snapshot_ts.as_deref(),
-        Some("2026-09-25T00:00:00.000Z")
+        Some("2026-09-25T00:00:00Z")
     );
 
     let accounts = hip3.account(WALLET, Some("xyz")).await.unwrap();
@@ -600,7 +696,7 @@ async fn history_changes_and_account_routes_map_their_params() {
         .unwrap();
     assert_eq!(
         account_history.data[0].snapshot_ts.as_deref(),
-        Some("2026-09-25T00:00:00.000Z")
+        Some("2026-09-25T00:00:00Z")
     );
 }
 
@@ -608,7 +704,7 @@ async fn history_changes_and_account_routes_map_their_params() {
 async fn market_listing_carries_typed_totals_and_summary_series_pages() {
     let server = MockServer::start().await;
     let summary = json!({
-        "snapshot_ts": "2026-09-25T12:00:00.000Z",
+        "snapshot_ts": "2026-09-25T12:00:00Z",
         "symbol": "BTC",
         "coin": "BTC",
         "long_count": 1200,
@@ -739,7 +835,7 @@ async fn bulk_positions_use_an_exact_hour() {
         .and(query_param("limit", "2000"))
         .respond_with(ok(
             json!([{
-                "snapshot_ts": "2026-09-25T12:00:00.000Z",
+                "snapshot_ts": "2026-09-25T12:00:00Z",
                 "user_address": WALLET,
                 "symbol": "xyz:TSLA",
                 "coin": "xyz:TSLA",
@@ -906,7 +1002,7 @@ fn lighter_position(account_index: &str) -> Value {
         "side": "long",
         "entry_price": "4012.55",
         "mark_price": "4100.1",
-        "mark_time": "2026-09-25T00:00:00.000Z",
+        "mark_time": "2026-09-25T00:00:00Z",
         "position_value": "13325.325",
         "unrealized_pnl": "284.5375",
         "return_on_equity": null,
@@ -969,7 +1065,7 @@ async fn lighter_and_rh_lighter_positions_are_keyed_by_account_index() {
             .and(query_param("symbol", "ETH"))
             .respond_with(ok(
                 json!([{
-                    "timestamp": "2026-09-25T03:00:00.000Z",
+                    "timestamp": "2026-09-25T03:00:00Z",
                     "account_index": index,
                     "account_kind": "user",
                     "symbol": "ETH",
@@ -988,7 +1084,7 @@ async fn lighter_and_rh_lighter_positions_are_keyed_by_account_index() {
                     "is_maker": false,
                     "trade_id": 31944180930_i64,
                     "order_id": 844421425107071_i64,
-                    "opened_at": "2026-09-25T03:00:00.000Z",
+                    "opened_at": "2026-09-25T03:00:00Z",
                     "continuity": "ok",
                     "position_size_before": "0",
                     "position_size_after": "3.25",
@@ -1098,7 +1194,7 @@ async fn lighter_accounts_resolve_an_l1_address() {
                 "l1_address": WALLET,
                 "total_accounts": 3,
                 "accounts": [
-                    {"account_index": "713845", "account_type": 0, "first_seen": "2025-02-01T00:00:00.000Z"},
+                    {"account_index": "713845", "account_type": 0, "first_seen": "2025-02-01T00:00:00Z"},
                     {"account_index": "713846", "account_type": 1, "first_seen": null}
                 ]
             }),
@@ -1127,6 +1223,24 @@ fn public_copy_describes_robinhood_chain_as_a_lighter_deployment() {
     assert!(normalized.contains("Lighter has two deployments: mainnet"));
     assert!(normalized.contains("2026-06-26 20:10:26 UTC"));
     assert!(normalized.contains("2026-08-22 18:43 UTC"));
+    // Robinhood Chain liquidations are served from 2026-08-22 18:43 UTC, like
+    // the order book; the API refuses an earlier start.
+    assert!(normalized.contains(
+        "Robinhood Chain history on 2026-08-22 18:43 UTC; a `start` before that returns an error"
+    ));
+    let changelog = include_str!("../CHANGELOG.md")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for text in [
+        normalized.as_str(),
+        changelog.as_str(),
+        include_str!("../src/exchanges.rs"),
+        include_str!("../src/resources/liquidations.rs"),
+    ] {
+        assert!(!text.contains("rades and liquidations from 2026-06-26"));
+        assert!(!text.contains("rades and liquidations are served from"));
+    }
     assert!(normalized
         .contains("| `rh_lighter_orderbook` | Lighter on Robinhood Chain L2 order book | Yes |"));
     assert!(normalized.contains("| `positions` | Yes | Yes | -- | Yes | Yes |"));

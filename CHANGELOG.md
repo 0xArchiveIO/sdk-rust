@@ -12,17 +12,25 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `trades`, `instruments`, `funding`, `open_interest`, `candles`,
   `liquidations`, `positions`, `freshness()`, `summary()` and
   `price_history()`. Markets are quoted in USDG, with uppercase perp symbols
-  (`BTC`) and dashed spot pairs (`AAPL-USDG`). Trades and liquidations are
-  served from the venue launch on 2026-06-26 20:10:26 UTC; order book, open
+  (`BTC`) and dashed spot pairs (`AAPL-USDG`). Trades are served from the
+  venue launch on 2026-06-26 20:10:26 UTC; liquidations, order book, open
   interest and funding from 2026-08-22 18:43 UTC; candles from 2026-06-26
   once candle history is enabled for this deployment. `trades.list()` is
   final up to the finalization boundary and `trades.recent()` is the
   preliminary tier, as on mainnet.
 - `liquidations` on both Lighter clients (`LighterLiquidationsResource`), with
   `history()` returning `LighterLiquidation` rows and `volume()` returning
-  `LighterLiquidationVolume` buckets. Mainnet history starts on 2026-06-10.
-  Rows backfilled from the venue's historical export have `source` `"bucket"`
-  and an empty `raw_json`.
+  `LighterLiquidationVolume` buckets. Mainnet history starts on 2026-06-10
+  and Robinhood Chain history on 2026-08-22 18:43 UTC. A row backfilled from
+  the venue's historical export has `source` `"bucket"` and an empty
+  `raw_json`.
+- `TradesResource::list_with_meta()` and `TradesResource::recent_with_meta()`,
+  which return the same rows as `list()` and `recent()` as a
+  `MetaResponse<Vec<Trade>>` with the full response `meta`. On both Lighter
+  deployments that includes the finalization boundary
+  (`meta.finalized_through`), the clamp of a range that reached past it
+  (`meta.requested_end`, `meta.clamped_to`) and, on `recent_with_meta()`,
+  `meta.preliminary_row_count`.
 - Account positions: a `positions` resource on `client.hyperliquid`,
   `client.hyperliquid.hip3` (keyed by `0x` wallet address), `client.lighter`
   and `client.rh_lighter` (keyed by integer account index), with `get()`
@@ -35,12 +43,12 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `LighterL1Accounts` and `LighterL1Account`, and parameter structs
   `GetPositionsParams`, `PositionRangeParams`, `AccountHistoryParams`,
   `MarketPositionsParams`, `MarketSummaryParams` and `BulkPositionsParams`.
-- `MetaResponse<T>` and `ResponseMeta`, returned by the positions methods,
-  expose the full response `meta`: `as_of`, `snapshot_ts`, `source`,
-  `quality`, `stale`, `built_through`, `finalized_through`,
-  `requested_end`, `clamped_to`, `preliminary_row_count`, `totals`,
-  `notice` and `coverage_from`. `ResponseMeta::position_totals()` decodes
-  the totals of a market listing.
+- `MetaResponse<T>` and `ResponseMeta`, returned by the positions methods and
+  the `*_with_meta` trades methods, expose the full response `meta`:
+  `as_of`, `snapshot_ts`, `source`, `quality`, `stale`, `built_through`,
+  `finalized_through`, `requested_end`, `clamped_to`,
+  `preliminary_row_count`, `totals`, `notice` and `coverage_from`.
+  `ResponseMeta::position_totals()` decodes the totals of a market listing.
 - WebSocket: live subscriptions for `rh_lighter_orderbook`,
   `rh_lighter_trades`, `rh_lighter_open_interest` and `rh_lighter_funding`,
   served on `wss://api.0xarchive.io/ws`, and replay for those four and

@@ -102,7 +102,7 @@ When prototyping Rust services from Claude Code, ChatGPT Codex, or another codin
 | Hyperliquid HIP-4 | May 2, 2026+ | Candles and outcome-side OI are served from 2026-05-02; OI updates at ~10s. No funding or liquidations. |
 | Hyperliquid Spot | Trades March 2025+; candles from exactly 2025-03-22T10:50:22Z; orderbook, L4, TWAP, and freshness from May 2026 | 326 authenticated inventory rows using dashed symbols (`HYPE-USDC`, `PURR-USDC`, ...). No funding, OI, or liquidations. |
 | Lighter.xyz (mainnet) | Candles from 2025-08-01; observed global per-fill trade floor January 17, 2025; exact starts vary by market. L3 from March 5, 2026+; liquidations from 2026-06-10 | Maker/taker trade context; L3 caps at 250 orders per side; funding/OI update at ~10s. |
-| Lighter.xyz (Robinhood Chain) | Trades and liquidations from 2026-06-26 20:10:26 UTC (venue launch); order book, OI, and funding from 2026-08-22 18:43 UTC; candles from 2026-06-26 once enabled | Second Lighter deployment, quoted in USDG: 84 markets, 57 perps (`BTC`) and 27 spot pairs (`AAPL-USDG`). No L3. |
+| Lighter.xyz (Robinhood Chain) | Trades from 2026-06-26 20:10:26 UTC (venue launch); liquidations, order book, OI, and funding from 2026-08-22 18:43 UTC; candles from 2026-06-26 once enabled | Second Lighter deployment, quoted in USDG: 84 markets, 57 perps (`BTC`) and 27 spot pairs (`AAPL-USDG`). No L3. |
 | Account positions | Hyperliquid core change log from 2025-05-25, HIP-3 from 2025-10-13, hourly snapshots from 2026-06-07, live every 5 minutes. Lighter mainnet from 2025-01-17, Robinhood Chain from 2026-06-26, hourly, live every 2 minutes | Perp positions per wallet or account, as of any time in coverage. See [Account Positions](#account-positions). |
 
 ## Configuration
@@ -338,7 +338,32 @@ let hip3_recent = client.hyperliquid.hip3.trades.recent("km:US500", Some(50)).aw
 
 **Note:** The `recent()` method is available for Lighter.xyz and HIP-3 only. Hyperliquid does not have a recent trades endpoint — use `list()` with a time range instead.
 
-On both Lighter deployments, `list()` returns final trades only: `end` is clamped to the finalization boundary, which runs about a day behind. `recent()` serves the newer, preliminary tier.
+On both Lighter deployments, `list()` returns final trades only: `end` is clamped to the finalization boundary, which runs about a day behind, so a range that reaches past it ends early with `next_cursor` `None`. `recent()` serves the newer, preliminary tier. To see the boundary, use `list_with_meta()` and `recent_with_meta()`, which return the same rows as a `MetaResponse` with the full `meta` block:
+
+- `meta.finalized_through`: every trade before it is final.
+- `meta.requested_end` and `meta.clamped_to`: set when your `end` was past the boundary; `clamped_to` is where the range stopped.
+- `meta.preliminary_row_count` (on `recent_with_meta()`): how many rows in the response are not final yet.
+
+```rust
+let page = client.rh_lighter.trades.list_with_meta("BTC", GetTradesParams {
+    start: 1788220800000_i64.into(), // 2026-09-01 00:00 UTC
+    end: 1788307200000_i64.into(),   // 2026-09-02 00:00 UTC
+    limit: Some(1000),
+    cursor: None,
+    side: None,
+}).await?;
+if let Some(boundary) = &page.meta.clamped_to {
+    println!("range stopped at {boundary}; the rest is not final yet");
+}
+
+let recent = client.lighter.trades.recent_with_meta("BTC", Some(100)).await?;
+println!(
+    "{} rows, {:?} preliminary, final through {:?}",
+    recent.data.len(),
+    recent.meta.preliminary_row_count,
+    recent.meta.finalized_through,
+);
+```
 
 ### Instruments
 
@@ -509,14 +534,14 @@ minutes. This is an observed cadence, not an exact five-minute guarantee.
 
 Liquidation trades and liquidation volume on both Lighter deployments, through
 `client.lighter.liquidations` and `client.rh_lighter.liquidations`. Mainnet
-history starts on 2026-06-10; Robinhood Chain history starts at the venue
-launch, 2026-06-26 20:10:26 UTC.
+history starts on 2026-06-10 and Robinhood Chain history on
+2026-08-22 18:43 UTC; a `start` before that returns an error.
 
 Lighter rows have their own shape, `LighterLiquidation`: both accounts of the
 trade (`ask_account`, `bid_account`, as account indices), each side's
-position before the trade, `usd_amount`, `tx_hash`, and `source`. Rows
-backfilled from the venue's historical export have `source` `"bucket"` and an
-empty `raw_json`. Volume buckets (`LighterLiquidationVolume`) carry
+position before the trade, `usd_amount`, `tx_hash`, and `source`, which says
+where the row came from. A row backfilled from the venue's historical export
+has `source` `"bucket"` and an empty `raw_json`. Volume buckets (`LighterLiquidationVolume`) carry
 `total_usd` and `count`, with no long/short split.
 
 ```rust
@@ -932,12 +957,15 @@ this deployment.
   (`BTC`, `ETH`) and 27 spot pairs with dashed symbols (`AAPL-USDG`). List them
   with `client.rh_lighter.instruments.list()`. Market ids and symbols are
   separate from mainnet, so query each deployment through its own client.
-- **Coverage:** trades and liquidations from 2026-06-26 20:10:26 UTC (the venue
-  launch); order book, open interest, and funding from 2026-08-22 18:43 UTC;
-  candles from 2026-06-26 once candle history is enabled for this deployment.
+- **Coverage:** trades from 2026-06-26 20:10:26 UTC (the venue launch);
+  liquidations, order book, open interest, and funding from
+  2026-08-22 18:43 UTC; candles from 2026-06-26 once candle history is enabled
+  for this deployment.
 - **Trades:** as on mainnet, `trades.list()` returns final trades up to the
   finalization boundary (about a day behind), and `trades.recent()` serves
-  the preliminary tier.
+  the preliminary tier. `trades.list_with_meta()` and
+  `trades.recent_with_meta()` also return the boundary and the clamp; see
+  [Trades](#trades).
 
 ```rust
 use oxarchive::resources::trades::GetTradesParams;
@@ -975,7 +1003,7 @@ Spot and HIP-4 positions are not included.
 
 | Method | Returns |
 |--------|---------|
-| `get(key, params)` | Open positions now, or as of `params.timestamp`, plus the account summary and `account_seen` |
+| `get(key, params)` | Open positions now, or as of `params.timestamp`, plus the account summary when there is one (see `WalletPositions::account`) and `account_seen` |
 | `history(key, params)` | Hourly position rows in `[start, end)` |
 | `changes(key, params)` | Change-log rows (one per fill leg, with the position before and after) in `[start, end)` |
 | `market(symbol, params)` | Every open position in one market, largest value first, now or at `hour`; totals in `meta.totals` |
@@ -1057,8 +1085,12 @@ Semantics:
   UTC hour with a committed hourly snapshot, you get that snapshot with every
   field. Any other instant is reconstructed (`meta.source` is
   `reconstructed`): size, entry price and `opened_at` are exact, mark fields
-  are at `T`, and snapshot-only fields such as leverage and funding are
-  `None`.
+  are at `T`, and the snapshot-only fields are not stated. On Hyperliquid
+  and HIP-3 that means `leverage.kind` (`type` on the wire) is `unknown`, and
+  `leverage.value`, the `cum_funding` members, `margin_used`,
+  `return_on_equity`, and `liquidation_price` are `None`, with
+  `liquidation_price_status` `unavailable`. Lighter rows keep the margin mode
+  in `leverage.kind`. `data.account` is `None` on a reconstructed response.
 - **Boundaries:** `meta.built_through` is how far the change log is built;
   as-of reads and change-log ranges are clamped to it, with the original value
   in `meta.requested_end` and the clamp in `meta.clamped_to`.
@@ -1078,8 +1110,12 @@ Semantics:
   409 and you restart without a cursor. On Lighter, the insurance, settlement,
   and system accounts are excluded unless `include_system` is set, and every
   row carries `account_kind`.
-- **Numbers** are decimal strings; a flat position is `"0"`. Instants are
-  RFC 3339 UTC strings with milliseconds.
+- **Numbers** are decimal strings; a flat position is `"0"`.
+- **Instants** are RFC 3339 UTC strings. Instants in `meta` always carry
+  milliseconds (`2026-09-25T00:00:00.000Z`); instants in rows carry a
+  fraction only when it is not zero (`2026-09-25T00:00:00Z`). Parse them, for
+  example with `chrono::DateTime::parse_from_rfc3339`, before comparing a row
+  to `meta`.
 
 Limits and billing: wallet and account routes return up to 5,000 rows per
 page (default 500), market routes up to 2,000 (default 100), summary series

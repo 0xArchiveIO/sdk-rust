@@ -99,7 +99,10 @@ pub struct CursorResponse<T> {
 /// their data, such as the account positions resources. Every field is
 /// optional on the wire and is `None` (or `0` / empty for `count` and
 /// `request_id`) when the server did not send it. Instants are RFC 3339 UTC
-/// strings with milliseconds.
+/// strings. The positions routes and the trades finalization fields always
+/// send milliseconds (`2026-09-25T00:00:00.000Z`), while instants in data
+/// rows carry a fraction only when it is not zero (`2026-09-25T00:00:00Z`),
+/// so parse both before comparing them.
 ///
 /// New fields may be added in minor releases, so the struct cannot be built
 /// with a literal outside this crate; start from `ResponseMeta::default()`.
@@ -746,8 +749,8 @@ pub struct LiquidationVolume {
 ///
 /// Lighter liquidation rows carry both accounts of the trade rather than a
 /// single liquidated user. `ask_account` and `bid_account` are Lighter
-/// account indices as strings. Rows backfilled from the venue's historical
-/// export have `source` `"bucket"` and an empty `raw_json`.
+/// account indices as strings. A row backfilled from the venue's historical
+/// export has `source` `"bucket"` and an empty `raw_json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LighterLiquidation {
     /// Market symbol, uppercase for perps (`BTC`).
@@ -1575,7 +1578,9 @@ pub struct OrderHistoryEntry {
 //
 // Numbers are decimal strings: sizes at the market's size precision, prices
 // at its price precision, USD values at 6 decimals. A flat position is "0".
-// Instants are RFC 3339 UTC strings with milliseconds.
+// Instants in rows are RFC 3339 UTC strings with a fractional part only when
+// it is not zero ("2026-09-25T00:00:00Z"); instants in `meta` always carry
+// milliseconds ("2026-09-25T00:00:00.000Z"). Parse before comparing.
 
 /// Leverage of a position.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -1603,8 +1608,11 @@ pub struct CumulativeFunding {
 /// Hyperliquid rows identify the market with `symbol` (and `dex` on HIP-3);
 /// Lighter rows add `account_index`, `account_kind` and the Lighter margin
 /// fields. Fields a response cannot state are `None`: a reconstructed row
-/// (`meta.source` `reconstructed`) has exact size, entry and `opened_at`, a
-/// mark at the requested time, and no snapshot-only fields.
+/// (`meta.source` `reconstructed`) has exact size, entry and `opened_at` and
+/// a mark at the requested time. On Hyperliquid and HIP-3 its
+/// `leverage.kind` is `unknown`, `leverage.value`, the `cum_funding`
+/// members, `margin_used`, `return_on_equity` and `liquidation_price` are
+/// `None`, and `liquidation_price_status` is `unavailable`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Position {
     /// Hour the row describes, on history rows.
@@ -1884,9 +1892,19 @@ pub struct MarketPositionsSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WalletPositions {
     pub positions: Vec<Position>,
-    /// Account summary on the first page. Hyperliquid core always has one;
-    /// HIP-3 has one only when the request names a `dex`. `None` on
-    /// reconstructed responses.
+    /// Account summary, on the first page of a snapshot response only:
+    ///
+    /// - Hyperliquid core: when the wallet has an account row in the
+    ///   snapshot served (a wallet that was never seen has none).
+    /// - HIP-3: when the request is scoped to one dex, by `dex` or by a HIP-3
+    ///   `symbol` (which names its dex), and the wallet has an account row
+    ///   on that dex.
+    /// - Lighter (both deployments): when the request has no `symbol`. An
+    ///   account with no open positions in the snapshot gets a summary of
+    ///   zeros.
+    ///
+    /// `None` on continuation pages and on reconstructed responses
+    /// (`meta.source` `reconstructed`).
     #[serde(default)]
     pub account: Option<AccountSummary>,
     /// Set when `positions` is empty: `flat` (seen before, no open
