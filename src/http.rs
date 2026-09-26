@@ -1,4 +1,4 @@
-/// Internal HTTP client wrapping `reqwest`.
+//! Internal HTTP client wrapping `reqwest`.
 
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::de::DeserializeOwned;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 pub(crate) use std::time::Duration;
 
 use crate::error::Error;
-use crate::types::ApiEnvelope;
+use crate::types::{ApiEnvelope, MetaEnvelope, ResponseMeta};
 
 /// Configuration for [`HttpClient`].
 #[derive(Debug, Clone)]
@@ -112,6 +112,41 @@ impl HttpClient {
         })?;
 
         self.handle_cursor_response(resp).await
+    }
+
+    /// Send a GET request and return the data with the response's full
+    /// `meta` block (cursor, snapshot context, finalization boundaries).
+    pub async fn get_with_meta<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> crate::error::Result<(T, ResponseMeta)> {
+        let url = format!("{}{}", self.config.base_url, path);
+
+        let filtered: Vec<(&str, &str)> = params
+            .iter()
+            .filter(|(_, v)| !v.is_empty())
+            .map(|(k, v)| (*k, v.as_str()))
+            .collect();
+
+        let resp = self.inner.get(&url).query(&filtered).send().await.map_err(|e| {
+            if e.is_timeout() {
+                Error::Timeout
+            } else {
+                Error::Http(e)
+            }
+        })?;
+
+        let status = resp.status();
+        let body = resp.text().await.map_err(Error::Http)?;
+
+        if !status.is_success() {
+            return Err(self.parse_error(status.as_u16(), &body));
+        }
+
+        let envelope: MetaEnvelope<T> = serde_json::from_str(&body)
+            .map_err(|e| Error::Deserialize(format!("{e}: {body}")))?;
+        Ok((envelope.data, envelope.meta.unwrap_or_default()))
     }
 
     /// Send a POST request and deserialize the response data.

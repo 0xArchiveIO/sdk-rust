@@ -1,30 +1,30 @@
-/// Tick-level order book reconstructor for Lighter.xyz.
-///
-/// Maintains an in-memory representation of the order book and applies
-/// incremental deltas to produce full L2 snapshots at each tick.
-///
-/// # Example
-///
-/// ```no_run
-/// use oxarchive::OxArchive;
-/// use oxarchive::orderbook_reconstructor::OrderBookReconstructor;
-///
-/// # async fn example() -> oxarchive::Result<()> {
-/// let client = OxArchive::new("your-api-key")?;
-/// let tick_data = client.lighter.orderbook.history_tick(
-///     "BTC", 1769904000000_i64, 1769907600000_i64, None,
-/// ).await?;
-///
-/// let mut reconstructor = OrderBookReconstructor::new();
-/// let snapshots = reconstructor.reconstruct_all(
-///     &tick_data.checkpoint, &tick_data.deltas, None,
-/// );
-/// for snapshot in &snapshots {
-///     println!("{}: mid={:?}", snapshot.timestamp, snapshot.mid_price);
-/// }
-/// # Ok(())
-/// # }
-/// ```
+//! Tick-level order book reconstructor for Lighter.xyz.
+//!
+//! Maintains an in-memory representation of the order book and applies
+//! incremental deltas to produce full L2 snapshots at each tick.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use oxarchive::OxArchive;
+//! use oxarchive::orderbook_reconstructor::OrderBookReconstructor;
+//!
+//! # async fn example() -> oxarchive::Result<()> {
+//! let client = OxArchive::new("your-api-key")?;
+//! let tick_data = client.lighter.orderbook.history_tick(
+//!     "BTC", 1769904000000_i64, 1769907600000_i64, None,
+//! ).await?;
+//!
+//! let mut reconstructor = OrderBookReconstructor::new();
+//! let snapshots = reconstructor.reconstruct_all(
+//!     &tick_data.checkpoint, &tick_data.deltas, None,
+//! );
+//! for snapshot in &snapshots {
+//!     println!("{}: mid={:?}", snapshot.timestamp, snapshot.mid_price);
+//! }
+//! # Ok(())
+//! # }
+//! ```
 
 use std::collections::HashMap;
 

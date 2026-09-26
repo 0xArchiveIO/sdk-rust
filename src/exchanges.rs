@@ -1,13 +1,15 @@
-/// Exchange-specific client types that group resources under a common API
-/// prefix (e.g. `/v1/hyperliquid`, `/v1/lighter`).
+//! Exchange-specific client types that group resources under a common API
+//! prefix (e.g. `/v1/hyperliquid`, `/v1/lighter`, `/v1/rh-lighter`).
 
 use crate::error::Result;
 use crate::http::HttpClient;
 use crate::resources::{
     BreadthResource, CandlesResource, FundingResource, Hip3InstrumentsResource,
     Hip4InstrumentsResource, InstrumentsResource, L2OrderBookResource, L3OrderBookResource,
-    L4OrderBookResource, LighterInstrumentsResource, LiquidationsResource, OpenInterestResource,
-    OrderBookResource, OrdersResource, SpotPairsResource, SpotTwapResource, TradesResource,
+    L4OrderBookResource, LighterAccountsResource, LighterInstrumentsResource,
+    LighterLiquidationsResource, LighterPositionsResource, LiquidationsResource,
+    OpenInterestResource, OrderBookResource, OrdersResource, PositionsResource, SpotPairsResource,
+    SpotTwapResource, TradesResource,
 };
 use crate::types::{
     CoinFreshness, CoinSummary, CursorResponse, Hip4OpenInterestRecord, Hip4Outcome,
@@ -34,6 +36,8 @@ pub struct HyperliquidClient {
     pub orders: OrdersResource,
     pub l4_orderbook: L4OrderBookResource,
     pub l2_orderbook: L2OrderBookResource,
+    /// Account positions by wallet address, market listings and summaries.
+    pub positions: PositionsResource,
     pub hip3: Hip3Client,
     /// HIP-4 outcome markets (binary outcome perps, `#`-prefixed coins).
     pub hip4: Hip4,
@@ -60,6 +64,7 @@ impl HyperliquidClient {
             orders: OrdersResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
+            positions: PositionsResource::new(http.clone(), prefix),
             hip3: Hip3Client::new(http.clone()),
             hip4: Hip4::new(http.clone()),
             spot: SpotClient::new(http.clone()),
@@ -135,6 +140,9 @@ pub struct Hip3Client {
     pub breadth: BreadthResource,
     pub l4_orderbook: L4OrderBookResource,
     pub l2_orderbook: L2OrderBookResource,
+    /// Account positions by wallet address (optional `dex` filter), market
+    /// listings and summaries.
+    pub positions: PositionsResource,
 }
 
 impl Hip3Client {
@@ -157,6 +165,7 @@ impl Hip3Client {
             breadth: BreadthResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
+            positions: PositionsResource::new(http.clone(), prefix),
             http,
         }
     }
@@ -934,26 +943,81 @@ mod hip4_tests {
 }
 
 // ---------------------------------------------------------------------------
-// Lighter.xyz
+// Lighter (mainnet and Robinhood Chain)
 // ---------------------------------------------------------------------------
 
-/// Client for Lighter.xyz endpoints (`/v1/lighter`).
+const LIGHTER_PREFIX: &str = "/v1/lighter";
+const RH_LIGHTER_PREFIX: &str = "/v1/rh-lighter";
+
+async fn venue_freshness(http: &HttpClient, prefix: &str, symbol: &str) -> Result<CoinFreshness> {
+    http.get(&format!("{}/freshness/{}", prefix, symbol), &[]).await
+}
+
+async fn venue_summary(http: &HttpClient, prefix: &str, symbol: &str) -> Result<CoinSummary> {
+    http.get(&format!("{}/summary/{}", prefix, symbol), &[]).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn venue_price_history(
+    http: &HttpClient,
+    prefix: &str,
+    symbol: &str,
+    start: Timestamp,
+    end: Timestamp,
+    interval: Option<&str>,
+    limit: Option<i64>,
+    cursor: Option<&str>,
+) -> Result<CursorResponse<Vec<PriceSnapshot>>> {
+    let mut qp = vec![
+        ("start", start.to_millis().to_string()),
+        ("end", end.to_millis().to_string()),
+    ];
+    if let Some(i) = interval {
+        qp.push(("interval", i.to_string()));
+    }
+    if let Some(l) = limit {
+        qp.push(("limit", l.to_string()));
+    }
+    if let Some(c) = cursor {
+        qp.push(("cursor", c.to_string()));
+    }
+    let (data, next_cursor) = http
+        .get_with_cursor(&format!("{}/prices/{}", prefix, symbol), &qp)
+        .await?;
+    Ok(CursorResponse { data, next_cursor })
+}
+
+/// Client for Lighter mainnet endpoints (`/v1/lighter`).
+///
+/// Lighter has two deployments: mainnet (this client) and Robinhood Chain
+/// ([`RhLighterClient`], `client.rh_lighter`).
 #[derive(Debug, Clone)]
 pub struct LighterClient {
     http: HttpClient,
     pub orderbook: OrderBookResource,
+    /// Trades. `list` returns final trades only and clamps `end` to the
+    /// finalization boundary (about a day behind); `recent` serves the
+    /// preliminary tier. `list_with_meta` and `recent_with_meta` also return
+    /// the boundary (`meta.finalized_through`), the clamp (`meta.clamped_to`)
+    /// and `meta.preliminary_row_count`.
     pub trades: TradesResource,
     pub instruments: LighterInstrumentsResource,
     pub funding: FundingResource,
     pub open_interest: OpenInterestResource,
     /// OHLCV candle history (maximum 10,000 rows per page).
     pub candles: CandlesResource,
+    /// Liquidation trades and liquidation volume (from 2026-06-10).
+    pub liquidations: LighterLiquidationsResource,
     pub l3_orderbook: L3OrderBookResource,
+    /// Account positions by account index, market listings and summaries.
+    pub positions: LighterPositionsResource,
+    /// Account lookup by L1 address.
+    pub accounts: LighterAccountsResource,
 }
 
 impl LighterClient {
     pub(crate) fn new(http: HttpClient) -> Self {
-        let prefix = "/v1/lighter";
+        let prefix = LIGHTER_PREFIX;
         Self {
             orderbook: OrderBookResource::new(http.clone(), prefix),
             trades: TradesResource::new(http.clone(), prefix),
@@ -966,23 +1030,22 @@ impl LighterClient {
                 |symbol| symbol.to_string(),
                 Some(10_000),
             ),
+            liquidations: LighterLiquidationsResource::new(http.clone(), prefix),
             l3_orderbook: L3OrderBookResource::new(http.clone(), prefix),
+            positions: LighterPositionsResource::new(http.clone(), prefix),
+            accounts: LighterAccountsResource::new(http.clone(), prefix),
             http,
         }
     }
 
     /// Get data freshness for a Lighter symbol.
     pub async fn freshness(&self, symbol: &str) -> Result<CoinFreshness> {
-        self.http
-            .get(&format!("/v1/lighter/freshness/{}", symbol), &[])
-            .await
+        venue_freshness(&self.http, LIGHTER_PREFIX, symbol).await
     }
 
     /// Get a combined market summary for a Lighter symbol.
     pub async fn summary(&self, symbol: &str) -> Result<CoinSummary> {
-        self.http
-            .get(&format!("/v1/lighter/summary/{}", symbol), &[])
-            .await
+        venue_summary(&self.http, LIGHTER_PREFIX, symbol).await
     }
 
     /// Get historical price snapshots for a Lighter symbol.
@@ -995,23 +1058,110 @@ impl LighterClient {
         limit: Option<i64>,
         cursor: Option<&str>,
     ) -> Result<CursorResponse<Vec<PriceSnapshot>>> {
-        let mut qp = vec![
-            ("start", start.into().to_millis().to_string()),
-            ("end", end.into().to_millis().to_string()),
-        ];
-        if let Some(i) = interval {
-            qp.push(("interval", i.to_string()));
+        venue_price_history(
+            &self.http,
+            LIGHTER_PREFIX,
+            symbol,
+            start.into(),
+            end.into(),
+            interval,
+            limit,
+            cursor,
+        )
+        .await
+    }
+}
+
+/// Client for Lighter on Robinhood Chain (`/v1/rh-lighter`), the second
+/// Lighter deployment, available as `client.rh_lighter`.
+///
+/// The same resources as the mainnet [`LighterClient`] except the L3 order
+/// book, which is not captured on this deployment. Markets are quoted in
+/// USDG: perps use uppercase symbols (`BTC`) and spot markets use dashed
+/// pairs (`AAPL-USDG`). Market ids and symbols are separate from mainnet, so
+/// the same symbol can name a different market on each deployment.
+///
+/// Coverage: trades and liquidations from 2026-06-26 20:10:26 UTC (the venue
+/// launch); order book, open interest and funding from
+/// 2026-08-22 18:43 UTC; candles from 2026-06-26 once candle history is
+/// enabled for this deployment. Trades behave as on mainnet: `list` is final
+/// up to the finalization boundary and `recent` is the preliminary tier; read
+/// the boundary with `trades.list_with_meta()` (`meta.finalized_through`,
+/// `meta.clamped_to`) and `trades.recent_with_meta()`
+/// (`meta.preliminary_row_count`).
+#[derive(Debug, Clone)]
+pub struct RhLighterClient {
+    http: HttpClient,
+    pub orderbook: OrderBookResource,
+    /// Trades. `list` returns final trades only and clamps `end` to the
+    /// finalization boundary (about a day behind); `recent` serves the
+    /// preliminary tier. `list_with_meta` and `recent_with_meta` also return
+    /// the boundary (`meta.finalized_through`), the clamp (`meta.clamped_to`)
+    /// and `meta.preliminary_row_count`.
+    pub trades: TradesResource,
+    pub instruments: LighterInstrumentsResource,
+    pub funding: FundingResource,
+    pub open_interest: OpenInterestResource,
+    /// OHLCV candle history (maximum 10,000 rows per page).
+    pub candles: CandlesResource,
+    /// Liquidation trades and liquidation volume (from the venue launch,
+    /// 2026-06-26 20:10:26 UTC).
+    pub liquidations: LighterLiquidationsResource,
+    /// Account positions by account index, market listings and summaries.
+    pub positions: LighterPositionsResource,
+}
+
+impl RhLighterClient {
+    pub(crate) fn new(http: HttpClient) -> Self {
+        let prefix = RH_LIGHTER_PREFIX;
+        Self {
+            orderbook: OrderBookResource::new(http.clone(), prefix),
+            trades: TradesResource::new(http.clone(), prefix),
+            instruments: LighterInstrumentsResource::new(http.clone(), prefix),
+            funding: FundingResource::new(http.clone(), prefix),
+            open_interest: OpenInterestResource::new(http.clone(), prefix),
+            candles: CandlesResource::new_with_transform_and_limit(
+                http.clone(),
+                prefix,
+                |symbol| symbol.to_string(),
+                Some(10_000),
+            ),
+            liquidations: LighterLiquidationsResource::new(http.clone(), prefix),
+            positions: LighterPositionsResource::new(http.clone(), prefix),
+            http,
         }
-        if let Some(l) = limit {
-            qp.push(("limit", l.to_string()));
-        }
-        if let Some(c) = cursor {
-            qp.push(("cursor", c.to_string()));
-        }
-        let (data, next_cursor) = self
-            .http
-            .get_with_cursor(&format!("/v1/lighter/prices/{}", symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+    }
+
+    /// Get data freshness for a Robinhood Chain symbol.
+    pub async fn freshness(&self, symbol: &str) -> Result<CoinFreshness> {
+        venue_freshness(&self.http, RH_LIGHTER_PREFIX, symbol).await
+    }
+
+    /// Get a combined market summary for a Robinhood Chain symbol.
+    pub async fn summary(&self, symbol: &str) -> Result<CoinSummary> {
+        venue_summary(&self.http, RH_LIGHTER_PREFIX, symbol).await
+    }
+
+    /// Get historical price snapshots for a Robinhood Chain symbol.
+    pub async fn price_history(
+        &self,
+        symbol: &str,
+        start: impl Into<Timestamp>,
+        end: impl Into<Timestamp>,
+        interval: Option<&str>,
+        limit: Option<i64>,
+        cursor: Option<&str>,
+    ) -> Result<CursorResponse<Vec<PriceSnapshot>>> {
+        venue_price_history(
+            &self.http,
+            RH_LIGHTER_PREFIX,
+            symbol,
+            start.into(),
+            end.into(),
+            interval,
+            limit,
+            cursor,
+        )
+        .await
     }
 }

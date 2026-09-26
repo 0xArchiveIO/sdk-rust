@@ -6,7 +6,7 @@
 //!
 //! Requires the `websocket` feature:
 //! ```toml
-//! oxarchive = { version = "1.11", features = ["websocket"] }
+//! oxarchive = { version = "1.12", features = ["websocket"] }
 //! ```
 
 use futures_util::{SinkExt, StreamExt};
@@ -100,24 +100,85 @@ pub fn is_lighter_replay_only_channel(channel: &str) -> bool {
     LIGHTER_REPLAY_ONLY_CHANNELS.contains(&channel)
 }
 
-/// Default `lighter_orderbook` interval: one book per second.
+/// The five Lighter on Robinhood Chain channels. All of them support bounded
+/// historical replay.
+///
+/// Robinhood Chain is the second Lighter deployment. Its channels form their
+/// own family: a multi-channel replay cannot mix them with the mainnet
+/// `lighter_*` channels.
+pub const RH_LIGHTER_REPLAY_CHANNELS: [&str; 5] = [
+    "rh_lighter_orderbook",
+    "rh_lighter_trades",
+    "rh_lighter_candles",
+    "rh_lighter_open_interest",
+    "rh_lighter_funding",
+];
+
+/// Robinhood Chain channels that also support live subscriptions.
+///
+/// Live payloads have the same shapes as the mainnet live Lighter channels
+/// and decode with [`ServerMsg::lighter_live_data`]. They are served on
+/// `wss://api.0xarchive.io/ws`, the default `ws_url` in [`WsOptions`], and
+/// not on `wss://stream.0xarchive.io/ws`.
+pub const RH_LIGHTER_LIVE_CHANNELS: [&str; 4] = [
+    "rh_lighter_orderbook",
+    "rh_lighter_trades",
+    "rh_lighter_open_interest",
+    "rh_lighter_funding",
+];
+
+/// Robinhood Chain channels that support replay but not live subscriptions.
+pub const RH_LIGHTER_REPLAY_ONLY_CHANNELS: [&str; 1] = ["rh_lighter_candles"];
+
+/// Guidance returned when a live subscription is requested on
+/// `rh_lighter_candles`.
+pub const RH_LIGHTER_SUBSCRIPTION_ERROR: &str =
+    "rh_lighter_candles supports replay, not live subscriptions. Use REST for current data or a replay request for stored history.";
+
+/// Return whether a channel is one of the five Lighter on Robinhood Chain
+/// channels, all of which support replay.
+pub fn is_rh_lighter_channel(channel: &str) -> bool {
+    RH_LIGHTER_REPLAY_CHANNELS.contains(&channel)
+}
+
+/// Return whether a Robinhood Chain channel supports live subscriptions.
+pub fn is_rh_lighter_live_channel(channel: &str) -> bool {
+    RH_LIGHTER_LIVE_CHANNELS.contains(&channel)
+}
+
+/// Return whether a Robinhood Chain channel supports replay but not live
+/// subscriptions.
+pub fn is_rh_lighter_replay_only_channel(channel: &str) -> bool {
+    RH_LIGHTER_REPLAY_ONLY_CHANNELS.contains(&channel)
+}
+
+/// Default `lighter_orderbook` and `rh_lighter_orderbook` interval: one book
+/// per second.
 pub const LIGHTER_ORDERBOOK_DEFAULT_INTERVAL_MS: u32 = 1000;
-/// Smallest `interval_ms` accepted on `lighter_orderbook`.
+/// Smallest `interval_ms` accepted on `lighter_orderbook` and
+/// `rh_lighter_orderbook`.
 pub const LIGHTER_ORDERBOOK_MIN_INTERVAL_MS: u32 = 100;
-/// Largest `interval_ms` accepted on `lighter_orderbook`.
+/// Largest `interval_ms` accepted on `lighter_orderbook` and
+/// `rh_lighter_orderbook`.
 pub const LIGHTER_ORDERBOOK_MAX_INTERVAL_MS: u32 = 5000;
 
 fn validate_subscribe_interval(channel: &str, interval_ms: u32) -> Result<()> {
-    if channel != "lighter_orderbook" {
-        return Err(Error::InvalidParam(
-            "interval_ms is only supported on lighter_orderbook.".to_string(),
-        ));
+    if channel != "lighter_orderbook" && channel != "rh_lighter_orderbook" {
+        // Name the book channel of the deployment the caller is using.
+        let book = if is_rh_lighter_channel(channel) {
+            "rh_lighter_orderbook"
+        } else {
+            "lighter_orderbook"
+        };
+        return Err(Error::InvalidParam(format!(
+            "interval_ms is only supported on {book}."
+        )));
     }
     if !(LIGHTER_ORDERBOOK_MIN_INTERVAL_MS..=LIGHTER_ORDERBOOK_MAX_INTERVAL_MS)
         .contains(&interval_ms)
     {
         return Err(Error::InvalidParam(format!(
-            "interval_ms must be between {LIGHTER_ORDERBOOK_MIN_INTERVAL_MS} and {LIGHTER_ORDERBOOK_MAX_INTERVAL_MS} for lighter_orderbook (got {interval_ms}). Leave it out for one book a second."
+            "interval_ms must be between {LIGHTER_ORDERBOOK_MIN_INTERVAL_MS} and {LIGHTER_ORDERBOOK_MAX_INTERVAL_MS} for {channel} (got {interval_ms}). Leave it out for one book a second."
         )));
     }
     Ok(())
@@ -167,7 +228,7 @@ pub enum ClientMsg {
     #[serde(rename = "subscribe")]
     Subscribe { channel: String, symbol: Option<String> },
     /// A `subscribe` request that sets `interval_ms`. Only `lighter_orderbook`
-    /// accepts it, with a value from 100 to 5000.
+    /// and `rh_lighter_orderbook` accept it, with a value from 100 to 5000.
     #[serde(rename = "subscribe")]
     SubscribeWithInterval {
         channel: String,
@@ -239,21 +300,21 @@ pub enum ServerMsg {
     ///
     /// Not every error ends a live Lighter subscription. If the connection
     /// falls behind `lighter_trades`, `lighter_open_interest` or
-    /// `lighter_funding`, a notice such as
+    /// `lighter_funding` (or their `rh_lighter_` counterparts), a notice such as
     /// `Dropped ~N live lighter_trades messages for BTC: ...`
     /// reports messages that were not delivered, and the subscription
     /// continues. If the lag persists, a notice such as
     /// `Stopped the lighter_trades stream for BTC: ...` means the server ended
-    /// that subscription; subscribe again to resume. `lighter_orderbook` sends
-    /// the newest book at most once per interval and never sends an older
-    /// book in place of a newer one.
+    /// that subscription; subscribe again to resume. `lighter_orderbook` and
+    /// `rh_lighter_orderbook` send the newest book at most once per interval
+    /// and never send an older book in place of a newer one.
     Error {
         message: String,
     },
     /// A live data message.
     ///
-    /// For the live Lighter channels, [`ServerMsg::lighter_live_data`] decodes
-    /// `data` into [`LighterLiveData`].
+    /// For the live Lighter channels of both deployments,
+    /// [`ServerMsg::lighter_live_data`] decodes `data` into [`LighterLiveData`].
     Data {
         channel: String,
         coin: Option<String>,
@@ -379,7 +440,8 @@ pub enum ServerMsg {
 }
 
 impl ServerMsg {
-    /// Decode a live Lighter `data` message into a typed payload.
+    /// Decode a live Lighter `data` message into a typed payload. Covers the
+    /// mainnet `lighter_*` and the Robinhood Chain `rh_lighter_*` channels.
     ///
     /// Returns `None` for every other message, including Lighter replay
     /// messages (`historical_data`, `replay_snapshot`), whose rows keep their
@@ -482,18 +544,27 @@ impl OxArchiveWs {
     ///
     /// Live Lighter subscriptions are available for `lighter_orderbook`,
     /// `lighter_trades`, `lighter_open_interest` and `lighter_funding`, using
-    /// the same symbols as `client.lighter.instruments.list()`. Symbols are
-    /// case-insensitive and echoed uppercase. `lighter_orderbook` sends one
-    /// full book per second; use [`subscribe_with_interval`](Self::subscribe_with_interval)
+    /// the same symbols as `client.lighter.instruments.list()`, and for the
+    /// Robinhood Chain deployment's `rh_lighter_orderbook`,
+    /// `rh_lighter_trades`, `rh_lighter_open_interest` and
+    /// `rh_lighter_funding`, using the symbols of
+    /// `client.rh_lighter.instruments.list()`. Symbols are case-insensitive
+    /// and echoed uppercase. The order book channels send one full book per
+    /// second; use [`subscribe_with_interval`](Self::subscribe_with_interval)
     /// to change that. Decode Lighter payloads with
-    /// [`ServerMsg::lighter_live_data`].
+    /// [`ServerMsg::lighter_live_data`]. Live Lighter data is served on
+    /// `wss://api.0xarchive.io/ws` only.
     ///
-    /// `lighter_candles` and `lighter_l3_orderbook` support replay, not live
-    /// subscriptions, and are rejected before a request is sent. Use REST for
-    /// their current data or a bounded replay request for stored history.
+    /// `lighter_candles`, `lighter_l3_orderbook` and `rh_lighter_candles`
+    /// support replay, not live subscriptions, and are rejected before a
+    /// request is sent. Use REST for their current data or a bounded replay
+    /// request for stored history.
     pub async fn subscribe(&self, channel: &str, symbol: Option<&str>) -> Result<()> {
         if is_lighter_replay_only_channel(channel) {
             return Err(Error::InvalidParam(LIGHTER_SUBSCRIPTION_ERROR.to_string()));
+        }
+        if is_rh_lighter_replay_only_channel(channel) {
+            return Err(Error::InvalidParam(RH_LIGHTER_SUBSCRIPTION_ERROR.to_string()));
         }
 
         self.send(ClientMsg::Subscribe {
@@ -503,15 +574,17 @@ impl OxArchiveWs {
         .await
     }
 
-    /// Subscribe to `lighter_orderbook` with a custom book interval.
+    /// Subscribe to `lighter_orderbook` or `rh_lighter_orderbook` with a
+    /// custom book interval.
     ///
     /// The server sends the newest book at most once per `interval_ms`, which
     /// must be between 100 and 5000 inclusive. Each book sent is one message.
     /// Without an interval, [`subscribe`](Self::subscribe) delivers one book
     /// per second.
     ///
-    /// `interval_ms` is accepted only on `lighter_orderbook`. Other channels
-    /// and out-of-range values are rejected before a request is sent.
+    /// `interval_ms` is accepted only on the two Lighter order book channels.
+    /// Other channels and out-of-range values are rejected before a request
+    /// is sent.
     ///
     /// ```no_run
     /// # use oxarchive::ws::{OxArchiveWs, WsOptions};
@@ -549,9 +622,10 @@ impl OxArchiveWs {
 
     /// Start a bounded historical replay on a single channel.
     ///
-    /// All six `lighter_*` channels support replay. Lighter replay rows keep
-    /// their stored shapes, which differ from the live Lighter payloads
-    /// decoded by [`ServerMsg::lighter_live_data`]. Hyperliquid
+    /// All six `lighter_*` channels and all five `rh_lighter_*` channels
+    /// support replay. Lighter replay rows keep their stored shapes, which
+    /// differ from the live Lighter payloads decoded by
+    /// [`ServerMsg::lighter_live_data`]. Hyperliquid
     /// core `l4_diffs` and `l4_orders` replay as `l4_snapshot` followed by
     /// ordered `l4_batch` frames, and ignore `speed`. HIP-3, HIP-4, and Spot L4
     /// channels are live-only and are rejected before a request is sent. A
@@ -578,7 +652,9 @@ impl OxArchiveWs {
     /// Start a multi-channel synchronized standard replay.
     ///
     /// All channels are replayed together with data interleaved chronologically,
-    /// including the six Lighter replay channels. Core L4 replay is single-
+    /// including the Lighter replay channels. Every channel must belong to one
+    /// venue family: the mainnet `lighter_*` and the Robinhood Chain
+    /// `rh_lighter_*` channels are separate families. Core L4 replay is single-
     /// channel and cannot be included here. HIP-3, HIP-4, and Spot L4 channels
     /// remain live-only. Initial `replay_snapshot` messages provide each
     /// standard channel's state at `start`; the server terminates the bounded

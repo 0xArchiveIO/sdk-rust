@@ -3,6 +3,70 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.12.0] - 2026-09-26
+
+### Added
+- `client.rh_lighter`, a client for Lighter on Robinhood Chain
+  (`/v1/rh-lighter`), the second Lighter deployment. It has the same
+  resources as `client.lighter` except the L3 order book: `orderbook`,
+  `trades`, `instruments`, `funding`, `open_interest`, `candles`,
+  `liquidations`, `positions`, `freshness()`, `summary()` and
+  `price_history()`. Markets are quoted in USDG, with uppercase perp symbols
+  (`BTC`) and dashed spot pairs (`AAPL-USDG`). Trades and liquidations are
+  served from the venue launch on 2026-06-26 20:10:26 UTC; order book, open
+  interest and funding from 2026-08-22 18:43 UTC; candles from 2026-06-26
+  once candle history is enabled for this deployment. `trades.list()` is
+  final up to the finalization boundary and `trades.recent()` is the
+  preliminary tier, as on mainnet.
+- `liquidations` on both Lighter clients (`LighterLiquidationsResource`), with
+  `history()` returning `LighterLiquidation` rows and `volume()` returning
+  `LighterLiquidationVolume` buckets. Mainnet history starts on 2026-06-10
+  and Robinhood Chain history at the venue launch, 2026-06-26 20:10:26 UTC.
+  On Robinhood Chain, rows from before live capture were backfilled from the
+  venue's finalized export and have `source` `"bucket"` and an empty
+  `raw_json`; rows captured live have `source` `"ws"` and the venue's raw
+  JSON.
+- `TradesResource::list_with_meta()` and `TradesResource::recent_with_meta()`,
+  which return the same rows as `list()` and `recent()` as a
+  `MetaResponse<Vec<Trade>>` with the full response `meta`. On both Lighter
+  deployments that includes the finalization boundary
+  (`meta.finalized_through`), the clamp of a range that reached past it
+  (`meta.requested_end`, `meta.clamped_to`) and, on `recent_with_meta()`,
+  `meta.preliminary_row_count`.
+- Account positions: a `positions` resource on `client.hyperliquid`,
+  `client.hyperliquid.hip3` (keyed by `0x` wallet address), `client.lighter`
+  and `client.rh_lighter` (keyed by integer account index), with `get()`
+  (current, or as of a `timestamp`), `history()`, `changes()`, `market()`,
+  `market_summary()` and `all()`. Hyperliquid and HIP-3 also have
+  `account()` and `account_history()`. `client.lighter.accounts.by_l1()`
+  finds the Lighter account indices of an L1 address (mainnet only).
+- Typed models `Position`, `MarketPosition`, `PositionChange`,
+  `AccountSummary`, `MarketPositionsSummary`, `WalletPositions`,
+  `LighterL1Accounts` and `LighterL1Account`, and parameter structs
+  `GetPositionsParams`, `PositionRangeParams`, `AccountHistoryParams`,
+  `MarketPositionsParams`, `MarketSummaryParams` and `BulkPositionsParams`.
+- `MetaResponse<T>` and `ResponseMeta`, returned by the positions methods and
+  the `*_with_meta` trades methods, expose the full response `meta`:
+  `as_of`, `snapshot_ts`, `source`, `quality`, `stale`, `built_through`,
+  `finalized_through`, `requested_end`, `clamped_to`,
+  `preliminary_row_count`, `totals`, `notice` and `coverage_from`.
+  `ResponseMeta::position_totals()` decodes the totals of a market listing.
+- WebSocket: live subscriptions for `rh_lighter_orderbook`,
+  `rh_lighter_trades`, `rh_lighter_open_interest` and `rh_lighter_funding`,
+  served on `wss://api.0xarchive.io/ws`, and replay for those four and
+  `rh_lighter_candles`. Live payloads have the mainnet Lighter shapes and
+  decode with `ServerMsg::lighter_live_data()` and `LighterLiveData::decode()`.
+  `subscribe_with_interval()` accepts `rh_lighter_orderbook` (100 to 5000 ms).
+- `RH_LIGHTER_REPLAY_CHANNELS`, `RH_LIGHTER_LIVE_CHANNELS`,
+  `RH_LIGHTER_REPLAY_ONLY_CHANNELS`, `RH_LIGHTER_SUBSCRIPTION_ERROR`,
+  `is_rh_lighter_channel()`, `is_rh_lighter_live_channel()` and
+  `is_rh_lighter_replay_only_channel()`.
+
+### Changed
+- `subscribe()` rejects `rh_lighter_candles` before sending, since it is
+  replay-only.
+- Install snippets and rustdoc examples reference `1.12`.
+
 ## [1.11.0] - 2026-09-25
 
 Versions 1.9.0, 1.9.1 and 1.10.0 were not published to crates.io. This
