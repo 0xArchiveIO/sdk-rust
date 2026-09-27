@@ -19,9 +19,7 @@ pub struct OrderHistoryParams {
 
 /// Parameters for order flow aggregation.
 ///
-/// A page holds the oldest `limit` buckets of the window. While the
-/// response's `next_cursor` is set, pass it back as `cursor` with the same
-/// `start`, `end` and `interval`, and stop when it is `None`.
+/// A response holds the oldest `limit` buckets of the window.
 #[derive(Debug, Default)]
 pub struct OrderFlowParams {
     /// Start of the window, inclusive.
@@ -30,10 +28,10 @@ pub struct OrderFlowParams {
     pub end: Option<Timestamp>,
     /// Bucket width: `"1m"` (the default), `"5m"`, `"15m"` or `"1h"`.
     pub interval: Option<String>,
-    /// The previous response's `next_cursor`: the page starts at the bucket
-    /// after it.
+    /// Optional resume point, a Unix millisecond timestamp: the response
+    /// starts at the first bucket that opens after it.
     pub cursor: Option<String>,
-    /// Buckets per page (default 1000, max 10000).
+    /// Maximum number of buckets (default 1000, max 10000).
     pub limit: Option<i64>,
 }
 
@@ -109,10 +107,10 @@ impl OrdersResource {
         Ok(CursorResponse { data, next_cursor })
     }
 
-    /// Get order flow aggregation for a symbol, one page of time buckets.
+    /// Get order flow aggregation for a symbol, in time buckets.
     ///
     /// Buckets are labelled by their open time in UTC, and buckets with no
-    /// events are omitted. See [`OrderFlowParams`] for paging.
+    /// events are omitted.
     pub async fn flow(
         &self,
         symbol: &str,
