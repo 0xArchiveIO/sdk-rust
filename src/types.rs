@@ -627,6 +627,7 @@ pub struct LiquidationVolume {
 /// Supported aggregation intervals for open interest, funding, and HIP-3 breadth history queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OiFundingInterval {
+    OneMinute,
     FiveMinutes,
     FifteenMinutes,
     ThirtyMinutes,
@@ -638,6 +639,7 @@ pub enum OiFundingInterval {
 impl OiFundingInterval {
     pub fn as_str(&self) -> &'static str {
         match self {
+            OiFundingInterval::OneMinute => "1m",
             OiFundingInterval::FiveMinutes => "5m",
             OiFundingInterval::FifteenMinutes => "15m",
             OiFundingInterval::ThirtyMinutes => "30m",
