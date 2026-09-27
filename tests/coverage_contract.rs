@@ -1,6 +1,8 @@
 use oxarchive::exchanges::Hip4HistoryRange;
 use oxarchive::resources::breadth::BreadthHistoryParams;
 use oxarchive::resources::candles::CandleHistoryParams;
+use oxarchive::resources::funding::FundingHistoryParams;
+use oxarchive::resources::open_interest::OpenInterestHistoryParams;
 use oxarchive::types::{
     CandleInterval, Hip3BreadthSnapshot, Hip4OpenInterestRecord, OiFundingInterval, Timestamp,
 };
@@ -643,4 +645,91 @@ fn current_copy_matches_breadth_cadence_and_funding_unit_contracts() {
     assert!(liquidations.contains("approximately every five minutes"));
     assert!(!types.contains("45 minutes"));
     assert!(types.contains("approximately every five minutes"));
+}
+
+#[test]
+fn aggregation_intervals_map_to_their_wire_values() {
+    for (interval, wire) in [
+        (OiFundingInterval::OneMinute, "1m"),
+        (OiFundingInterval::FiveMinutes, "5m"),
+        (OiFundingInterval::FifteenMinutes, "15m"),
+        (OiFundingInterval::ThirtyMinutes, "30m"),
+        (OiFundingInterval::OneHour, "1h"),
+        (OiFundingInterval::FourHours, "4h"),
+        (OiFundingInterval::OneDay, "1d"),
+    ] {
+        assert_eq!(interval.as_str(), wire);
+    }
+}
+
+#[tokio::test]
+async fn one_minute_aggregation_is_sent_on_funding_open_interest_and_breadth() {
+    let server = MockServer::start().await;
+    for route in [
+        "/v1/hyperliquid/funding/BTC",
+        "/v1/hyperliquid/openinterest/BTC",
+        "/v1/hyperliquid/hip3/breadth/above-vwap",
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .and(query_param("interval", "1m"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "success": true,
+                "data": [],
+                "meta": {"count": 0, "request_id": "one-minute"}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+
+    let client = OxArchive::builder("test-key")
+        .base_url(server.uri())
+        .build()
+        .unwrap();
+    let start = 1790380800000_i64;
+    let end = 1790384400000_i64;
+    client
+        .hyperliquid
+        .funding
+        .history(
+            "BTC",
+            FundingHistoryParams {
+                start: start.into(),
+                end: end.into(),
+                cursor: None,
+                limit: None,
+                interval: Some(OiFundingInterval::OneMinute),
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .open_interest
+        .history(
+            "BTC",
+            OpenInterestHistoryParams {
+                start: start.into(),
+                end: end.into(),
+                cursor: None,
+                limit: None,
+                interval: Some(OiFundingInterval::OneMinute),
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .hip3
+        .breadth
+        .history(BreadthHistoryParams {
+            start: Some(start.into()),
+            end: Some(end.into()),
+            interval: Some(OiFundingInterval::OneMinute),
+            cursor: None,
+            limit: None,
+        })
+        .await
+        .unwrap();
 }
