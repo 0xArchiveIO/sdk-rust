@@ -11,6 +11,13 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   params typed with `OiFundingInterval`. `OiFundingInterval` is not
   `#[non_exhaustive]`, so a `match` on it without a wildcard arm needs a
   `OneMinute` arm.
+- `cursor` on `OrderFlowParams` and `Hip4OrderFlowParams`, sent by
+  `orders.flow()` (Hyperliquid and HIP-3) and `hip4.get_order_flow()`. The
+  API now pages order flow: a page holds the oldest `limit` buckets of the
+  window, and `next_cursor` is set while more may follow. Pass it back as
+  `cursor` with the same `start`, `end` and `interval` until it is `None`.
+  Both structs are built with struct literals, so a literal that lists
+  every field needs `cursor: None` (or `..Default::default()`).
 
 ### Changed
 - `OrderFlowParams::interval` and `Hip4OrderFlowParams::interval` document
