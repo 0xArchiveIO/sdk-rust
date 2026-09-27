@@ -555,29 +555,15 @@ let user_orders = client.hyperliquid.orders.history("BTC", OrderHistoryParams {
     limit: None,
 }).await?;
 
-// Get aggregated order flow, one page of time buckets (2026-07-13 UTC at 1m).
-// A page holds up to `limit` buckets (default 1000, max 10000); follow
-// next_cursor with the same start, end and interval until it is None.
+// Get aggregated order flow in time buckets, oldest first (2026-07-13 UTC at 15m).
+// `limit` caps the number of buckets (default 1000, max 10000).
 let flow = client.hyperliquid.orders.flow("BTC", OrderFlowParams {
     start: Some(1783900800000_i64.into()),
     end: Some(1783987200000_i64.into()),
-    interval: Some("1m".to_string()), // 1m (default), 5m, 15m, 1h
+    interval: Some("15m".to_string()), // 1m (default), 5m, 15m, 1h
     cursor: None,
     limit: None,
 }).await?;
-let mut flow_buckets = flow.data;
-let mut cursor = flow.next_cursor;
-while let Some(c) = cursor {
-    let page = client.hyperliquid.orders.flow("BTC", OrderFlowParams {
-        start: Some(1783900800000_i64.into()),
-        end: Some(1783987200000_i64.into()),
-        interval: Some("1m".to_string()),
-        cursor: Some(c),
-        limit: None,
-    }).await?;
-    flow_buckets.extend(page.data);
-    cursor = page.next_cursor;
-}
 
 // Get TP/SL (take-profit / stop-loss) orders
 let tpsl = client.hyperliquid.orders.tpsl("BTC", TpslParams {
