@@ -3,6 +3,20 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [Unreleased]
+
+### Added
+- `OiFundingInterval::OneMinute` (`"1m"`). The API now serves 1-minute
+  buckets on funding, open interest and HIP-3 breadth history, the three
+  params typed with `OiFundingInterval`. `OiFundingInterval` is not
+  `#[non_exhaustive]`, so a `match` on it without a wildcard arm needs a
+  `OneMinute` arm.
+
+### Changed
+- `OrderFlowParams::interval` and `Hip4OrderFlowParams::interval` document
+  the buckets the API serves: `"1m"` (the default), `"5m"`, `"15m"` and
+  `"1h"`.
+
 ## [1.11.0] - 2026-09-25
 
 Versions 1.9.0, 1.9.1 and 1.10.0 were not published to crates.io. This

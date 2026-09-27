@@ -22,6 +22,7 @@ pub struct OrderHistoryParams {
 pub struct OrderFlowParams {
     pub start: Option<Timestamp>,
     pub end: Option<Timestamp>,
+    /// Bucket width: `"1m"` (the default), `"5m"`, `"15m"` or `"1h"`.
     pub interval: Option<String>,
     pub limit: Option<i64>,
 }
