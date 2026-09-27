@@ -77,7 +77,7 @@ impl BreadthResource {
     /// Get ascending HIP-3 breadth history with cursor pagination.
     ///
     /// The server performs last-snapshot-per-bucket downsampling for the
-    /// optional `5m`, `15m`, `30m`, `1h`, `4h`, or `1d` interval. Do not average
+    /// optional `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, or `1d` interval. Do not average
     /// `value_pct` values across snapshots because the eligible denominator
     /// varies with session volume and five-minute freshness exclusions.
     pub async fn history(

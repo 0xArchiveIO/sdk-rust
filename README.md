@@ -555,11 +555,13 @@ let user_orders = client.hyperliquid.orders.history("BTC", OrderHistoryParams {
     limit: None,
 }).await?;
 
-// Get aggregated order flow
+// Get aggregated order flow in time buckets, oldest first (2026-07-13 UTC at 15m).
+// `limit` caps the number of buckets (default 1000, max 10000).
 let flow = client.hyperliquid.orders.flow("BTC", OrderFlowParams {
-    start: Some(1704067200000_i64.into()),
-    end: Some(1704153600000_i64.into()),
-    interval: Some("1h".to_string()),
+    start: Some(1783900800000_i64.into()),
+    end: Some(1783987200000_i64.into()),
+    interval: Some("15m".to_string()), // 1m (default), 5m, 15m, 1h
+    cursor: None,
     limit: None,
 }).await?;
 
