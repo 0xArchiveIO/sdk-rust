@@ -351,7 +351,9 @@ pub struct Hip4OrderHistoryParams {
 
 /// Filters for order-flow aggregation.
 ///
-/// A response holds the oldest `limit` buckets of the window.
+/// A page holds the oldest `limit` buckets of the window. While the
+/// response's `next_cursor` is set, pass it back as `cursor` with the same
+/// `start`, `end` and `interval`, and stop when it is `None`.
 #[derive(Debug, Default, Clone)]
 pub struct Hip4OrderFlowParams {
     /// Start of the window, inclusive.
@@ -360,10 +362,10 @@ pub struct Hip4OrderFlowParams {
     pub end: Option<Timestamp>,
     /// Bucket width: `"1m"` (the default), `"5m"`, `"15m"` or `"1h"`.
     pub interval: Option<String>,
-    /// Optional resume point, a Unix millisecond timestamp: the response
-    /// starts at the first bucket that opens after it.
+    /// The previous response's `next_cursor`: the page starts at the bucket
+    /// after it.
     pub cursor: Option<String>,
-    /// Maximum number of buckets (default 1000, max 10000).
+    /// Buckets per page (default 1000, max 10000).
     pub limit: Option<i64>,
 }
 
@@ -728,9 +730,8 @@ impl Hip4 {
         Ok(CursorResponse { data, next_cursor })
     }
 
-    /// Get aggregated order flow for a HIP-4 coin, in time buckets. Buckets
-    /// are labelled by their open time in UTC, and buckets with no events
-    /// are omitted.
+    /// Get aggregated order flow for a HIP-4 coin, one page of time buckets.
+    /// See [`Hip4OrderFlowParams`] for paging.
     pub async fn get_order_flow(
         &self,
         symbol: &str,
