@@ -1,6 +1,9 @@
-use oxarchive::exchanges::Hip4HistoryRange;
+use oxarchive::exchanges::{Hip4HistoryRange, Hip4OrderFlowParams};
 use oxarchive::resources::breadth::BreadthHistoryParams;
 use oxarchive::resources::candles::CandleHistoryParams;
+use oxarchive::resources::funding::FundingHistoryParams;
+use oxarchive::resources::open_interest::OpenInterestHistoryParams;
+use oxarchive::resources::orders::OrderFlowParams;
 use oxarchive::types::{
     CandleInterval, Hip3BreadthSnapshot, Hip4OpenInterestRecord, OiFundingInterval, Timestamp,
 };
@@ -643,4 +646,182 @@ fn current_copy_matches_breadth_cadence_and_funding_unit_contracts() {
     assert!(liquidations.contains("approximately every five minutes"));
     assert!(!types.contains("45 minutes"));
     assert!(types.contains("approximately every five minutes"));
+}
+
+#[test]
+fn aggregation_intervals_map_to_their_wire_values() {
+    for (interval, wire) in [
+        (OiFundingInterval::OneMinute, "1m"),
+        (OiFundingInterval::FiveMinutes, "5m"),
+        (OiFundingInterval::FifteenMinutes, "15m"),
+        (OiFundingInterval::ThirtyMinutes, "30m"),
+        (OiFundingInterval::OneHour, "1h"),
+        (OiFundingInterval::FourHours, "4h"),
+        (OiFundingInterval::OneDay, "1d"),
+    ] {
+        assert_eq!(interval.as_str(), wire);
+    }
+}
+
+#[tokio::test]
+async fn one_minute_aggregation_is_sent_on_funding_open_interest_and_breadth() {
+    let server = MockServer::start().await;
+    for route in [
+        "/v1/hyperliquid/funding/BTC",
+        "/v1/hyperliquid/openinterest/BTC",
+        "/v1/hyperliquid/hip3/breadth/above-vwap",
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .and(query_param("interval", "1m"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "success": true,
+                "data": [],
+                "meta": {"count": 0, "request_id": "one-minute"}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+
+    let client = OxArchive::builder("test-key")
+        .base_url(server.uri())
+        .build()
+        .unwrap();
+    let start = 1790380800000_i64;
+    let end = 1790384400000_i64;
+    client
+        .hyperliquid
+        .funding
+        .history(
+            "BTC",
+            FundingHistoryParams {
+                start: start.into(),
+                end: end.into(),
+                cursor: None,
+                limit: None,
+                interval: Some(OiFundingInterval::OneMinute),
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .open_interest
+        .history(
+            "BTC",
+            OpenInterestHistoryParams {
+                start: start.into(),
+                end: end.into(),
+                cursor: None,
+                limit: None,
+                interval: Some(OiFundingInterval::OneMinute),
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .hip3
+        .breadth
+        .history(BreadthHistoryParams {
+            start: Some(start.into()),
+            end: Some(end.into()),
+            interval: Some(OiFundingInterval::OneMinute),
+            cursor: None,
+            limit: None,
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn order_flow_sends_its_cursor_and_returns_next_cursor() {
+    let server = MockServer::start().await;
+    let start = 1783900800000_i64;
+    let end = 1783987200000_i64;
+    let page = |next_cursor: Option<&str>| {
+        ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "success": true,
+            "data": [{"timestamp": "2026-07-13T16:39:00Z", "limit_orders_placed": 3}],
+            "meta": {"count": 1, "request_id": "order-flow", "next_cursor": next_cursor}
+        }))
+    };
+    // Pages after a cursor, on every venue with order flow.
+    for route in [
+        "/v1/hyperliquid/orders/BTC/flow",
+        "/v1/hyperliquid/hip3/orders/km:US500/flow",
+        "/v1/hyperliquid/hip4/orders/0/flow",
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .and(query_param("start", start.to_string()))
+            .and(query_param("end", end.to_string()))
+            .and(query_param("interval", "1m"))
+            .and(query_param("cursor", "1783960740000"))
+            .respond_with(page(None))
+            .expect(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+    }
+    // The first page, without a cursor.
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/orders/BTC/flow"))
+        .respond_with(page(Some("1783960740000")))
+        .expect(1)
+        .with_priority(2)
+        .mount(&server)
+        .await;
+
+    let client = OxArchive::builder("test-key")
+        .base_url(server.uri())
+        .build()
+        .unwrap();
+    let params = |cursor: Option<String>| OrderFlowParams {
+        start: Some(start.into()),
+        end: Some(end.into()),
+        interval: Some("1m".to_string()),
+        cursor,
+        limit: None,
+    };
+    let first = client
+        .hyperliquid
+        .orders
+        .flow("BTC", params(None))
+        .await
+        .unwrap();
+    assert_eq!(first.next_cursor.as_deref(), Some("1783960740000"));
+    let last = client
+        .hyperliquid
+        .orders
+        .flow("BTC", params(first.next_cursor))
+        .await
+        .unwrap();
+    assert_eq!(last.next_cursor, None);
+    client
+        .hyperliquid
+        .hip3
+        .orders
+        .flow("km:US500", params(Some("1783960740000".to_string())))
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .hip4
+        .get_order_flow(
+            "0",
+            Hip4OrderFlowParams {
+                start: Some(start.into()),
+                end: Some(end.into()),
+                interval: Some("1m".to_string()),
+                cursor: Some("1783960740000".to_string()),
+                limit: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(!requests[0].url.query_pairs().any(|(k, _)| k == "cursor"));
 }

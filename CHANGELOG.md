@@ -61,11 +61,26 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `RH_LIGHTER_REPLAY_ONLY_CHANNELS`, `RH_LIGHTER_SUBSCRIPTION_ERROR`,
   `is_rh_lighter_channel()`, `is_rh_lighter_live_channel()` and
   `is_rh_lighter_replay_only_channel()`.
+- `OiFundingInterval::OneMinute` (`"1m"`). The API serves 1-minute
+  buckets on funding, open interest and HIP-3 breadth history, the three
+  params typed with `OiFundingInterval`. `OiFundingInterval` is not
+  `#[non_exhaustive]`, so a `match` on it without a wildcard arm needs a
+  `OneMinute` arm.
+- `cursor` on `OrderFlowParams` and `Hip4OrderFlowParams`, sent by
+  `orders.flow()` (Hyperliquid and HIP-3) and `hip4.get_order_flow()`: a
+  resume point in Unix milliseconds, and the API starts the response at the
+  first bucket that opens after it. The API does not return `next_cursor` on
+  order flow yet, so `next_cursor` on an order-flow response is `None`. Both
+  structs are built with struct literals, so a literal that lists every
+  field needs `cursor: None` (or `..Default::default()`).
 
 ### Changed
 - `subscribe()` rejects `rh_lighter_candles` before sending, since it is
   replay-only.
 - Install snippets and rustdoc examples reference `1.12`.
+- `OrderFlowParams::interval` and `Hip4OrderFlowParams::interval` document
+  the buckets the API serves: `"1m"` (the default), `"5m"`, `"15m"` and
+  `"1h"`.
 
 ## [1.11.0] - 2026-09-25
 
