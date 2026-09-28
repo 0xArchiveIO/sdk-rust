@@ -1,9 +1,9 @@
-/// The main entry point for the 0xArchive SDK.
+//! The main entry point for the 0xArchive SDK.
 
 use std::time::Duration;
 
 use crate::error::{self, Error};
-use crate::exchanges::{HyperliquidClient, LighterClient};
+use crate::exchanges::{HyperliquidClient, LighterClient, RhLighterClient};
 use crate::http::{HttpClient, HttpConfig};
 use crate::resources::{DataQualityResource, Web3Resource};
 
@@ -56,6 +56,7 @@ impl ClientBuilder {
         Ok(OxArchive {
             hyperliquid: HyperliquidClient::new(http.clone()),
             lighter: LighterClient::new(http.clone()),
+            rh_lighter: RhLighterClient::new(http.clone()),
             data_quality: DataQualityResource::new(http.clone()),
             web3: Web3Resource::new(http),
         })
@@ -79,8 +80,11 @@ impl ClientBuilder {
 /// let ob = client.hyperliquid.orderbook.get("BTC", None).await?;
 /// println!("BTC mid price: {:?}", ob.mid_price);
 ///
-/// // Access Lighter.xyz
+/// // Access Lighter.xyz (mainnet)
 /// let lighter_instruments = client.lighter.instruments.list().await?;
+///
+/// // Access Lighter on Robinhood Chain, the second Lighter deployment
+/// let rh_instruments = client.rh_lighter.instruments.list().await?;
 ///
 /// // Access HIP-3 builder perps
 /// let hip3_instruments = client.hyperliquid.hip3.instruments.list().await?;
@@ -91,8 +95,12 @@ impl ClientBuilder {
 pub struct OxArchive {
     /// Hyperliquid exchange client (includes nested `.hip3` client).
     pub hyperliquid: HyperliquidClient,
-    /// Lighter.xyz exchange client.
+    /// Lighter.xyz client for the mainnet deployment (`/v1/lighter`).
     pub lighter: LighterClient,
+    /// Lighter.xyz client for the Robinhood Chain deployment
+    /// (`/v1/rh-lighter`). Same resources as `lighter` except the L3 order
+    /// book.
+    pub rh_lighter: RhLighterClient,
     /// Data quality monitoring.
     pub data_quality: DataQualityResource,
     /// Web3 wallet-based authentication.
