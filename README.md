@@ -1520,7 +1520,7 @@ For large-scale data exports (route-specific order books, fill-level trade histo
 
 ## Requirements
 
-- Rust 1.75+
+- Rust 1.85+
 - tokio runtime
 
 ## License

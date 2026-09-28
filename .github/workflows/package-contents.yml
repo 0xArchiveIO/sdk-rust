@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Plant untracked files that must not be packaged
         run: |
-          mkdir -p .claude/worktrees/probe && echo stray > .claude/worktrees/probe/stray.rs
+          mkdir -p .scratch/probe && echo stray > .scratch/probe/stray.rs
           echo stray > examples/stray.rs
           echo stray > src/stray.txt
       - name: The crate contains only tracked files and cargo metadata
