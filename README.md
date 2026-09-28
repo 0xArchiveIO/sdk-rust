@@ -1014,13 +1014,14 @@ Spot and HIP-4 positions are not included.
 | `market(symbol, params)` | Every open position in one market, largest value first, now or at `hour`; totals in `meta.totals` |
 | `market_summary(symbol, params)` | Long/short counts, sizes, values, average entries and top-10 share, now or as an hourly series |
 | `all(params)` | Every open position across markets at one committed hour |
-| `account(address, dex)` | Current account summary (Hyperliquid and HIP-3) |
-| `account_history(address, params)` | Hourly account summaries (Hyperliquid and HIP-3) |
+| `account(key, ...)` | Current account summary: the clearinghouse summary on Hyperliquid and HIP-3 (`account(address, dex)`), position aggregates on Lighter (`account(account_index)`) |
+| `account_history(key, params)` | Hourly account summaries (on Lighter, one row per hour, at most 744 per page) |
 | `client.lighter.accounts.by_l1(l1_address, cursor, limit)` | Lighter account indices owned by an L1 address (mainnet only) |
 
 ```rust
 use oxarchive::resources::positions::{
-    GetPositionsParams, MarketPositionsParams, MarketSummaryParams, PositionRangeParams,
+    AccountHistoryParams, GetPositionsParams, MarketPositionsParams, MarketSummaryParams,
+    PositionRangeParams,
 };
 
 let wallet = "0x0000000000000000000000000000000000000001";
@@ -1082,6 +1083,11 @@ for a in &accounts.data.accounts {
 }
 let rh_summary = client.rh_lighter.positions
     .market_summary("BTC", Some(MarketSummaryParams::default())).await?;
+
+// Lighter account summary (position aggregates): now, and one row per hour
+let lighter_now = client.lighter.positions.account(4521).await?;
+let rh_hourly = client.rh_lighter.positions
+    .account_history(4521, AccountHistoryParams::new("2026-09-01", "2026-09-02")).await?;
 ```
 
 Semantics:
@@ -1188,7 +1194,12 @@ let incident = client.data_quality.get_incident("inc-123").await?;
 
 // Latency and SLA
 let latency = client.data_quality.latency().await?;
-let sla = client.data_quality.sla(None).await?;
+let sla = client.data_quality.sla(None, None).await?;
+
+// Account positions freshness, one row per venue
+for venue in client.data_quality.positions_freshness().await? {
+    println!("{} {}: {:?}s old, stale={}", venue.venue, venue.product, venue.live_age_seconds, venue.stale);
+}
 ```
 
 ## Web3 Authentication
@@ -1453,7 +1464,11 @@ faster bursts are rejected with a "Subscription rate limit exceeded" error.
 
 ## Timestamp Formats
 
-All time parameters accept the `Timestamp` enum:
+All time parameters accept the `Timestamp` enum, sent as Unix milliseconds. A
+time without a time zone is UTC: `"2024-01-01"` is midnight UTC,
+`"2024-01-01T12:00:00"` is noon UTC, and `chrono::NaiveDateTime` and
+`chrono::NaiveDate` convert as UTC. A string with an offset (`Z`, `+02:00`)
+keeps it.
 
 ```rust
 use oxarchive::types::Timestamp;
@@ -1461,11 +1476,14 @@ use oxarchive::types::Timestamp;
 // Unix milliseconds (i64)
 let ts: Timestamp = 1704067200000_i64.into();
 
-// ISO 8601 string
+// ISO 8601 string: with an offset, or without one (UTC)
 let ts: Timestamp = "2024-01-01T00:00:00Z".into();
+let ts: Timestamp = "2024-01-01T12:00:00".into();
+let ts: Timestamp = "2024-01-01".into();
 
-// chrono::DateTime<Utc>
+// chrono::DateTime<Utc>, or a naive date or date-time (UTC)
 let ts: Timestamp = chrono::Utc::now().into();
+let ts: Timestamp = chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap().into();
 ```
 
 ## Error Handling

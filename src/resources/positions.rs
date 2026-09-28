@@ -83,7 +83,8 @@ impl PositionRangeParams {
     }
 }
 
-/// Time range for [`PositionsResource::account_history`]: `[start, end)`.
+/// Time range for [`PositionsResource::account_history`] and
+/// [`LighterPositionsResource::account_history`]: `[start, end)`.
 #[derive(Debug, Clone)]
 pub struct AccountHistoryParams {
     /// Inclusive start.
@@ -94,7 +95,8 @@ pub struct AccountHistoryParams {
     pub dex: Option<String>,
     /// Cursor from the previous page's `next_cursor`.
     pub cursor: Option<String>,
-    /// Rows per page (default 500, maximum 5,000).
+    /// Rows per page (default 500, maximum 5,000; on Lighter, hours per page,
+    /// at most 744).
     pub limit: Option<i64>,
 }
 
@@ -476,7 +478,8 @@ impl PositionsResource {
 
 /// Account positions on Lighter (`client.lighter.positions`) and Lighter on
 /// Robinhood Chain (`client.rh_lighter.positions`), keyed by integer account
-/// index. Perp markets only.
+/// index. Perp markets only. `account()` and `account_history()` return the
+/// account's position aggregates.
 ///
 /// Coverage: mainnet from 2025-01-17 and Robinhood Chain from 2026-06-26,
 /// with hourly snapshots over the same span and a live snapshot every 2
@@ -559,6 +562,36 @@ impl LighterPositionsResource {
             self.prefix, account_index
         );
         fetch(&self.http, &path, &range_query(&params)).await
+    }
+
+    /// Position aggregates of an account at the latest live snapshot (one
+    /// row): `account_index`, `total_position_value`, `total_unrealized_pnl`,
+    /// `long_value`, `short_value`, `n_positions` and `quality`. Lighter does
+    /// not report margin or account value here, so those fields are `None`.
+    /// An account with no open position has zero totals.
+    pub async fn account(&self, account_index: u64) -> Result<MetaResponse<Vec<AccountSummary>>> {
+        let path = format!("{}/accounts/{}/account", self.prefix, account_index);
+        fetch(&self.http, &path, &Query::new()).await
+    }
+
+    /// Hourly position aggregates of an account in `[start, end)`, one row
+    /// per hourly snapshot stamped with `snapshot_ts` (an hour with no open
+    /// position has zero totals). `limit` is hours per page (default 500, at
+    /// most 744). The Lighter routes take no `dex`.
+    pub async fn account_history(
+        &self,
+        account_index: u64,
+        params: AccountHistoryParams,
+    ) -> Result<MetaResponse<Vec<AccountSummary>>> {
+        Self::check_no_dex(params.dex.as_ref())?;
+        let mut qp = vec![
+            ("start", params.start.to_millis().to_string()),
+            ("end", params.end.to_millis().to_string()),
+        ];
+        push_opt(&mut qp, "cursor", params.cursor);
+        push_opt(&mut qp, "limit", params.limit.map(|l| l.to_string()));
+        let path = format!("{}/accounts/{}/account/history", self.prefix, account_index);
+        fetch(&self.http, &path, &qp).await
     }
 
     /// Every open position in one market, largest position value first, at
