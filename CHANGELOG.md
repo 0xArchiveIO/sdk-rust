@@ -80,6 +80,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 - `subscribe()` rejects `rh_lighter_candles` before sending, since it is
   replay-only.
 - Install snippets and rustdoc examples reference `1.12`.
+- Minimum supported Rust version is 1.85 (was 1.75). A fresh dependency
+  resolution now includes crates published with edition 2024, which Cargo
+  reads from 1.85 on.
 - `OrderFlowParams::interval` and `Hip4OrderFlowParams::interval` document
   the buckets the API serves: `"1m"` (the default), `"5m"`, `"15m"` and
   `"1h"`.
