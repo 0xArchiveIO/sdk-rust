@@ -34,6 +34,7 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Agent working directories. Never source, never packaged.
-.claude/
-.codex/
+# Local tool directories: every hidden directory except .github. Not source,
+# never packaged.
+.*/
+!.github/
