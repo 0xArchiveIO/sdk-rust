@@ -3,9 +3,11 @@
 //! Rust client library for the [0xArchive](https://0xarchive.io) API.
 //!
 //! Query historical and real-time crypto market data: orderbooks, trades,
-//! candles, funding rates, open interest, and liquidations across Hyperliquid
-//! perps, Hyperliquid Spot, HIP-3 builder perps, HIP-4 outcome markets, and
-//! Lighter.xyz.
+//! candles, funding rates, open interest, liquidations, and account
+//! positions. Two venues are covered: Hyperliquid (core perps, Hyperliquid
+//! Spot, HIP-3 builder perps, and HIP-4 outcome markets) and Lighter.xyz.
+//! Lighter has two deployments, mainnet (`client.lighter`) and Robinhood
+//! Chain (`client.rh_lighter`).
 //!
 //! ## Quick start
 //!
@@ -20,9 +22,13 @@
 //!     let ob = client.hyperliquid.orderbook.get("BTC", None).await?;
 //!     println!("BTC mid price: {:?}", ob.mid_price);
 //!
-//!     // List Lighter.xyz instruments
+//!     // List Lighter.xyz instruments (mainnet)
 //!     let instruments = client.lighter.instruments.list().await?;
 //!     println!("Lighter has {} instruments", instruments.len());
+//!
+//!     // Lighter on Robinhood Chain, quoted in USDG
+//!     let rh = client.rh_lighter.instruments.list().await?;
+//!     println!("Lighter on Robinhood Chain has {} instruments", rh.len());
 //!
 //!     // Get current funding rate
 //!     let funding = client.hyperliquid.funding.current("ETH").await?;
@@ -71,14 +77,15 @@
 //! replay:
 //!
 //! ```toml
-//! oxarchive = { version = "1.11", features = ["websocket"] }
+//! oxarchive = { version = "1.12", features = ["websocket"] }
 //! ```
 //!
 //! Live subscriptions cover the supported Hyperliquid channels and four
-//! Lighter.xyz channels: `lighter_orderbook`, `lighter_trades`,
-//! `lighter_open_interest` and `lighter_funding`. Their payloads decode into
-//! [`LighterLiveData`]. `lighter_candles` and `lighter_l3_orderbook` remain
-//! replay-only.
+//! channels on each Lighter deployment: `lighter_orderbook`,
+//! `lighter_trades`, `lighter_open_interest` and `lighter_funding` on
+//! mainnet, and the same four with the `rh_lighter_` prefix on Robinhood
+//! Chain. Their payloads decode into [`LighterLiveData`]. `lighter_candles`,
+//! `lighter_l3_orderbook` and `rh_lighter_candles` remain replay-only.
 //!
 //! Bulk streaming over WebSocket has been discontinued, so
 //! `OxArchiveWs::stream` is deprecated. For large historical downloads, use
@@ -97,7 +104,7 @@ pub mod ws;
 // Re-export the main entry points at the crate root.
 pub use client::{ClientBuilder, OxArchive};
 pub use error::{Error, Result};
-pub use exchanges::Hip4;
+pub use exchanges::{Hip4, RhLighterClient};
 pub use l4_reconstructor::{L4OrderBookReconstructor, L4Order, L4Diff, L2Level};
 pub use orderbook_reconstructor::{
     reconstruct_final, reconstruct_orderbook, OrderBookReconstructor,
@@ -110,8 +117,15 @@ pub use types::{
     TriggerLevelBucket, TriggerLevels, TriggerLevelsHistoryItem,
     LighterLiveAssetCtx, LighterLiveData, LighterLiveLevel, LighterLiveMarketStats,
     LighterLiveOrderBook, LighterLiveTrade,
+    AccountSummary, CumulativeFunding, LighterL1Account, LighterL1Accounts, LighterLiquidation,
+    LighterLiquidationVolume, MarketPosition, MarketPositionsSummary, MetaResponse, Position,
+    PositionChange, PositionLeverage, ResponseMeta, WalletPositions,
 };
 pub use resources::liquidations::{LevelsHistoryParams, LiquidationLevelsParams};
+pub use resources::positions::{
+    AccountHistoryParams, BulkPositionsParams, GetPositionsParams, MarketPositionsParams,
+    MarketSummaryParams, PositionRangeParams,
+};
 pub use resources::orders::TriggerLevelsParams;
 
 #[cfg(feature = "websocket")]

@@ -1,6 +1,7 @@
 # Tests (internal only, not published)
 tests/*
 !tests/coverage_contract.rs
+!tests/rh_lighter_and_positions.rs
 examples/test_all.rs
 
 # Build output
