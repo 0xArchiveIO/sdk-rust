@@ -38,7 +38,11 @@ async fn main() -> oxarchive::Result<()> {
     println!("Lighter (Robinhood Chain): {} instruments", rh.len());
 
     // Account positions: BTC long/short summary from the latest live snapshot
-    let summary = client.hyperliquid.positions.market_summary("BTC", None).await?;
+    let summary = client
+        .hyperliquid
+        .positions
+        .market_summary("BTC", None)
+        .await?;
     if let Some(s) = summary.data.first() {
         println!(
             "BTC positions: {} long, {} short (as of {:?})",

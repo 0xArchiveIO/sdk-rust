@@ -58,7 +58,15 @@ async fn rh_lighter_routes_live_under_their_own_prefix() {
         ),
         (
             "/v1/rh-lighter/freshness/BTC",
-            json!({"coin": "BTC", "exchange": "rh-lighter"}),
+            json!({
+                "coin": "BTC",
+                "symbol": "BTC",
+                "exchange": "rh-lighter",
+                "measured_at": "2026-09-28T21:37:06.011428403Z",
+                "orderbook": {"last_updated": "2026-09-28T21:36:01.792Z", "lag_ms": 64219},
+                "trades": {"last_updated": "2026-09-28T21:36:23.279Z", "lag_ms": 42732},
+                "liquidations": {"last_updated": "2026-09-28T19:40:56.840Z", "lag_ms": 6969171}
+            }),
         ),
         (
             "/v1/rh-lighter/summary/BTC",
@@ -95,10 +103,11 @@ async fn rh_lighter_routes_live_under_their_own_prefix() {
         rh.open_interest.current("BTC").await.unwrap().open_interest,
         "12.5"
     );
-    assert_eq!(
-        rh.freshness("BTC").await.unwrap().exchange.as_deref(),
-        Some("rh-lighter")
-    );
+    let freshness = rh.freshness("BTC").await.unwrap();
+    assert_eq!(freshness.exchange.as_deref(), Some("rh-lighter"));
+    assert_eq!(freshness.symbol.as_deref(), Some("BTC"));
+    assert_eq!(freshness.data_types["liquidations"].lag_ms, Some(6969171));
+    assert!(!freshness.data_types.contains_key("symbol"));
     assert_eq!(
         rh.summary("BTC").await.unwrap().volume_24h.as_deref(),
         Some("1234.5")
@@ -259,7 +268,10 @@ async fn trades_with_meta_expose_the_lighter_finalization_boundary() {
             page.meta.requested_end.as_deref(),
             Some("2026-09-26T00:00:00.000Z")
         );
-        assert_eq!(page.meta.clamped_to.as_deref(), Some("2026-09-25T10:00:00.000Z"));
+        assert_eq!(
+            page.meta.clamped_to.as_deref(),
+            Some("2026-09-25T10:00:00.000Z")
+        );
         assert_eq!(page.meta.preliminary_row_count, None);
 
         let recent = trades.recent_with_meta("BTC", Some(50)).await.unwrap();
@@ -1143,11 +1155,12 @@ async fn lighter_and_rh_lighter_positions_are_keyed_by_account_index() {
         assert_eq!(account.account_value, None);
         assert_eq!(account.total_position_value.as_deref(), Some("13325.325"));
 
+        // Lighter positions routes take uppercase symbols; the SDK sends them so.
         let changes = positions
             .changes(
                 index,
                 PositionRangeParams {
-                    symbol: Some("ETH".to_string()),
+                    symbol: Some("eth".to_string()),
                     ..PositionRangeParams::new(1790294400000_i64, 1790380800000_i64)
                 },
             )
@@ -1166,7 +1179,7 @@ async fn lighter_and_rh_lighter_positions_are_keyed_by_account_index() {
 
         positions
             .market(
-                "ETH",
+                "eth",
                 Some(MarketPositionsParams {
                     include_system: Some(true),
                     ..Default::default()

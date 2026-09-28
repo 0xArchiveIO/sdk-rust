@@ -1101,6 +1101,10 @@ pub struct DataTypeFreshness {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoinFreshness {
     pub coin: String,
+    /// Canonical symbol of the market (the same value as `coin` on most
+    /// venues).
+    #[serde(default)]
+    pub symbol: Option<String>,
     pub exchange: Option<String>,
     pub measured_at: Option<String>,
     #[serde(flatten)]
@@ -1590,8 +1594,8 @@ pub struct OrderHistoryEntry {
 /// Leverage of a position.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PositionLeverage {
-    /// `cross` or `isolated`; `unknown` on reconstructed Hyperliquid rows.
-    /// Lighter reports its margin mode here.
+    /// `cross`, `isolated` or `unknown` (always `unknown` on reconstructed
+    /// Hyperliquid rows). Lighter reports its margin mode here.
     #[serde(rename = "type", default)]
     pub kind: String,
     /// Leverage multiple as a decimal string, when known.
@@ -1722,7 +1726,7 @@ pub struct MarketPosition {
     pub mark_price: Option<String>,
     pub position_value: Option<String>,
     pub unrealized_pnl: Option<String>,
-    /// `cross` or `isolated` (Lighter: its margin mode).
+    /// `cross`, `isolated` or `unknown` (Lighter: its margin mode).
     #[serde(default)]
     pub leverage_type: String,
     #[serde(default)]

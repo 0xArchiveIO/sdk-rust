@@ -3,7 +3,7 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
-## [1.12.0] - 2026-09-26
+## [1.12.0] - 2026-09-28
 
 ### Added
 - `client.rh_lighter`, a client for Lighter on Robinhood Chain
@@ -39,7 +39,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   (current, or as of a `timestamp`), `history()`, `changes()`, `market()`,
   `market_summary()` and `all()`. Hyperliquid and HIP-3 also have
   `account()` and `account_history()`. `client.lighter.accounts.by_l1()`
-  finds the Lighter account indices of an L1 address (mainnet only).
+  finds the Lighter account indices of an L1 address (mainnet only). Lighter
+  market symbols are case-insensitive: the positions methods send them
+  uppercase.
 - Typed models `Position`, `MarketPosition`, `PositionChange`,
   `AccountSummary`, `MarketPositionsSummary`, `WalletPositions`,
   `LighterL1Accounts` and `LighterL1Account`, and parameter structs
@@ -81,6 +83,13 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 - `OrderFlowParams::interval` and `Hip4OrderFlowParams::interval` document
   the buckets the API serves: `"1m"` (the default), `"5m"`, `"15m"` and
   `"1h"`.
+
+### Fixed
+- `freshness()` on every client (and `hip4.get_freshness()`) failed with a
+  deserialization error: the response carries a `symbol` string next to the
+  per-data-type entries, and the flattened `data_types` map tried to read it
+  as one. `CoinFreshness` now has a `symbol: Option<String>` field, and
+  `data_types` holds only the data types.
 
 ## [1.11.0] - 2026-09-25
 

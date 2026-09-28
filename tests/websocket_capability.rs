@@ -307,7 +307,10 @@ async fn rh_lighter_orderbook_takes_the_same_interval_range() {
     ] {
         match ws.subscribe_with_interval(channel, "BTC", 250).await {
             Err(Error::InvalidParam(message)) => {
-                assert_eq!(message, "interval_ms is only supported on rh_lighter_orderbook.")
+                assert_eq!(
+                    message,
+                    "interval_ms is only supported on rh_lighter_orderbook."
+                )
             }
             other => panic!("expected invalid parameter error, got {other:?}"),
         }
@@ -347,7 +350,10 @@ fn rh_lighter_live_frames_decode_with_the_mainnet_shapes() {
     }
 
     let stats = r#"{"coin":"BTC","ctx":{"openInterest":"55.1","funding":"0.00001","premium":null,"markPx":"108300.5","oraclePx":null,"midPx":null,"dayNtlVlm":null,"dayBaseVlm":null,"prevDayPx":null,"impactPxs":null}}"#;
-    for (channel, want_funding) in [("rh_lighter_open_interest", false), ("rh_lighter_funding", true)] {
+    for (channel, want_funding) in [
+        ("rh_lighter_open_interest", false),
+        ("rh_lighter_funding", true),
+    ] {
         let frame = format!(
             r#"{{"type":"data","channel":"{channel}","coin":"BTC","symbol":"BTC","data":{stats}}}"#
         );
@@ -362,7 +368,8 @@ fn rh_lighter_live_frames_decode_with_the_mainnet_shapes() {
     }
 
     // Replay-only and unknown channels have no live payload.
-    let candles = r#"{"type":"data","channel":"rh_lighter_candles","coin":"BTC","symbol":"BTC","data":{}}"#;
+    let candles =
+        r#"{"type":"data","channel":"rh_lighter_candles","coin":"BTC","symbol":"BTC","data":{}}"#;
     let msg: ServerMsg = serde_json::from_str(candles).unwrap();
     assert!(msg.lighter_live_data().is_none());
 }

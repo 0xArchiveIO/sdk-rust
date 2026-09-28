@@ -194,6 +194,23 @@ fn check_address(address: &str, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Lighter market symbols as the positions routes expect them: uppercase
+/// (`btc` is sent as `BTC`). Positions cover perp markets only, and every
+/// Lighter perp symbol is uppercase.
+fn lighter_symbol(symbol: &str) -> String {
+    symbol.to_ascii_uppercase()
+}
+
+fn lighter_filter(mut p: GetPositionsParams) -> GetPositionsParams {
+    p.symbol = p.symbol.map(|s| lighter_symbol(&s));
+    p
+}
+
+fn lighter_range(mut p: PositionRangeParams) -> PositionRangeParams {
+    p.symbol = p.symbol.map(|s| lighter_symbol(&s));
+    p
+}
+
 fn get_query(p: &GetPositionsParams) -> Query {
     let mut qp = Query::new();
     push_opt(
@@ -463,7 +480,7 @@ impl PositionsResource {
 ///
 /// Coverage: mainnet from 2025-01-17 and Robinhood Chain from 2026-06-26,
 /// with hourly snapshots over the same span and a live snapshot every 2
-/// minutes. Rows carry `account_kind`; market listings exclude the
+/// minutes. Symbols are case-insensitive: the SDK sends them uppercase. Rows carry `account_kind`; market listings exclude the
 /// insurance, settlement and system accounts unless `include_system` is set.
 /// To find the account indices of an L1 address on mainnet, use
 /// `client.lighter.accounts.by_l1(...)`.
@@ -504,7 +521,7 @@ impl LighterPositionsResource {
         account_index: u64,
         params: Option<GetPositionsParams>,
     ) -> Result<MetaResponse<WalletPositions>> {
-        let p = params.unwrap_or_default();
+        let p = lighter_filter(params.unwrap_or_default());
         Self::check_no_dex(p.dex.as_ref())?;
         let path = format!("{}/accounts/{}/positions", self.prefix, account_index);
         fetch(&self.http, &path, &get_query(&p)).await
@@ -517,6 +534,7 @@ impl LighterPositionsResource {
         account_index: u64,
         params: PositionRangeParams,
     ) -> Result<MetaResponse<Vec<Position>>> {
+        let params = lighter_range(params);
         Self::check_no_dex(params.dex.as_ref())?;
         let path = format!(
             "{}/accounts/{}/positions/history",
@@ -534,6 +552,7 @@ impl LighterPositionsResource {
         account_index: u64,
         params: PositionRangeParams,
     ) -> Result<MetaResponse<Vec<PositionChange>>> {
+        let params = lighter_range(params);
         Self::check_no_dex(params.dex.as_ref())?;
         let path = format!(
             "{}/accounts/{}/positions/changes",
@@ -554,7 +573,7 @@ impl LighterPositionsResource {
     ) -> Result<MetaResponse<Vec<MarketPosition>>> {
         let p = params.unwrap_or_default();
         let qp = market_query(&p)?;
-        let path = format!("{}/positions/{}", self.prefix, symbol);
+        let path = format!("{}/positions/{}", self.prefix, lighter_symbol(symbol));
         fetch(&self.http, &path, &qp).await
     }
 
@@ -566,7 +585,11 @@ impl LighterPositionsResource {
         params: Option<MarketSummaryParams>,
     ) -> Result<MetaResponse<Vec<MarketPositionsSummary>>> {
         let p = params.unwrap_or_default();
-        let path = format!("{}/positions/{}/summary", self.prefix, symbol);
+        let path = format!(
+            "{}/positions/{}/summary",
+            self.prefix,
+            lighter_symbol(symbol)
+        );
         fetch(&self.http, &path, &summary_query(&p)).await
     }
 

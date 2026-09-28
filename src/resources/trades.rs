@@ -60,7 +60,10 @@ impl TradesResource {
     ) -> Result<CursorResponse<Vec<Trade>>> {
         let (data, next_cursor) = self
             .http
-            .get_with_cursor(&format!("{}/trades/{}", self.prefix, symbol), &params.query())
+            .get_with_cursor(
+                &format!("{}/trades/{}", self.prefix, symbol),
+                &params.query(),
+            )
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }
@@ -85,7 +88,10 @@ impl TradesResource {
     ) -> Result<MetaResponse<Vec<Trade>>> {
         let (data, meta) = self
             .http
-            .get_with_meta(&format!("{}/trades/{}", self.prefix, symbol), &params.query())
+            .get_with_meta(
+                &format!("{}/trades/{}", self.prefix, symbol),
+                &params.query(),
+            )
             .await?;
         Ok(MetaResponse::new(data, meta))
     }
