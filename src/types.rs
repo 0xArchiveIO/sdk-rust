@@ -218,7 +218,12 @@ impl<T> MetaResponse<T> {
 // ---------------------------------------------------------------------------
 
 /// A flexible timestamp that can be specified as Unix milliseconds, an ISO-8601
-/// string, or a `chrono::DateTime`.
+/// string, or a `chrono` date or time.
+///
+/// A time without a time zone is UTC: `"2026-09-01"` is midnight UTC,
+/// `"2026-09-01T12:00:00"` is noon UTC, and a `chrono::NaiveDateTime` or
+/// `chrono::NaiveDate` converts as UTC. A string with an offset (`Z`,
+/// `+02:00`) keeps it, and a string of digits is Unix milliseconds.
 #[derive(Debug, Clone)]
 pub enum Timestamp {
     Millis(i64),
@@ -228,15 +233,46 @@ pub enum Timestamp {
 
 impl Timestamp {
     /// Convert to Unix milliseconds for use in query parameters.
+    ///
+    /// A string that is not a timestamp converts to `0`.
     pub fn to_millis(&self) -> i64 {
         match self {
             Timestamp::Millis(ms) => *ms,
             Timestamp::DateTime(dt) => dt.timestamp_millis(),
-            Timestamp::Iso(s) => chrono::DateTime::parse_from_rfc3339(s)
-                .map(|dt| dt.timestamp_millis())
-                .unwrap_or_else(|_| s.parse::<i64>().unwrap_or(0)),
+            Timestamp::Iso(s) => parse_timestamp_str(s).unwrap_or(0),
         }
     }
+}
+
+/// Unix milliseconds of a timestamp string: digits, RFC 3339 with an offset,
+/// or an ISO 8601 date-time or date without one (read as UTC).
+fn parse_timestamp_str(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if let Ok(ms) = s.parse::<i64>() {
+        return Some(ms);
+    }
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.timestamp_millis());
+    }
+    for format in [
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M",
+    ] {
+        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, format) {
+            return Some(utc(naive).timestamp_millis());
+        }
+    }
+    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .ok()
+        .and_then(|date| date.and_hms_opt(0, 0, 0))
+        .map(|naive| utc(naive).timestamp_millis())
+}
+
+/// A date-time without a time zone, read as UTC.
+fn utc(naive: chrono::NaiveDateTime) -> chrono::DateTime<chrono::Utc> {
+    chrono::TimeZone::from_utc_datetime(&chrono::Utc, &naive)
 }
 
 impl From<i64> for Timestamp {
@@ -260,6 +296,20 @@ impl From<String> for Timestamp {
 impl From<chrono::DateTime<chrono::Utc>> for Timestamp {
     fn from(dt: chrono::DateTime<chrono::Utc>) -> Self {
         Timestamp::DateTime(dt)
+    }
+}
+
+/// A date-time without a time zone is UTC.
+impl From<chrono::NaiveDateTime> for Timestamp {
+    fn from(naive: chrono::NaiveDateTime) -> Self {
+        Timestamp::DateTime(utc(naive))
+    }
+}
+
+/// A date is midnight UTC.
+impl From<chrono::NaiveDate> for Timestamp {
+    fn from(date: chrono::NaiveDate) -> Self {
+        Timestamp::DateTime(utc(date.and_hms_opt(0, 0, 0).unwrap_or_default()))
     }
 }
 
@@ -1941,6 +1991,44 @@ pub struct LighterL1Accounts {
     /// Accounts owned in total, across every page.
     pub total_accounts: u64,
     pub accounts: Vec<LighterL1Account>,
+}
+
+/// Freshness of the account positions data of one venue, from
+/// `client.data_quality.positions_freshness()`.
+///
+/// One row per venue: Hyperliquid core (`venue` `hyperliquid`, `product`
+/// `core`), HIP-3 (`hyperliquid`, `hip3`), Lighter (`lighter`, `lighter`) and
+/// Lighter on Robinhood Chain (`rh_lighter`, `rh_lighter`). Instants are
+/// RFC 3339 UTC strings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PositionsFreshness {
+    /// `hyperliquid`, `lighter` or `rh_lighter`.
+    pub venue: String,
+    /// `core`, `hip3`, `lighter` or `rh_lighter`.
+    pub product: String,
+    /// Time of the latest live snapshot.
+    #[serde(default)]
+    pub live_snapshot_ts: Option<String>,
+    /// Age of the latest live snapshot, in seconds.
+    #[serde(default)]
+    pub live_age_seconds: Option<i64>,
+    /// `true` when the latest live snapshot is older than 12 minutes (or
+    /// there is none).
+    pub stale: bool,
+    /// Quality of the latest live snapshot: `complete`, `partial` or
+    /// `degraded`.
+    #[serde(default)]
+    pub live_quality: Option<String>,
+    /// Hour of the latest hourly snapshot.
+    #[serde(default)]
+    pub hourly_snapshot_ts: Option<String>,
+    /// Every event before this instant is built into the change log and the
+    /// as-of state.
+    #[serde(default)]
+    pub built_through: Option<String>,
+    /// Every event before this instant is final and will not be re-derived.
+    #[serde(default)]
+    pub finalized_through: Option<String>,
 }
 
 #[cfg(test)]

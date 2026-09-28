@@ -1199,6 +1199,185 @@ async fn lighter_and_rh_lighter_positions_are_keyed_by_account_index() {
 }
 
 #[tokio::test]
+async fn lighter_account_summaries_on_both_deployments() {
+    let server = MockServer::start().await;
+    for prefix in ["/v1/lighter", "/v1/rh-lighter"] {
+        Mock::given(method("GET"))
+            .and(path(format!("{prefix}/accounts/7/account")))
+            .respond_with(ok(
+                json!([{
+                    "account_index": "7",
+                    "total_position_value": "21090.875",
+                    "total_unrealized_pnl": "90.75",
+                    "long_value": "21090.875",
+                    "short_value": "0",
+                    "n_positions": 1,
+                    "quality": "complete"
+                }]),
+                json!({
+                    "count": 1,
+                    "request_id": "la",
+                    "as_of": "2026-09-28T22:55:39.000Z",
+                    "snapshot_ts": "2026-09-28T22:55:39.000Z",
+                    "source": "snapshot",
+                    "quality": "complete",
+                    "stale": false
+                }),
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("{prefix}/accounts/7/account/history")))
+            .and(query_param("start", "1788220800000"))
+            .and(query_param("end", "1788264000000"))
+            .and(query_param("limit", "2"))
+            .and(query_param_is_missing("dex"))
+            .respond_with(ok(
+                json!([
+                    {
+                        "snapshot_ts": "2026-09-01T00:00:00Z",
+                        "account_index": "7",
+                        "total_position_value": "0",
+                        "total_unrealized_pnl": "0",
+                        "long_value": "0",
+                        "short_value": "0",
+                        "n_positions": 0,
+                        "quality": "complete"
+                    }
+                ]),
+                json!({"count": 1, "request_id": "lh", "next_cursor": "h2", "source": "snapshot"}),
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+
+    let c = client(&server);
+    for positions in [&c.lighter.positions, &c.rh_lighter.positions] {
+        let now = positions.account(7).await.unwrap();
+        let row = &now.data[0];
+        assert_eq!(row.account_index.as_deref(), Some("7"));
+        assert_eq!(row.n_positions, 1);
+        assert_eq!(row.account_value, None);
+        assert_eq!(now.meta.source.as_deref(), Some("snapshot"));
+        assert_eq!(now.meta.stale, Some(false));
+
+        // Times without a time zone are UTC.
+        let hours = positions
+            .account_history(
+                7,
+                AccountHistoryParams {
+                    limit: Some(2),
+                    ..AccountHistoryParams::new("2026-09-01", "2026-09-01T12:00:00")
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            hours.data[0].snapshot_ts.as_deref(),
+            Some("2026-09-01T00:00:00Z")
+        );
+        assert_eq!(hours.data[0].n_positions, 0);
+        assert_eq!(hours.next_cursor.as_deref(), Some("h2"));
+
+        let dex = positions
+            .account_history(
+                7,
+                AccountHistoryParams {
+                    dex: Some("xyz".into()),
+                    ..AccountHistoryParams::new(1_i64, 2_i64)
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(dex, Error::InvalidParam(_)));
+    }
+}
+
+#[tokio::test]
+async fn data_quality_reports_positions_freshness_per_venue() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/data-quality/positions"))
+        .respond_with(ok(
+            json!([
+                {
+                    "venue": "hyperliquid",
+                    "product": "core",
+                    "live_snapshot_ts": "2026-09-28T22:54:27.000Z",
+                    "live_age_seconds": 119,
+                    "stale": false,
+                    "live_quality": "complete",
+                    "hourly_snapshot_ts": "2026-09-28T22:00:00.000Z",
+                    "built_through": "2026-09-28T22:00:00.000Z",
+                    "finalized_through": "2026-09-28T19:00:00.000Z"
+                },
+                {
+                    "venue": "rh_lighter",
+                    "product": "rh_lighter",
+                    "live_snapshot_ts": null,
+                    "live_age_seconds": null,
+                    "stale": true,
+                    "live_quality": null,
+                    "hourly_snapshot_ts": null,
+                    "built_through": null,
+                    "finalized_through": null
+                }
+            ]),
+            meta(2),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let venues = client(&server)
+        .data_quality
+        .positions_freshness()
+        .await
+        .unwrap();
+    assert_eq!(venues.len(), 2);
+    assert_eq!(
+        (venues[0].venue.as_str(), venues[0].product.as_str()),
+        ("hyperliquid", "core")
+    );
+    assert_eq!(venues[0].live_age_seconds, Some(119));
+    assert_eq!(
+        venues[0].finalized_through.as_deref(),
+        Some("2026-09-28T19:00:00.000Z")
+    );
+    assert!(venues[1].stale);
+    assert_eq!(venues[1].live_snapshot_ts, None);
+}
+
+#[test]
+fn times_without_a_time_zone_are_utc() {
+    const SEPT_1_UTC: i64 = 1_788_220_800_000;
+    for value in [
+        "2026-09-01",
+        "2026-09-01T00:00:00",
+        "2026-09-01T00:00:00.000",
+        "2026-09-01 00:00:00",
+        "2026-09-01T00:00",
+        "2026-09-01T00:00:00Z",
+        "2026-09-01T00:00:00+00:00",
+        "2026-08-31T20:00:00-04:00",
+        "1788220800000",
+        " 1788220800000 ",
+    ] {
+        assert_eq!(Timestamp::from(value).to_millis(), SEPT_1_UTC, "{value}");
+    }
+    let date = chrono::NaiveDate::from_ymd_opt(2026, 9, 1).unwrap();
+    assert_eq!(Timestamp::from(date).to_millis(), SEPT_1_UTC);
+    let noon = date.and_hms_milli_opt(12, 0, 0, 123).unwrap();
+    assert_eq!(
+        Timestamp::from(noon).to_millis(),
+        SEPT_1_UTC + 12 * 3_600_000 + 123
+    );
+    assert_eq!(Timestamp::from("not a time").to_millis(), 0);
+}
+
+#[tokio::test]
 async fn lighter_accounts_resolve_an_l1_address() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))

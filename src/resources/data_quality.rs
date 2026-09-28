@@ -3,8 +3,8 @@ use std::time::Duration;
 use crate::error::Result;
 use crate::http::HttpClient;
 use crate::types::{
-    CoverageResponse, ExchangeCoverage, Incident, IncidentsResponse, LatencyResponse, SlaResponse,
-    StatusResponse, SymbolCoverageResponse,
+    CoverageResponse, ExchangeCoverage, Incident, IncidentsResponse, LatencyResponse,
+    PositionsFreshness, SlaResponse, StatusResponse, SymbolCoverageResponse,
 };
 
 /// Timeout for data quality endpoints that aggregate across venue APIs/symbols.
@@ -34,7 +34,11 @@ impl DataQualityResource {
     /// timeout instead of the default 30 seconds.
     pub async fn coverage(&self) -> Result<CoverageResponse> {
         self.http
-            .get_with_timeout("/v1/data-quality/coverage", &[], Some(SLOW_ENDPOINT_TIMEOUT))
+            .get_with_timeout(
+                "/v1/data-quality/coverage",
+                &[],
+                Some(SLOW_ENDPOINT_TIMEOUT),
+            )
             .await
     }
 
@@ -60,10 +64,7 @@ impl DataQualityResource {
     }
 
     /// List data incidents.
-    pub async fn list_incidents(
-        &self,
-        status: Option<&str>,
-    ) -> Result<IncidentsResponse> {
+    pub async fn list_incidents(&self, status: Option<&str>) -> Result<IncidentsResponse> {
         let mut qp = vec![];
         if let Some(s) = status {
             qp.push(("status", s.to_string()));
@@ -74,10 +75,7 @@ impl DataQualityResource {
     /// Get a single incident by ID.
     pub async fn get_incident(&self, incident_id: &str) -> Result<Incident> {
         self.http
-            .get(
-                &format!("/v1/data-quality/incidents/{}", incident_id),
-                &[],
-            )
+            .get(&format!("/v1/data-quality/incidents/{}", incident_id), &[])
             .await
     }
 
@@ -102,5 +100,14 @@ impl DataQualityResource {
         self.http
             .get_with_timeout("/v1/data-quality/sla", &qp, Some(SLOW_ENDPOINT_TIMEOUT))
             .await
+    }
+
+    /// Get the freshness of the account positions data, one row per venue
+    /// (Hyperliquid core, HIP-3, Lighter and Lighter on Robinhood Chain): the
+    /// latest live snapshot and its age, whether it is stale, the latest
+    /// hourly snapshot, and the `built_through` and `finalized_through`
+    /// boundaries.
+    pub async fn positions_freshness(&self) -> Result<Vec<PositionsFreshness>> {
+        self.http.get("/v1/data-quality/positions", &[]).await
     }
 }

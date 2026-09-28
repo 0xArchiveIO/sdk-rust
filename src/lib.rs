@@ -119,7 +119,7 @@ pub use types::{
     LighterLiveOrderBook, LighterLiveTrade,
     AccountSummary, CumulativeFunding, LighterL1Account, LighterL1Accounts, LighterLiquidation,
     LighterLiquidationVolume, MarketPosition, MarketPositionsSummary, MetaResponse, Position,
-    PositionChange, PositionLeverage, ResponseMeta, WalletPositions,
+    PositionChange, PositionLeverage, PositionsFreshness, ResponseMeta, WalletPositions,
 };
 pub use resources::liquidations::{LevelsHistoryParams, LiquidationLevelsParams};
 pub use resources::positions::{

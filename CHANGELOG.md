@@ -37,11 +37,19 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `client.hyperliquid.hip3` (keyed by `0x` wallet address), `client.lighter`
   and `client.rh_lighter` (keyed by integer account index), with `get()`
   (current, or as of a `timestamp`), `history()`, `changes()`, `market()`,
-  `market_summary()` and `all()`. Hyperliquid and HIP-3 also have
-  `account()` and `account_history()`. `client.lighter.accounts.by_l1()`
+  `market_summary()`, `all()`, `account()` and `account_history()`.
+  `account()` is the clearinghouse summary on Hyperliquid and HIP-3
+  (`account(address, dex)`) and the account's position aggregates (totals,
+  long/short value, position count) on Lighter and Robinhood Chain
+  (`account(account_index)`). `client.lighter.accounts.by_l1()`
   finds the Lighter account indices of an L1 address (mainnet only). Lighter
   market symbols are case-insensitive: the positions methods send them
   uppercase.
+- `client.data_quality.positions_freshness()`: one `PositionsFreshness` row
+  per venue with the latest live and hourly snapshots, the live snapshot's
+  age and quality, `stale`, `built_through` and `finalized_through`.
+- `From<chrono::NaiveDateTime>` and `From<chrono::NaiveDate>` for
+  `Timestamp`, converted as UTC.
 - Typed models `Position`, `MarketPosition`, `PositionChange`,
   `AccountSummary`, `MarketPositionsSummary`, `WalletPositions`,
   `LighterL1Accounts` and `LighterL1Account`, and parameter structs
@@ -88,6 +96,11 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `"1h"`.
 
 ### Fixed
+- A `Timestamp` string without a time zone is UTC. Before, only RFC 3339
+  strings with an offset were read; a date alone (`"2026-09-01"`) or a
+  date-time without an offset (`"2026-09-01T00:00:00"`) silently became
+  `0`. Both now convert to the UTC instant, and a string of digits is still
+  Unix milliseconds.
 - `freshness()` on every client (and `hip4.get_freshness()`) failed with a
   deserialization error: the response carries a `symbol` string next to the
   per-data-type entries, and the flattened `data_types` map tried to read it
