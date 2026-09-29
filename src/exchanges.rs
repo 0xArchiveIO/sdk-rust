@@ -7,10 +7,11 @@ use crate::resources::cvd::fetch_cvd;
 use crate::resources::{
     BreadthResource, CandlesResource, CvdParams, FundingResource, Hip3InstrumentsResource,
     Hip4InstrumentsResource, InstrumentsResource, L2OrderBookResource, L3OrderBookResource,
-    L4OrderBookResource, LighterAccountsResource, LighterInstrumentsResource,
-    LighterLiquidationsResource, LighterPositionsResource, LiquidationsResource,
-    OpenInterestResource, OracleResource, OrderBookResource, OrdersResource, PositionsResource,
-    SpotPairsResource, SpotTwapResource, TradesResource, WalletsResource,
+    Hip3LiquidationsResource, L4OrderBookResource, LighterAccountsResource,
+    LighterInstrumentsResource, LighterLiquidationsResource, LighterPositionsResource,
+    LiquidationsResource, OpenInterestResource, OracleResource, OrderBookResource, OrdersResource,
+    PositionsResource, SpotOrdersResource, SpotPairsResource, SpotTwapResource, TradesResource,
+    WalletsResource,
 };
 use crate::types::{
     CoinFreshness, CoinSummary, CursorResponse, CvdBucket, Hip4OpenInterestRecord, Hip4Outcome,
@@ -157,7 +158,9 @@ pub struct Hip3Client {
     pub open_interest: OpenInterestResource,
     /// OHLCV candle history (maximum 10,000 rows per page).
     pub candles: CandlesResource,
-    pub liquidations: LiquidationsResource,
+    /// Liquidation history, volume and liquidation levels. There is no
+    /// by-user route for HIP-3.
+    pub liquidations: Hip3LiquidationsResource,
     pub orders: OrdersResource,
     /// Percent of eligible instruments above their current UTC-session VWAP.
     pub breadth: BreadthResource,
@@ -188,7 +191,7 @@ impl Hip3Client {
                 |symbol| symbol.to_string(),
                 Some(10_000),
             ),
-            liquidations: LiquidationsResource::new(http.clone(), prefix),
+            liquidations: Hip3LiquidationsResource::new(http.clone(), prefix),
             orders: OrdersResource::new(http.clone(), prefix),
             breadth: BreadthResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
@@ -288,8 +291,9 @@ pub struct SpotClient {
     pub candles: CandlesResource,
     /// L4 orderbook (snapshot, diffs, checkpoint history).
     pub l4_orderbook: L4OrderBookResource,
-    /// Order lifecycle events.
-    pub orders: OrdersResource,
+    /// Order lifecycle history (history only; no flow, TP/SL or trigger
+    /// levels on Spot).
+    pub orders: SpotOrdersResource,
     /// TWAP execution statuses (by symbol or by user).
     pub twap: SpotTwapResource,
 }
@@ -308,7 +312,7 @@ impl SpotClient {
                 Some(1000),
             ),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
-            orders: OrdersResource::new(http.clone(), prefix),
+            orders: SpotOrdersResource::new(http.clone(), prefix),
             twap: SpotTwapResource::new(http.clone(), prefix),
             http,
         }
@@ -381,25 +385,23 @@ pub struct Hip4HistoryRange {
     pub limit: Option<i64>,
 }
 
-/// Range + side filter for trade-history pagination.
+/// Range for trade-history pagination.
 #[derive(Debug, Clone)]
 pub struct Hip4TradesParams {
     pub start: Timestamp,
     pub end: Timestamp,
+    /// The previous page's `next_cursor`, passed through unchanged.
     pub cursor: Option<String>,
     pub limit: Option<i64>,
-    /// `"A"` (sell) or `"B"` (buy).
-    pub side: Option<String>,
 }
 
-/// Optional depth + range params for L4 history pagination.
+/// Range params for L4 checkpoint history pagination.
 #[derive(Debug, Clone)]
 pub struct Hip4L4HistoryParams {
     pub start: Timestamp,
     pub end: Timestamp,
     pub cursor: Option<String>,
     pub limit: Option<i64>,
-    pub depth: Option<i32>,
 }
 
 /// Filters for order-history pagination.
@@ -650,9 +652,6 @@ impl Hip4 {
         }
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
-        }
-        if let Some(s) = params.side {
-            qp.push(("side", s));
         }
         let (data, next_cursor) = self
             .http
@@ -976,9 +975,6 @@ impl Hip4 {
         }
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
-        }
-        if let Some(d) = params.depth {
-            qp.push(("depth", d.to_string()));
         }
         let (data, next_cursor) = self
             .http

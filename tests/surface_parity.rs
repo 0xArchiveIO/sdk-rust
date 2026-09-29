@@ -3,7 +3,15 @@
 //! webhook signature verifier.
 
 use hmac::{Hmac, Mac};
+use oxarchive::exchanges::{Hip4L4HistoryParams, Hip4TradesParams};
 use oxarchive::resources::breadth::BreadthHistoryParams;
+use oxarchive::resources::data_quality::{ListIncidentsParams, SymbolCoverageParams};
+use oxarchive::resources::l2_orderbook::L2HistoryParams;
+use oxarchive::resources::l3_orderbook::{L3HistoryParams, L3OrderBookParams};
+use oxarchive::resources::l4_orderbook::L4HistoryParams;
+use oxarchive::resources::liquidations::{LiquidationHistoryParams, LiquidationVolumeParams};
+use oxarchive::resources::orders::SpotOrderHistoryParams;
+use oxarchive::resources::trades::GetTradesParams;
 use oxarchive::types::{
     BreadthSnapshot, CandleInterval, OiFundingInterval, WebhookSubscriptionCondition,
     WebhookSubscriptionConfig, WebhookVenueFilter,
@@ -1417,4 +1425,382 @@ fn an_expired_delivery_is_refused_even_with_a_valid_signature() {
         .tolerance_secs(7200)
         .verify(DELIVERY, &header)
         .unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Routes and parameters reconciled with the live API
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn spot_order_history_sends_only_the_range_and_page() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/spot/orders/HYPE-USDC/history"))
+        .and(query_param("start", "1790553600000"))
+        .and(query_param("end", "1790557200000"))
+        .and(query_param("cursor", "abc"))
+        .and(query_param("limit", "20"))
+        .and(query_param_is_missing("user"))
+        .and(query_param_is_missing("status"))
+        .and(query_param_is_missing("order_type"))
+        .respond_with(ok(json!([]), meta(0)))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let page = client(&server)
+        .hyperliquid
+        .spot
+        .orders
+        .history(
+            "HYPE-USDC",
+            SpotOrderHistoryParams {
+                start: Some(1790553600000_i64.into()),
+                end: Some(1790557200000_i64.into()),
+                cursor: Some("abc".to_string()),
+                limit: Some(20),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(page.data.is_empty());
+}
+
+#[tokio::test]
+async fn hip3_liquidations_keep_history_volume_and_levels() {
+    let server = MockServer::start().await;
+    for route in [
+        "/v1/hyperliquid/hip3/liquidations/km:US500",
+        "/v1/hyperliquid/hip3/liquidations/km:US500/volume",
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ok(json!([]), meta(0)))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let client = client(&server);
+    client
+        .hyperliquid
+        .hip3
+        .liquidations
+        .history(
+            "km:US500",
+            LiquidationHistoryParams {
+                start: 1790553600000_i64.into(),
+                end: 1790557200000_i64.into(),
+                cursor: None,
+                limit: None,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .hip3
+        .liquidations
+        .volume(
+            "km:US500",
+            LiquidationVolumeParams {
+                start: 1790553600000_i64.into(),
+                end: 1790557200000_i64.into(),
+                interval: None,
+                cursor: None,
+                limit: None,
+            },
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn trades_and_history_reads_send_no_ignored_parameters() {
+    let server = MockServer::start().await;
+    for route in [
+        "/v1/hyperliquid/trades/BTC",
+        "/v1/hyperliquid/hip4/trades/0",
+        "/v1/hyperliquid/orderbook/BTC/l2/history",
+        "/v1/hyperliquid/orderbook/BTC/l4/history",
+        "/v1/hyperliquid/hip4/orderbook/0/l4/history",
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .and(query_param("cursor", "opaque:cursor/1"))
+            .and(query_param_is_missing("side"))
+            .and(query_param_is_missing("depth"))
+            .respond_with(ok(json!([]), meta(0)))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let client = client(&server);
+    let cursor = || Some("opaque:cursor/1".to_string());
+    client
+        .hyperliquid
+        .trades
+        .list(
+            "BTC",
+            GetTradesParams {
+                start: 1_i64.into(),
+                end: 2_i64.into(),
+                cursor: cursor(),
+                limit: None,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .hip4
+        .get_trades(
+            "0",
+            Hip4TradesParams {
+                start: 1_i64.into(),
+                end: 2_i64.into(),
+                cursor: cursor(),
+                limit: None,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .l2_orderbook
+        .history(
+            "BTC",
+            L2HistoryParams {
+                start: 1_i64.into(),
+                end: 2_i64.into(),
+                cursor: cursor(),
+                limit: None,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .l4_orderbook
+        .history(
+            "BTC",
+            L4HistoryParams {
+                start: 1_i64.into(),
+                end: 2_i64.into(),
+                cursor: cursor(),
+                limit: None,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .hyperliquid
+        .hip4
+        .get_l4_history(
+            "0",
+            Hip4L4HistoryParams {
+                start: 1_i64.into(),
+                end: 2_i64.into(),
+                cursor: cursor(),
+                limit: None,
+            },
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn l3_reads_send_account_and_timestamp() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/lighter/l3orderbook/BTC"))
+        .and(query_param("timestamp", "1790553600000"))
+        .and(query_param("account", "726714"))
+        .and(query_param("depth", "50"))
+        .respond_with(ok(json!({"coin": "BTC", "orders": []}), meta(1)))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/lighter/l3orderbook/BTC/history"))
+        .and(query_param("account", "726714"))
+        .respond_with(ok(json!([]), meta(0)))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = client(&server);
+    client
+        .lighter
+        .l3_orderbook
+        .get_with_params(
+            "BTC",
+            L3OrderBookParams {
+                timestamp: Some(1790553600000_i64.into()),
+                account: Some(726714),
+                depth: Some(50),
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .lighter
+        .l3_orderbook
+        .history(
+            "BTC",
+            L3HistoryParams {
+                start: 1_i64.into(),
+                end: 2_i64.into(),
+                cursor: None,
+                limit: None,
+                account: Some(726714),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        client
+            .lighter
+            .l3_orderbook
+            .get_with_params(
+                "BTC",
+                L3OrderBookParams {
+                    depth: Some(251),
+                    ..Default::default()
+                }
+            )
+            .await
+            .unwrap_err(),
+        Error::InvalidParam(_)
+    ));
+}
+
+#[tokio::test]
+async fn data_quality_encodes_symbols_and_sends_filters() {
+    let server = MockServer::start().await;
+    let coverage = |symbol: &str| json!({"exchange": "x", "symbol": symbol, "data_types": {}});
+    for (route, symbol) in [
+        ("/v1/data-quality/coverage/hip3/km%3AUS500", "km:US500"),
+        ("/v1/data-quality/coverage/spot/HYPE-USDC", "HYPE-USDC"),
+        ("/v1/data-quality/coverage/hip4/%230", "#0"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ok(coverage(symbol), meta(1)))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/v1/data-quality/coverage/hyperliquid/BTC"))
+        .and(query_param("from", "1788000000000"))
+        .and(query_param("to", "1788086400000"))
+        .respond_with(ok(coverage("BTC"), meta(1)))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/data-quality/incidents"))
+        .and(query_param("status", "resolved"))
+        .and(query_param("exchange", "lighter"))
+        .and(query_param("since", "1788000000000"))
+        .and(query_param("limit", "2"))
+        .and(query_param("offset", "4"))
+        .respond_with(ok(
+            json!({"incidents": [], "pagination": {"total": 5, "limit": 2, "offset": 4}}),
+            meta(0),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client(&server);
+    let hip3 = client
+        .data_quality
+        .symbol_coverage("hip3", "km:US500")
+        .await
+        .unwrap();
+    assert_eq!(hip3.symbol, "km:US500");
+    client
+        .data_quality
+        .symbol_coverage("spot", "HYPE-USDC")
+        .await
+        .unwrap();
+    client
+        .data_quality
+        .symbol_coverage("hip4", "#0")
+        .await
+        .unwrap();
+    client
+        .data_quality
+        .symbol_coverage_with(
+            "hyperliquid",
+            "BTC",
+            SymbolCoverageParams {
+                from: Some(1788000000000_i64.into()),
+                to: Some(1788086400000_i64.into()),
+            },
+        )
+        .await
+        .unwrap();
+    let incidents = client
+        .data_quality
+        .list_incidents_with(ListIncidentsParams {
+            status: Some("resolved".to_string()),
+            exchange: Some("lighter".to_string()),
+            since: Some(1788000000000_i64.into()),
+            limit: Some(2),
+            offset: Some(4),
+        })
+        .await
+        .unwrap();
+    assert_eq!(incidents.pagination.unwrap().total, 5);
+}
+
+#[tokio::test]
+async fn spot_and_hip4_freshness_decode() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/spot/freshness/HYPE-USDC"))
+        .respond_with(ok(
+            json!({
+                "coin": "HYPE-USDC", "symbol": "HYPE-USDC", "exchange": "spot",
+                "measured_at": "2026-09-29T03:15:52.789409117Z",
+                "l4_checkpoints": {"lag_ms": 83444, "last_updated": "2026-09-29T03:14:29.345Z"},
+                "l4_diffs": {"lag_ms": 2168, "last_updated": "2026-09-29T03:15:50.621Z"},
+                "orderbook": {"lag_ms": 3619, "last_updated": "2026-09-29T03:15:49.170Z"},
+                "orders": {"lag_ms": 1638, "last_updated": "2026-09-29T03:15:51.151Z"},
+                "trades": {"lag_ms": 2641, "last_updated": "2026-09-29T03:15:50.148Z"},
+                "twap": {"lag_ms": 88779, "last_updated": "2026-09-29T03:14:24.010Z"}
+            }),
+            meta(1),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // HIP-4 has no funding; its entries can be empty objects.
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/hip4/freshness/0"))
+        .respond_with(ok(
+            json!({
+                "coin": "#0", "symbol": "#0", "exchange": "hip4",
+                "measured_at": "2026-09-29T03:15:52.894702314Z",
+                "orderbook": {}, "trades": {}, "open_interest": {}
+            }),
+            meta(1),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client(&server);
+    let spot = client
+        .hyperliquid
+        .spot
+        .freshness("HYPE-USDC")
+        .await
+        .unwrap();
+    assert_eq!(spot.data_types.len(), 6);
+    assert_eq!(spot.data_types["twap"].lag_ms, Some(88779));
+    let hip4 = client.hyperliquid.hip4.get_freshness("0").await.unwrap();
+    assert!(!hip4.data_types.contains_key("funding"));
+    assert_eq!(hip4.data_types["trades"].last_updated, None);
 }

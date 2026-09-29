@@ -59,7 +59,6 @@
 //!         end: 1704153600000_i64.into(),
 //!         cursor,
 //!         limit: Some(1000),
-//!         side: None,
 //!     }).await?;
 //!
 //!     all_trades.extend(result.data);

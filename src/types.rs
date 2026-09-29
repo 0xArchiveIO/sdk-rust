@@ -1268,6 +1268,18 @@ pub struct Incident {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IncidentsResponse {
     pub incidents: Vec<Incident>,
+    /// Paging totals: `total` incidents matching the filters, and the
+    /// `limit` and `offset` applied.
+    #[serde(default)]
+    pub pagination: Option<IncidentsPagination>,
+}
+
+/// Paging totals of an incident listing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IncidentsPagination {
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
 }
 
 /// Latency metrics.

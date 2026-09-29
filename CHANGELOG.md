@@ -138,9 +138,30 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   (`LIVE_ONLY_FULL_DEPTH_CHANNELS`, `is_live_only_full_depth_channel()`,
   `FULL_DEPTH_REPLAY_ERROR`). Their frames decode as `ServerMsg::L4Snapshot`
   (the whole book) and `ServerMsg::L4Batch` (price-level changes).
+- `client.lighter.l3_orderbook.get_with_params()` with `L3OrderBookParams`:
+  a snapshot at `timestamp`, filtered to one `account` index, with `depth`.
+  `L3HistoryParams` gains `account`; it is built with a struct literal, so a
+  literal that lists every field needs `account: None`.
+- `client.data_quality.list_incidents_with()` filters incidents by
+  `status`, `exchange` and `since` and pages them with `limit` and `offset`
+  (`ListIncidentsParams`); `IncidentsResponse` gains `pagination` (`total`,
+  `limit`, `offset`). `client.data_quality.symbol_coverage_with()` sets the
+  gap-detection window with `from` and `to` (`SymbolCoverageParams`).
 
 ### Changed
 - New dependencies `hmac` and `sha2`, used only by `webhook_signature`.
+- Parameters the API ignores are no longer sent or offered:
+  `GetTradesParams::side` and `Hip4TradesParams::side` (trades are not
+  filtered by side), and `depth` on `L2HistoryParams`, `L4HistoryParams` and
+  `Hip4L4HistoryParams` (history returns whole snapshots). Remove these
+  fields from struct literals.
+- `client.hyperliquid.spot.orders` is a `SpotOrdersResource` whose
+  `history()` takes `SpotOrderHistoryParams` (`start`, `end`, `cursor`,
+  `limit`). The Spot route does not filter by user, status or order type,
+  so those fields are gone for Spot.
+- `client.hyperliquid.hip3.liquidations` is a `Hip3LiquidationsResource`,
+  with the same `history()`, `volume()`, `levels()` and `levels_history()`
+  as the Hyperliquid resource.
 - `subscribe()` rejects `rh_lighter_candles` before sending, since it is
   replay-only.
 - Install snippets and rustdoc examples reference `1.12`.
@@ -151,7 +172,18 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   the buckets the API serves: `"1m"` (the default), `"5m"`, `"15m"` and
   `"1h"`.
 
+### Removed
+- `client.hyperliquid.hip3.liquidations.by_user()`, and `flow()`, `tpsl()`,
+  `trigger_levels()` and `trigger_levels_history()` on
+  `client.hyperliquid.spot.orders`. They called routes the API does not
+  serve and always failed. `client.hyperliquid.liquidations.by_user()`
+  remains.
+
 ### Fixed
+- `data_quality.symbol_coverage()` and `exchange_coverage()` percent-encode
+  their path segments and keep the symbol's case, so `km:US500`,
+  `HYPE-USDC` and HIP-4 `#0` reach the right route. A `#0` was cut off as a
+  URL fragment before.
 - A `Timestamp` string without a time zone is UTC. Before, only RFC 3339
   strings with an offset were read; a date alone (`"2026-09-01"`) or a
   date-time without an offset (`"2026-09-01T00:00:00"`) silently became

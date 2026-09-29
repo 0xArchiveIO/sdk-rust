@@ -22,7 +22,6 @@ async fn main() -> oxarchive::Result<()> {
                     end: 1704153600000_i64.into(),   // 2024-01-02 00:00 UTC
                     cursor,
                     limit: Some(1000),
-                    side: None,
                 },
             )
             .await?;

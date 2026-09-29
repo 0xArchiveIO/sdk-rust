@@ -9,6 +9,19 @@ pub struct L3HistoryParams {
     pub end: Timestamp,
     pub cursor: Option<String>,
     pub limit: Option<i64>,
+    /// Keep only the resting orders of this Lighter account index.
+    pub account: Option<i64>,
+}
+
+/// Parameters for [`L3OrderBookResource::get_with_params`].
+#[derive(Debug, Default, Clone)]
+pub struct L3OrderBookParams {
+    /// Return the snapshot at or before this time instead of the latest.
+    pub timestamp: Option<Timestamp>,
+    /// Keep only the resting orders of this Lighter account index.
+    pub account: Option<i64>,
+    /// Resting orders per side, 1 to 250.
+    pub depth: Option<i64>,
 }
 
 /// Access to L3 (order-level) orderbook endpoints (Lighter.xyz only).
@@ -29,9 +42,34 @@ impl L3OrderBookResource {
     /// Get the current L3 orderbook for a symbol.
     ///
     /// `depth` caps individual resting orders per side and must be 1..=250.
+    /// Use [`get_with_params`](Self::get_with_params) for a point-in-time
+    /// snapshot or one account's orders.
     pub async fn get(&self, symbol: &str, depth: Option<i64>) -> Result<serde_json::Value> {
+        self.get_with_params(
+            symbol,
+            L3OrderBookParams {
+                depth,
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    /// Get an L3 orderbook snapshot: the latest, or the one at `timestamp`,
+    /// optionally filtered to one account's resting orders.
+    pub async fn get_with_params(
+        &self,
+        symbol: &str,
+        params: L3OrderBookParams,
+    ) -> Result<serde_json::Value> {
         let mut qp = vec![];
-        if let Some(d) = depth {
+        if let Some(ts) = &params.timestamp {
+            qp.push(("timestamp", ts.to_millis().to_string()));
+        }
+        if let Some(a) = params.account {
+            qp.push(("account", a.to_string()));
+        }
+        if let Some(d) = params.depth {
             if !(1..=250).contains(&d) {
                 return Err(Error::InvalidParam(
                     "depth must be between 1 and 250 orders per side".to_string(),
@@ -59,6 +97,9 @@ impl L3OrderBookResource {
         }
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
+        }
+        if let Some(a) = params.account {
+            qp.push(("account", a.to_string()));
         }
         let (data, next_cursor) = self
             .http

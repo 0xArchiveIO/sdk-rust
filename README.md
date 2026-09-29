@@ -150,7 +150,7 @@ The sections below show which resources are available on each exchange client:
 | `wallets` (wallet classification) | Yes | Yes | -- | -- | -- |
 | `oracle` (external price, discovery bounds) | -- | Yes | -- | -- | -- |
 | `accounts` (L1 address lookup) | -- | -- | -- | Yes | -- |
-| `orders` | Yes | Yes | Yes | -- | -- |
+| `orders` | Yes | Yes | History only | -- | -- |
 | `l4_orderbook` | Yes | Yes | Yes | -- | -- |
 | `l2_orderbook` | Yes | Yes | -- | -- | -- |
 | `l3_orderbook` | -- | -- | -- | Yes | -- |
@@ -331,7 +331,6 @@ let result = client.hyperliquid.trades.list("BTC", GetTradesParams {
     end: 1704153600000_i64.into(),
     limit: Some(1000),
     cursor: None,
-    side: None,
 }).await?;
 
 // Paginate through all results
@@ -343,7 +342,6 @@ while let Some(c) = cursor {
         end: 1704153600000_i64.into(),
         limit: Some(1000),
         cursor: Some(c),
-        side: None,
     }).await?;
     all_trades.extend(page.data);
     cursor = page.next_cursor;
@@ -369,7 +367,6 @@ let page = client.rh_lighter.trades.list_with_meta("BTC", GetTradesParams {
     end: 1788307200000_i64.into(),   // 2026-09-02 00:00 UTC
     limit: Some(1000),
     cursor: None,
-    side: None,
 }).await?;
 if let Some(boundary) = &page.meta.clamped_to {
     println!("range stopped at {boundary}; the rest is not final yet");
@@ -521,7 +518,7 @@ let history = client.hyperliquid.open_interest.history("BTC", OpenInterestHistor
 
 ### Liquidations (Hyperliquid and HIP-3)
 
-Historical liquidation events from 2025-12-22. Available on `client.hyperliquid.liquidations` and `client.hyperliquid.hip3.liquidations`.
+Historical liquidation events from 2025-12-22. Available on `client.hyperliquid.liquidations` and `client.hyperliquid.hip3.liquidations`. Liquidations by user (`by_user()`) are Hyperliquid core only.
 
 ```rust
 use oxarchive::resources::liquidations::*;
@@ -751,7 +748,6 @@ let history = client.hyperliquid.l4_orderbook.history("BTC", L4HistoryParams {
     end: 1704153600000_i64.into(),
     cursor: None,
     limit: Some(1000),
-    depth: Some(20),
 }).await?;
 
 // HIP-3 L4 orderbook
@@ -786,7 +782,6 @@ let l2_history = client.hyperliquid.l2_orderbook.history("BTC", L2HistoryParams 
     end: 1704153600000_i64.into(),
     cursor: None,
     limit: Some(1000),
-    depth: Some(50),
 }).await?;
 
 // Get L2 tick-level diffs
@@ -806,7 +801,7 @@ let hip3_l2 = client.hyperliquid.hip3.l2_orderbook.get("km:US500", None).await?;
 Order-level L3 orderbook data showing individual orders. Available on `client.lighter.l3_orderbook`.
 
 ```rust
-use oxarchive::resources::l3_orderbook::L3HistoryParams;
+use oxarchive::resources::l3_orderbook::{L3HistoryParams, L3OrderBookParams};
 
 // Get current L3 orderbook
 let l3 = client.lighter.l3_orderbook.get("BTC", None).await?;
@@ -814,12 +809,20 @@ let l3 = client.lighter.l3_orderbook.get("BTC", None).await?;
 // Get with depth limit
 let l3 = client.lighter.l3_orderbook.get("BTC", Some(20)).await?;
 
-// Get paginated L3 orderbook history
+// A point-in-time snapshot, filtered to one account's resting orders
+let mine = client.lighter.l3_orderbook.get_with_params("BTC", L3OrderBookParams {
+    timestamp: Some(1790553600000_i64.into()),
+    account: Some(726714),
+    depth: None,
+}).await?;
+
+// Get paginated L3 orderbook history (optionally one account's orders)
 let history = client.lighter.l3_orderbook.history("BTC", L3HistoryParams {
     start: 1772668800000_i64.into(), // 2026-03-05 00:00 UTC
     end: 1772755200000_i64.into(),   // 2026-03-06 00:00 UTC
     cursor: None,
     limit: Some(1000),
+    account: None,
 }).await?;
 ```
 
@@ -897,7 +900,6 @@ let trades = client.hyperliquid.hip4.get_trades("0", Hip4TradesParams {
     end:   1777766400000_i64.into(),
     cursor: None,
     limit: Some(1000),
-    side: None,
 }).await?;
 let recent = client.hyperliquid.hip4.get_trades_recent("0", Some(50)).await?;
 
@@ -951,7 +953,7 @@ freshness data are live-only from 2026-05-05.
 ```rust
 use oxarchive::resources::orderbook::{GetOrderBookParams, OrderBookHistoryParams};
 use oxarchive::resources::l4_orderbook::{L4DiffsParams, L4HistoryParams, L4OrderBookParams};
-use oxarchive::resources::orders::OrderHistoryParams;
+use oxarchive::resources::orders::SpotOrderHistoryParams;
 use oxarchive::resources::candles::CandleHistoryParams;
 use oxarchive::resources::spot::SpotTwapParams;
 use oxarchive::resources::trades::GetTradesParams;
@@ -990,7 +992,6 @@ let trades = client.hyperliquid.spot.trades.list("PURR-USDC", GetTradesParams {
     end:   1746576000000_i64.into(),
     cursor: None,
     limit: Some(1000),
-    side: None,
 }).await?;
 
 // L4 reconstruction.
@@ -1006,11 +1007,10 @@ let l4_history = client.hyperliquid.spot.l4_orderbook.history("HYPE-USDC", L4His
     end:   1746576000000_i64.into(),
     cursor: None,
     limit: Some(10),
-    depth: Some(20),
 }).await?;
 
-// Order lifecycle events.
-let orders = client.hyperliquid.spot.orders.history("HYPE-USDC", OrderHistoryParams::default()).await?;
+// Order lifecycle history (Spot serves history only: no flow, TP/SL, or trigger levels).
+let orders = client.hyperliquid.spot.orders.history("HYPE-USDC", SpotOrderHistoryParams::default()).await?;
 
 // TWAP statuses by symbol or by user.
 let twap_sym = client.hyperliquid.spot.twap
@@ -1055,7 +1055,6 @@ let trades = client.rh_lighter.trades.list("AAPL-USDG", GetTradesParams {
     end: 1788307200000_i64.into(),   // 2026-09-02 00:00 UTC
     cursor: None,
     limit: Some(1000),
-    side: None,
 }).await?;
 let summary = client.rh_lighter.summary("BTC").await?;
 let freshness = client.rh_lighter.freshness("BTC").await?;
@@ -1337,9 +1336,23 @@ let coverage = client.data_quality.coverage().await?;
 
 // Symbol-specific coverage with gap detection
 let btc = client.data_quality.symbol_coverage("hyperliquid", "BTC").await?;
+// Symbols keep their case and are percent-encoded (`km:US500`, `HYPE-USDC`, `#0`);
+// choose the gap-detection window with symbol_coverage_with().
+use oxarchive::resources::data_quality::{ListIncidentsParams, SymbolCoverageParams};
+let us500 = client.data_quality.symbol_coverage_with("hip3", "km:US500", SymbolCoverageParams {
+    from: Some(1788000000000_i64.into()),
+    to: Some(1788086400000_i64.into()),
+}).await?;
 
 // Incidents
 let incidents = client.data_quality.list_incidents(None).await?;
+let lighter_incidents = client.data_quality.list_incidents_with(ListIncidentsParams {
+    exchange: Some("lighter".to_string()),
+    limit: Some(20),
+    offset: Some(0),
+    ..Default::default()
+}).await?;
+println!("{:?} lighter incidents", lighter_incidents.pagination.map(|p| p.total));
 let incident = client.data_quality.get_incident("inc-123").await?;
 
 // Latency and SLA

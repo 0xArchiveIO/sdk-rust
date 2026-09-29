@@ -18,7 +18,6 @@ pub struct L2HistoryParams {
     pub end: Timestamp,
     pub cursor: Option<String>,
     pub limit: Option<i64>,
-    pub depth: Option<i32>,
 }
 
 /// Parameters for paginated L2 orderbook diffs.
@@ -79,9 +78,6 @@ impl L2OrderBookResource {
         }
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
-        }
-        if let Some(d) = params.depth {
-            qp.push(("depth", d.to_string()));
         }
         let (data, next_cursor) = self
             .http

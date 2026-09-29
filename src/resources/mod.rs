@@ -28,10 +28,12 @@ pub use instruments::{
 pub use funding::FundingResource;
 pub use open_interest::OpenInterestResource;
 pub use candles::CandlesResource;
-pub use liquidations::{LighterLiquidationsResource, LiquidationsResource};
+pub use liquidations::{
+    Hip3LiquidationsResource, LighterLiquidationsResource, LiquidationsResource,
+};
 pub use data_quality::DataQualityResource;
 pub use web3::Web3Resource;
-pub use orders::OrdersResource;
+pub use orders::{OrdersResource, SpotOrdersResource};
 pub use l4_orderbook::L4OrderBookResource;
 pub use l2_orderbook::L2OrderBookResource;
 pub use l3_orderbook::L3OrderBookResource;
