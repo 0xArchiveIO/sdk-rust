@@ -83,22 +83,22 @@ async fn main() -> oxarchive::Result<()> {
 
 | Need | Link |
 | --- | --- |
-| First authenticated route | [Quick Start](https://www.0xarchive.io/docs/quick-start) |
-| SDK install and route docs | [SDK docs](https://www.0xarchive.io/docs/sdks) |
-| Claude Code, ChatGPT Codex, and coding-agent workflows | [AI Clients](https://www.0xarchive.io/docs/ai-clients) |
+| First authenticated route | [Quick Start](https://docs.0xarchive.io/quickstart) |
+| SDK install and route docs | [SDK docs](https://docs.0xarchive.io/sdks) |
+| Claude Code, ChatGPT Codex, and coding-agent workflows | [AI Clients](https://docs.0xarchive.io/ai-clients) |
 | File-based historical pulls | [Data Catalog](https://www.0xarchive.io/data) |
 | Route contract and machine context | [OpenAPI](https://www.0xarchive.io/openapi.json), [llms.txt](https://www.0xarchive.io/llms.txt) |
 
 ## Use From Coding Agents
 
-When prototyping Rust services from Claude Code, ChatGPT Codex, or another coding agent, also install the [0xArchive skill](https://github.com/0xArchiveIO/0xarchive-skill) so the agent has typed API context and example patterns for every endpoint. The skill installs into `.claude/skills/0xarchive` (Claude Code) or `.agents/skills/0xarchive` (ChatGPT Codex). For shell-driven exploration alongside the SDK, the [CLI](https://npmjs.com/package/@0xarchive/cli) and the [hosted MCP](https://mcp.0xarchive.io) share the same API key.
+When prototyping Rust services from Claude Code, ChatGPT Codex, or another coding agent, also install the [0xArchive skill](https://github.com/0xArchiveIO/0xarchive-skill) so the agent has typed API context and example patterns for every endpoint. The skill installs into `.claude/skills/0xarchive` (Claude Code) or `.agents/skills/0xarchive` (ChatGPT Codex). For shell-driven exploration alongside the SDK, the [CLI](https://npmjs.com/package/@0xarchive/cli) and the [hosted MCP](https://docs.0xarchive.io/mcp-server) share the same API key.
 
 ## Data Coverage
 
 | Venue | Coverage | Notes |
 | --- | --- | --- |
 | Hyperliquid | April 2023+ | Core perpetuals; coverage varies by schema and route. |
-| Hyperliquid HIP-3 | February 2026+ for served history | Builder perps; funding and OI update at roughly 10 seconds. |
+| Hyperliquid HIP-3 | Trades and oracle prices from 2025-10-13; candles and liquidations from 2025-12-22; order book, funding, and OI from 2026-02-16; L4 and order history from 2026-03-10 | Builder perps; funding and OI update at roughly 10 seconds. |
 | Hyperliquid HIP-4 | May 2, 2026+ | Candles and outcome-side OI are served from 2026-05-02; OI updates at ~10s. No funding or liquidations. |
 | Hyperliquid Spot | Trades March 2025+; candles from exactly 2025-03-22T10:50:22Z; orderbook, L4, TWAP, and freshness from May 2026 | 326 authenticated inventory rows using dashed symbols (`HYPE-USDC`, `PURR-USDC`, ...). No funding, OI, or liquidations. |
 | Lighter.xyz (mainnet) | Candles from 2025-08-01; observed global per-fill trade floor January 17, 2025; exact starts vary by market. L3 from March 5, 2026+; liquidations from 2026-06-10 | Maker/taker trade context; L3 caps at 250 orders per side; funding/OI update at ~10s. |
@@ -476,7 +476,7 @@ let history = client.hyperliquid.open_interest.history("BTC", OpenInterestHistor
 
 ### Liquidations (Hyperliquid and HIP-3)
 
-Historical liquidation events from May 2025 onwards. Available on `client.hyperliquid.liquidations` and `client.hyperliquid.hip3.liquidations`.
+Historical liquidation events from 2025-12-22. Available on `client.hyperliquid.liquidations` and `client.hyperliquid.hip3.liquidations`.
 
 ```rust
 use oxarchive::resources::liquidations::*;
@@ -1528,11 +1528,11 @@ For large-scale data exports (route-specific order books, fill-level trade histo
 
 ## Links
 
-- [API Docs](https://www.0xarchive.io/docs)
+- [API Docs](https://docs.0xarchive.io)
 - [Python SDK](https://pypi.org/project/oxarchive/)
 - [TypeScript SDK](https://npmjs.com/package/@0xarchive/sdk)
 - [CLI](https://npmjs.com/package/@0xarchive/cli)
-- [MCP Server](https://mcp.0xarchive.io)
+- [MCP Server](https://docs.0xarchive.io/mcp-server)
 - [0xArchive Skill](https://github.com/0xArchiveIO/0xarchive-skill)
 - [Examples](https://github.com/0xArchiveIO/examples)
 
