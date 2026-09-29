@@ -18,6 +18,8 @@ pub struct L2HistoryParams {
     pub end: Timestamp,
     pub cursor: Option<String>,
     pub limit: Option<i64>,
+    /// Price levels per side in each snapshot (omit for every served level).
+    pub depth: Option<i32>,
 }
 
 /// Parameters for paginated L2 orderbook diffs.
@@ -79,14 +81,15 @@ impl L2OrderBookResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        if let Some(d) = params.depth {
+            qp.push(("depth", d.to_string()));
+        }
+        self.http
             .get_with_cursor(
                 &format!("{}/orderbook/{}/l2/history", self.prefix, symbol),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get paginated L2 tick-level diffs.
@@ -105,13 +108,11 @@ impl L2OrderBookResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/orderbook/{}/l2/diffs", self.prefix, symbol),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }

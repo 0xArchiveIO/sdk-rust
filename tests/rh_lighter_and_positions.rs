@@ -35,6 +35,14 @@ fn meta(count: usize) -> Value {
     json!({"count": count, "request_id": "req-1"})
 }
 
+/// A Unix-millisecond instant as the API writes it: RFC 3339 UTC with
+/// milliseconds.
+fn rfc3339(ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .unwrap()
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
 // ---------------------------------------------------------------------------
 // Lighter on Robinhood Chain
 // ---------------------------------------------------------------------------
@@ -157,6 +165,7 @@ async fn rh_lighter_history_routes_send_the_same_params_as_mainnet() {
                 end: 1788307200000_i64.into(),
                 cursor: None,
                 limit: Some(1000),
+                side: None,
             },
         )
         .await
@@ -252,6 +261,7 @@ async fn trades_with_meta_expose_the_lighter_finalization_boundary() {
                     end: 1790380800000_i64.into(),
                     cursor: None,
                     limit: Some(1000),
+                    side: None,
                 },
             )
             .await
@@ -301,7 +311,8 @@ async fn hyperliquid_recent_with_meta_is_rejected_before_sending() {
 fn liquidation_row(timestamp: i64, source: &str, raw_json: &str) -> Value {
     json!({
         "symbol": "BTC",
-        "timestamp": timestamp,
+        "timestamp": rfc3339(timestamp),
+        "timestamp_ms": timestamp,
         "transaction_time_us": timestamp * 1000 + 456,
         "trade_id": 987654321,
         "liquidation_type": "liquidation",
@@ -359,7 +370,7 @@ async fn both_lighter_clients_expose_liquidation_history_and_volume() {
             .and(path(format!("{prefix}/liquidations/BTC/volume")))
             .and(query_param("interval", "1h"))
             .respond_with(ok(
-                json!([{"symbol": "BTC", "timestamp": 1788220800000_i64, "total_usd": 27062.625, "count": 1}]),
+                json!([{"symbol": "BTC", "timestamp": "2026-09-01T00:00:00.000Z", "timestamp_ms": 1788220800000_i64, "total_usd": 27062.625, "count": 1}]),
                 meta(1),
             ))
             .expect(1)
@@ -386,7 +397,8 @@ async fn both_lighter_clients_expose_liquidation_history_and_volume() {
         let backfilled = &page.data[0];
         assert_eq!(backfilled.source.as_deref(), Some("bucket"));
         assert_eq!(backfilled.raw_json, "");
-        assert_eq!(backfilled.timestamp, 1782602083534);
+        assert_eq!(backfilled.timestamp, "2026-06-27T23:14:43.534Z");
+        assert_eq!(backfilled.timestamp_ms, 1782602083534);
         assert_eq!(backfilled.price, "108250.5");
         assert_eq!(backfilled.size, "0.25");
         assert_eq!(backfilled.usd_amount.as_deref(), Some("27062.625"));
@@ -409,6 +421,8 @@ async fn both_lighter_clients_expose_liquidation_history_and_volume() {
             .await
             .unwrap();
         assert_eq!(volume.data[0].total_usd, "27062.625");
+        assert_eq!(volume.data[0].timestamp, "2026-09-01T00:00:00.000Z");
+        assert_eq!(volume.data[0].timestamp_ms, 1788220800000);
         assert_eq!(volume.data[0].count, 1);
     }
 }

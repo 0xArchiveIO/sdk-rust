@@ -1,5 +1,6 @@
 # Tests (internal only, not published)
 tests/*
+!tests/api_contract.rs
 !tests/coverage_contract.rs
 !tests/rh_lighter_and_positions.rs
 !tests/surface_parity.rs

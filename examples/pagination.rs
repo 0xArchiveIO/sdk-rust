@@ -15,13 +15,14 @@ async fn main() -> oxarchive::Result<()> {
         let result = client
             .hyperliquid
             .trades
-            .list(
+            .history(
                 "BTC",
                 GetTradesParams {
                     start: 1704067200000_i64.into(), // 2024-01-01 00:00 UTC
                     end: 1704153600000_i64.into(),   // 2024-01-02 00:00 UTC
                     cursor,
                     limit: Some(1000),
+                    side: None,
                 },
             )
             .await?;
@@ -31,10 +32,11 @@ async fn main() -> oxarchive::Result<()> {
         all_trades.extend(result.data);
         println!("Page {page}: fetched {count} trades (total: {})", all_trades.len());
 
-        cursor = result.next_cursor;
-        if cursor.is_none() {
+        // Follow next_cursor, with the same filters, while has_more is true.
+        if !result.has_more {
             break;
         }
+        cursor = result.next_cursor;
     }
 
     println!("\nTotal BTC trades in 24h window: {}", all_trades.len());

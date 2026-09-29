@@ -79,14 +79,12 @@ impl L4OrderBookResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/orderbook/{}/l4/diffs", self.prefix, symbol),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get paginated L4 orderbook history for a symbol.
@@ -105,13 +103,11 @@ impl L4OrderBookResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/orderbook/{}/l4/history", self.prefix, symbol),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }

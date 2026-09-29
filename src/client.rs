@@ -6,7 +6,9 @@ use crate::error::{self, Error};
 use crate::exchanges::{HyperliquidClient, LighterClient, RhLighterClient};
 use crate::http::{HttpClient, HttpConfig};
 use crate::resources::{DataQualityResource, Web3Resource, WebhooksResource};
-use crate::types::{SymbolEntry, SymbolsResponse};
+use crate::types::{Capability, SymbolEntry, SymbolsResponse};
+
+pub use crate::http::{API_VERSION, API_VERSION_HEADER};
 
 /// Default base URL for the 0xArchive API.
 pub const DEFAULT_BASE_URL: &str = "https://api.0xarchive.io";
@@ -83,7 +85,7 @@ impl ClientBuilder {
 /// let ob = client.hyperliquid.orderbook.get("BTC", None).await?;
 /// println!("BTC mid price: {:?}", ob.mid_price);
 ///
-/// // Access Lighter.xyz (mainnet)
+/// // Access Lighter (mainnet)
 /// let lighter_instruments = client.lighter.instruments.list().await?;
 ///
 /// // Access Lighter on Robinhood Chain, the second Lighter deployment
@@ -99,9 +101,9 @@ pub struct OxArchive {
     http: HttpClient,
     /// Hyperliquid exchange client (includes nested `.hip3` client).
     pub hyperliquid: HyperliquidClient,
-    /// Lighter.xyz client for the mainnet deployment (`/v1/lighter`).
+    /// Lighter client for the mainnet deployment (`/v1/lighter`).
     pub lighter: LighterClient,
-    /// Lighter.xyz client for the Robinhood Chain deployment
+    /// Lighter client for the Robinhood Chain deployment
     /// (`/v1/rh-lighter`). Same resources as `lighter` except the L3 order
     /// book.
     pub rh_lighter: RhLighterClient,
@@ -171,6 +173,38 @@ impl OxArchive {
     /// `exchange` for one family.
     pub async fn symbols(&self) -> error::Result<Vec<SymbolEntry>> {
         let body: SymbolsResponse = self.http.get("/v1/symbols", &[]).await?;
-        Ok(body.symbols)
+        Ok(body.into_symbols())
+    }
+
+    /// Alias of [`OxArchive::symbols`], named for the `list` verb that
+    /// catalog reads use.
+    pub async fn list_symbols(&self) -> error::Result<Vec<SymbolEntry>> {
+        self.symbols().await
+    }
+
+    /// What each venue serves (`GET /v1/capabilities`): one [`Capability`]
+    /// row per venue and datatype, with its REST routes, its WebSocket
+    /// channels and whether they stream live and replay history, the first
+    /// instant served, the cadence, the largest page and the accepted
+    /// intervals.
+    ///
+    /// The route is public and cached for five minutes, and it uses no
+    /// credits. Use it to decide which channels to replay, as the server
+    /// does: [`Capability::for_channel`] finds a channel's row.
+    ///
+    /// ```no_run
+    /// # use oxarchive::OxArchive;
+    /// # async fn example() -> oxarchive::Result<()> {
+    /// # let client = OxArchive::new("key")?;
+    /// for row in client.capabilities().await? {
+    ///     if row.replay {
+    ///         println!("{} {}: replay {:?} from {:?}", row.venue, row.datatype, row.ws_channels, row.available_from);
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn capabilities(&self) -> error::Result<Vec<Capability>> {
+        self.http.get("/v1/capabilities", &[]).await
     }
 }

@@ -1,4 +1,4 @@
-//! Tick-level order book reconstructor for Lighter.xyz.
+//! Tick-level order book reconstructor for Lighter.
 //!
 //! Maintains an in-memory representation of the order book and applies
 //! incremental deltas to produce full L2 snapshots at each tick.

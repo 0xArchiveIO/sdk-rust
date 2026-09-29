@@ -41,6 +41,9 @@ fn esc(segment: &str) -> String {
 const SLOW_ENDPOINT_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Access to data quality monitoring endpoints.
+///
+/// Every response is the standard `{success, data, meta}` envelope under the
+/// API version the SDK sends; the methods return the `data` member.
 #[derive(Debug, Clone)]
 pub struct DataQualityResource {
     http: HttpClient,
@@ -68,6 +71,15 @@ impl DataQualityResource {
                 &[],
                 Some(SLOW_ENDPOINT_TIMEOUT),
             )
+            .await
+    }
+
+    /// Get the public coverage summary (`GET /v1/status/coverage`), the one
+    /// the status page shows. Same shape as [`coverage`](Self::coverage);
+    /// the route needs no API key and is cached for five minutes.
+    pub async fn status_coverage(&self) -> Result<CoverageResponse> {
+        self.http
+            .get_with_timeout("/v1/status/coverage", &[], Some(SLOW_ENDPOINT_TIMEOUT))
             .await
     }
 

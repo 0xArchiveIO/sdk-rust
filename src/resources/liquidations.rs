@@ -136,11 +136,9 @@ impl LiquidationsResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/liquidations/{}", self.prefix, symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get paginated liquidations for a specific user address.
@@ -162,14 +160,12 @@ impl LiquidationsResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/liquidations/user/{}", self.prefix, user_address),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get aggregated liquidation volume by time bucket.
@@ -191,14 +187,12 @@ impl LiquidationsResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/liquidations/{}/volume", self.prefix, symbol),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get projected forced-liquidation levels for a symbol.
@@ -244,14 +238,12 @@ impl LiquidationsResource {
         params: LevelsHistoryParams,
     ) -> Result<CursorResponse<Vec<LiquidationLevelsHistoryItem>>> {
         let qp = params.to_query();
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/liquidations/{}/levels/history", self.prefix, symbol),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }
 
@@ -349,11 +341,9 @@ impl LighterLiquidationsResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/liquidations/{}", self.prefix, symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get liquidation volume by time bucket (`interval` defaults to `1h`).
@@ -378,13 +368,11 @@ impl LighterLiquidationsResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/liquidations/{}/volume", self.prefix, symbol),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }

@@ -43,6 +43,7 @@ async fn main() -> oxarchive::Result<()> {
                 end: now_ms.into(),
                 cursor: None,
                 limit: Some(100),
+                side: None,
             },
         )
         .await?;

@@ -4,6 +4,7 @@
 use crate::error::Result;
 use crate::http::HttpClient;
 use crate::resources::cvd::fetch_cvd;
+use crate::resources::trades::RecentTradesParams;
 use crate::resources::{
     BreadthResource, CandlesResource, CvdParams, FundingResource, Hip3InstrumentsResource,
     Hip4InstrumentsResource, InstrumentsResource, L2OrderBookResource, L3OrderBookResource,
@@ -16,7 +17,7 @@ use crate::resources::{
 use crate::types::{
     CoinFreshness, CoinSummary, CursorResponse, CvdBucket, Hip4OpenInterestRecord, Hip4Outcome,
     Hip4OutcomeAggregate, Hip4Question, L4DiffEntry, L4OrderBookSnapshot, MetaResponse, OrderBook,
-    OrderHistoryEntry, PriceSnapshot, Timestamp, Trade,
+    OrderHistoryEntry, PriceSnapshot, Timestamp, Trade, TradeSide,
 };
 
 // ---------------------------------------------------------------------------
@@ -118,11 +119,9 @@ impl HyperliquidClient {
         if let Some(c) = cursor {
             qp.push(("cursor", c.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("/v1/hyperliquid/prices/{}", symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get cumulative volume delta buckets for a symbol
@@ -240,11 +239,9 @@ impl Hip3Client {
         if let Some(c) = cursor {
             qp.push(("cursor", c.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("/v1/hyperliquid/hip3/prices/{}", symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get cumulative volume delta buckets for a HIP-3 symbol
@@ -385,6 +382,33 @@ pub struct Hip4HistoryRange {
     pub limit: Option<i64>,
 }
 
+/// Range, page and depth for [`Hip4::get_orderbook_history`].
+///
+/// A [`Hip4HistoryRange`] converts into it with no depth, so existing calls
+/// that pass a range keep working.
+#[derive(Debug, Clone)]
+pub struct Hip4OrderBookHistoryParams {
+    pub start: Timestamp,
+    pub end: Timestamp,
+    /// The previous page's `next_cursor`, passed through unchanged.
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
+    /// Price levels per side in each snapshot.
+    pub depth: Option<i32>,
+}
+
+impl From<Hip4HistoryRange> for Hip4OrderBookHistoryParams {
+    fn from(range: Hip4HistoryRange) -> Self {
+        Self {
+            start: range.start,
+            end: range.end,
+            cursor: range.cursor,
+            limit: range.limit,
+            depth: None,
+        }
+    }
+}
+
 /// Range for trade-history pagination.
 #[derive(Debug, Clone)]
 pub struct Hip4TradesParams {
@@ -393,6 +417,9 @@ pub struct Hip4TradesParams {
     /// The previous page's `next_cursor`, passed through unchanged.
     pub cursor: Option<String>,
     pub limit: Option<i64>,
+    /// Keep only buy-side (`side` `"B"`) or sell-side (`"A"`) rows. Keep it
+    /// unchanged while paging.
+    pub side: Option<TradeSide>,
 }
 
 /// Range params for L4 checkpoint history pagination.
@@ -405,6 +432,9 @@ pub struct Hip4L4HistoryParams {
 }
 
 /// Filters for order-history pagination.
+///
+/// Built with a struct literal; start from `..Default::default()` so a
+/// literal keeps compiling when fields are added.
 #[derive(Debug, Default, Clone)]
 pub struct Hip4OrderHistoryParams {
     pub start: Option<Timestamp>,
@@ -414,6 +444,9 @@ pub struct Hip4OrderHistoryParams {
     pub order_type: Option<String>,
     pub cursor: Option<String>,
     pub limit: Option<i64>,
+    /// `Some(true)` keeps only orders whose trigger fired (status
+    /// `triggered`); `Some(false)` leaves them out.
+    pub triggered: Option<bool>,
 }
 
 /// Filters for order-flow aggregation.
@@ -506,11 +539,9 @@ impl Hip4 {
         if let Some(l) = p.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/outcomes", HIP4_PREFIX), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get a single outcome detail (includes `aggregated_oi`).
@@ -553,11 +584,9 @@ impl Hip4 {
         if let Some(l) = p.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/questions", HIP4_PREFIX), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get one HIP-4 question by id
@@ -573,6 +602,12 @@ impl Hip4 {
     /// List per-side HIP-4 instruments.
     pub async fn get_instruments(&self) -> Result<Vec<Hip4Outcome>> {
         self.instruments.list().await
+    }
+
+    /// Alias of [`Hip4::get_instruments`], named for the `list` verb that
+    /// catalog reads use.
+    pub async fn list_instruments(&self) -> Result<Vec<Hip4Outcome>> {
+        self.get_instruments().await
     }
 
     /// Get a single per-side instrument by path symbol (e.g. `"0"`; legacy
@@ -606,11 +641,15 @@ impl Hip4 {
     }
 
     /// Get paginated L2 orderbook history.
+    ///
+    /// Takes a [`Hip4OrderBookHistoryParams`] (to set `depth`) or a
+    /// [`Hip4HistoryRange`].
     pub async fn get_orderbook_history(
         &self,
         symbol: &str,
-        params: Hip4HistoryRange,
+        params: impl Into<Hip4OrderBookHistoryParams>,
     ) -> Result<CursorResponse<Vec<OrderBook>>> {
+        let params = params.into();
         let mut qp = vec![
             ("start", params.start.to_millis().to_string()),
             ("end", params.end.to_millis().to_string()),
@@ -621,8 +660,10 @@ impl Hip4 {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        if let Some(d) = params.depth {
+            qp.push(("depth", d.to_string()));
+        }
+        self.http
             .get_with_cursor(
                 &format!(
                     "{}/orderbook/{}/history",
@@ -631,8 +672,7 @@ impl Hip4 {
                 ),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     // ---- Trades -----------------------------------------------------------
@@ -653,36 +693,60 @@ impl Hip4 {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        if let Some(s) = params.side {
+            qp.push(("side", s.as_str().to_string()));
+        }
+        self.http
             .get_with_cursor(
                 &format!("{}/trades/{}", HIP4_PREFIX, hip4_encode(symbol)),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
+    }
+
+    /// Alias of [`Hip4::get_trades`], named for the `history` verb that
+    /// paged series use.
+    pub async fn get_trades_history(
+        &self,
+        symbol: &str,
+        params: Hip4TradesParams,
+    ) -> Result<CursorResponse<Vec<Trade>>> {
+        self.get_trades(symbol, params).await
     }
 
     /// Get the most recent trades for a HIP-4 coin.
+    ///
+    /// To filter by side, use [`Hip4::get_trades_recent_with`].
     pub async fn get_trades_recent(
         &self,
         symbol: &str,
         limit: Option<i64>,
     ) -> Result<Vec<Trade>> {
-        let mut qp = vec![];
-        if let Some(l) = limit {
-            qp.push(("limit", l.to_string()));
-        }
-        self.http
-            .get(
+        Ok(self
+            .get_trades_recent_with(symbol, RecentTradesParams { limit, side: None })
+            .await?
+            .data)
+    }
+
+    /// Get the most recent trades for a HIP-4 coin with a side filter, and
+    /// the response's full `meta` block.
+    pub async fn get_trades_recent_with(
+        &self,
+        symbol: &str,
+        params: RecentTradesParams,
+    ) -> Result<MetaResponse<Vec<Trade>>> {
+        let (data, meta) = self
+            .http
+            .get_with_meta(
                 &format!(
                     "{}/trades/{}/recent",
                     HIP4_PREFIX,
                     hip4_encode(symbol)
                 ),
-                &qp,
+                &params.query(),
             )
-            .await
+            .await?;
+        Ok(MetaResponse::new(data, meta))
     }
 
     // ---- Open interest ----------------------------------------------------
@@ -703,14 +767,22 @@ impl Hip4 {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/openinterest/{}", HIP4_PREFIX, hip4_encode(symbol)),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
+    }
+
+    /// Alias of [`Hip4::get_open_interest`], named for the `history` verb
+    /// that paged series use.
+    pub async fn get_open_interest_history(
+        &self,
+        symbol: &str,
+        params: Hip4HistoryRange,
+    ) -> Result<CursorResponse<Vec<Hip4OpenInterestRecord>>> {
+        self.get_open_interest(symbol, params).await
     }
 
     /// Get the latest per-side open-interest snapshot.
@@ -775,14 +847,27 @@ impl Hip4 {
         if let Some(c) = cursor {
             qp.push(("cursor", c.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/prices/{}", HIP4_PREFIX, hip4_encode(symbol)),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
+    }
+
+    /// Alias of [`Hip4::get_prices`], named like `price_history()` on the
+    /// other clients.
+    pub async fn get_price_history(
+        &self,
+        symbol: &str,
+        start: impl Into<Timestamp>,
+        end: impl Into<Timestamp>,
+        interval: Option<&str>,
+        limit: Option<i64>,
+        cursor: Option<&str>,
+    ) -> Result<CursorResponse<Vec<PriceSnapshot>>> {
+        self.get_prices(symbol, start, end, interval, limit, cursor)
+            .await
     }
 
     // ---- Order lifecycle --------------------------------------------------
@@ -809,14 +894,16 @@ impl Hip4 {
         if let Some(t) = params.order_type {
             qp.push(("order_type", t));
         }
+        if let Some(t) = params.triggered {
+            qp.push(("triggered", t.to_string()));
+        }
         if let Some(c) = params.cursor {
             qp.push(("cursor", c));
         }
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!(
                     "{}/orders/{}/history",
@@ -825,8 +912,7 @@ impl Hip4 {
                 ),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get aggregated order flow for a HIP-4 coin, one page of time buckets.
@@ -853,8 +939,7 @@ impl Hip4 {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!(
                     "{}/orders/{}/flow",
@@ -863,8 +948,7 @@ impl Hip4 {
                 ),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get TP/SL orders for a HIP-4 coin.
@@ -892,8 +976,7 @@ impl Hip4 {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!(
                     "{}/orders/{}/tpsl",
@@ -902,8 +985,7 @@ impl Hip4 {
                 ),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     // ---- L4 ---------------------------------------------------------------
@@ -946,8 +1028,7 @@ impl Hip4 {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!(
                     "{}/orderbook/{}/l4/diffs",
@@ -956,8 +1037,7 @@ impl Hip4 {
                 ),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get paginated L4 checkpoint history (hard-capped at `limit=10` server-side).
@@ -976,8 +1056,7 @@ impl Hip4 {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!(
                     "{}/orderbook/{}/l4/history",
@@ -986,8 +1065,7 @@ impl Hip4 {
                 ),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }
 
@@ -1084,10 +1162,9 @@ async fn venue_price_history(
     if let Some(c) = cursor {
         qp.push(("cursor", c.to_string()));
     }
-    let (data, next_cursor) = http
-        .get_with_cursor(&format!("{}/prices/{}", prefix, symbol), &qp)
-        .await?;
-    Ok(CursorResponse { data, next_cursor })
+    http
+            .get_with_cursor(&format!("{}/prices/{}", prefix, symbol), &qp)
+            .await
 }
 
 /// Client for Lighter mainnet endpoints (`/v1/lighter`).
