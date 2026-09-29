@@ -78,10 +78,8 @@ impl CandlesResource {
             qp.push(("interval", i.as_str().to_string()));
         }
         let symbol = (self.symbol_transform)(symbol);
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/candles/{}", self.prefix, symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }

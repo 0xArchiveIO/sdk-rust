@@ -2,11 +2,11 @@
 
 use oxarchive::error::Error;
 use oxarchive::ws::{
-    is_core_l4_replay_channel, is_lighter_live_channel, is_lighter_replay_channel,
-    is_lighter_replay_only_channel, is_live_only_full_depth_channel, is_live_only_l4_channel,
-    is_rh_lighter_channel, is_rh_lighter_live_channel, is_rh_lighter_replay_only_channel,
-    OxArchiveWs, ServerMsg, WsOptions, FULL_DEPTH_REPLAY_ERROR, LIGHTER_LIVE_CHANNELS,
-    LIGHTER_REPLAY_ONLY_CHANNELS, LIGHTER_SUBSCRIPTION_ERROR, LIVE_ONLY_FULL_DEPTH_CHANNELS,
+    is_core_l4_replay_channel, is_full_depth_channel, is_l4_channel, is_lighter_live_channel,
+    is_lighter_replay_channel, is_lighter_replay_only_channel, is_rh_lighter_channel,
+    is_rh_lighter_live_channel, is_rh_lighter_replay_only_channel, is_single_channel_replay,
+    OxArchiveWs, ServerMsg, WsOptions, FULL_DEPTH_CHANNELS, L4_REPLAY_CHANNELS,
+    LIGHTER_LIVE_CHANNELS, LIGHTER_REPLAY_ONLY_CHANNELS, LIGHTER_SUBSCRIPTION_ERROR,
     RH_LIGHTER_LIVE_CHANNELS, RH_LIGHTER_REPLAY_CHANNELS, RH_LIGHTER_REPLAY_ONLY_CHANNELS,
     RH_LIGHTER_SUBSCRIPTION_ERROR,
 };
@@ -164,60 +164,84 @@ async fn hyperliquid_live_subscription_remains_allowed() {
         .expect("Hyperliquid live subscription must remain allowed");
 }
 
+const EVERY_L4_CHANNEL: [&str; 8] = [
+    "l4_diffs",
+    "l4_orders",
+    "hip3_l4_diffs",
+    "hip3_l4_orders",
+    "spot_l4_diffs",
+    "spot_l4_orders",
+    "hip4_l4_diffs",
+    "hip4_l4_orders",
+];
+
 #[test]
-fn only_hyperliquid_core_l4_channels_support_replay() {
+fn every_l4_channel_replays() {
+    assert_eq!(L4_REPLAY_CHANNELS, EVERY_L4_CHANNEL);
+    for channel in EVERY_L4_CHANNEL {
+        assert!(is_l4_channel(channel));
+        assert!(is_single_channel_replay(channel));
+    }
     for channel in ["l4_diffs", "l4_orders"] {
         assert!(is_core_l4_replay_channel(channel));
+    }
+    assert!(!is_core_l4_replay_channel("hip3_l4_diffs"));
+    assert!(!is_l4_channel("orderbook"));
+    assert!(!is_single_channel_replay("trades"));
+}
+
+#[test]
+#[allow(deprecated)]
+fn the_deprecated_live_only_l4_helpers_report_no_live_only_channel() {
+    use oxarchive::ws::{is_live_only_l4_channel, LIVE_ONLY_L4_CHANNELS};
+    assert_eq!(LIVE_ONLY_L4_CHANNELS.len(), 6);
+    for channel in EVERY_L4_CHANNEL {
         assert!(!is_live_only_l4_channel(channel));
     }
-    for channel in [
-        "hip3_l4_diffs",
-        "hip3_l4_orders",
-        "hip4_l4_diffs",
-        "hip4_l4_orders",
-        "spot_l4_diffs",
-        "spot_l4_orders",
+}
+
+#[tokio::test]
+async fn every_l4_channel_is_sent_for_replay() {
+    let ws = OxArchiveWs::new(WsOptions::new("test-key"));
+    for (channel, symbol) in [
+        ("l4_diffs", "BTC"),
+        ("l4_orders", "BTC"),
+        ("hip3_l4_diffs", "xyz:XYZ100"),
+        ("hip3_l4_orders", "xyz:XYZ100"),
+        ("spot_l4_diffs", "HYPE-USDC"),
+        ("spot_l4_orders", "HYPE-USDC"),
+        ("hip4_l4_diffs", "#0"),
+        ("hip4_l4_orders", "#0"),
     ] {
-        assert!(!is_core_l4_replay_channel(channel));
-        assert!(is_live_only_l4_channel(channel));
+        ws.replay(channel, symbol, 1, Some(2), None)
+            .await
+            .unwrap_or_else(|e| panic!("{channel} replay must be sent, got {e:?}"));
     }
 }
 
 #[tokio::test]
-async fn core_l4_replay_remains_allowed() {
+async fn l4_replay_is_single_channel() {
     let ws = OxArchiveWs::new(WsOptions::new("test-key"));
-    for channel in ["l4_diffs", "l4_orders"] {
-        ws.replay(channel, "BTC", 1, Some(2), None)
+    for channel in EVERY_L4_CHANNEL {
+        match ws
+            .replay_multi(&["trades", channel], "BTC", 1, Some(2), None)
             .await
-            .expect("core Hyperliquid L4 replay must remain allowed");
-    }
-}
-
-#[tokio::test]
-async fn non_core_l4_replay_is_rejected_before_send() {
-    let ws = OxArchiveWs::new(WsOptions::new("test-key"));
-    for channel in [
-        "hip3_l4_diffs",
-        "hip3_l4_orders",
-        "hip4_l4_diffs",
-        "hip4_l4_orders",
-        "spot_l4_diffs",
-        "spot_l4_orders",
-    ] {
-        let error = ws
-            .replay(channel, "BTC", 1, Some(2), None)
-            .await
-            .expect_err("non-core L4 replay must be rejected");
-        match error {
-            Error::InvalidParam(message) => {
+        {
+            Err(Error::InvalidParam(message)) => {
+                assert!(message.contains(channel), "unexpected message: {message}");
                 assert!(
-                    message.contains("live-only"),
+                    message.contains("single-channel"),
                     "unexpected message: {message}"
                 );
             }
-            other => panic!("expected invalid parameter error, got {other:?}"),
+            other => {
+                panic!("a multi-channel replay with {channel} must be rejected, got {other:?}")
+            }
         }
     }
+    ws.replay_multi(&["orderbook", "trades"], "BTC", 1, Some(2), None)
+        .await
+        .expect("a standard multi-channel replay must be sent");
 }
 
 const RH_LIGHTER_CHANNELS: [&str; 5] = [
@@ -376,38 +400,38 @@ fn rh_lighter_live_frames_decode_with_the_mainnet_shapes() {
 }
 
 #[tokio::test]
-async fn full_depth_orderbook_channels_are_live_only() {
+async fn full_depth_orderbook_channels_stream_live_and_replay_on_their_own() {
     let ws = OxArchiveWs::new(WsOptions::new("test-key"));
+    assert_eq!(
+        FULL_DEPTH_CHANNELS,
+        ["orderbook_full", "hip3_orderbook_full"]
+    );
     for (channel, symbol) in [
         ("orderbook_full", "BTC"),
         ("hip3_orderbook_full", "km:US500"),
     ] {
-        assert!(is_live_only_full_depth_channel(channel));
+        assert!(is_full_depth_channel(channel));
+        assert!(is_single_channel_replay(channel));
         ws.subscribe(channel, Some(symbol))
             .await
             .expect("full-depth live subscriptions must be allowed");
-        match ws.replay(channel, symbol, 1, Some(2), None).await {
+        ws.replay(channel, symbol, 1, Some(2), None)
+            .await
+            .expect("full-depth replay must be sent");
+        match ws
+            .replay_multi(&["orderbook", channel], symbol, 1, Some(2), None)
+            .await
+        {
             Err(Error::InvalidParam(message)) => {
-                assert_eq!(message, FULL_DEPTH_REPLAY_ERROR);
+                assert!(message.contains(channel), "unexpected message: {message}");
             }
-            other => panic!("full-depth replay must be rejected before send, got {other:?}"),
+            other => panic!(
+                "a multi-channel replay with a full-depth channel must be rejected, got {other:?}"
+            ),
         }
     }
-    match ws
-        .replay_multi(&["orderbook", "orderbook_full"], "BTC", 1, Some(2), None)
-        .await
-    {
-        Err(Error::InvalidParam(message)) => assert_eq!(message, FULL_DEPTH_REPLAY_ERROR),
-        other => panic!(
-            "a multi-channel replay with a full-depth channel must be rejected, got {other:?}"
-        ),
-    }
-    assert!(!is_live_only_full_depth_channel("orderbook"));
-    assert!(!is_live_only_full_depth_channel("hip3_orderbook"));
-    assert_eq!(
-        LIVE_ONLY_FULL_DEPTH_CHANNELS,
-        ["orderbook_full", "hip3_orderbook_full"]
-    );
+    assert!(!is_full_depth_channel("orderbook"));
+    assert!(!is_full_depth_channel("hip3_orderbook"));
 }
 
 #[test]
@@ -442,4 +466,159 @@ fn full_depth_orderbook_frames_decode() {
         }
         other => panic!("expected an l4_batch frame, got {other:?}"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// API contract 2026-10: error codes, Lighter replay shapes, replay matrix
+// ---------------------------------------------------------------------------
+
+#[test]
+fn error_messages_carry_the_error_code() {
+    use oxarchive::ErrorCode;
+    for (code, expected) in [
+        ("slow_consumer", ErrorCode::SlowConsumer),
+        ("endpoint_unsupported", ErrorCode::EndpointUnsupported),
+        ("unsupported_for_venue", ErrorCode::UnsupportedForVenue),
+        ("invalid_parameter", ErrorCode::InvalidParameter),
+        ("conflict", ErrorCode::Conflict),
+        (
+            "a_future_code",
+            ErrorCode::Other("a_future_code".to_string()),
+        ),
+    ] {
+        let frame = format!(r#"{{"type":"error","message":"m","error_code":"{code}"}}"#);
+        let msg: ServerMsg = serde_json::from_str(&frame).unwrap();
+        assert_eq!(msg.error_code(), Some(&expected));
+        match msg {
+            ServerMsg::Error {
+                message,
+                error_code,
+            } => {
+                assert_eq!(message, "m");
+                assert_eq!(error_code, Some(expected));
+            }
+            other => panic!("expected an error message, got {other:?}"),
+        }
+    }
+    // A server that sends no code still parses.
+    let bare: ServerMsg = serde_json::from_str(r#"{"type":"error","message":"m"}"#).unwrap();
+    assert_eq!(bare.error_code(), None);
+    let pong: ServerMsg = serde_json::from_str(r#"{"type":"pong"}"#).unwrap();
+    assert_eq!(pong.error_code(), None);
+}
+
+#[test]
+fn lighter_replay_rows_decode_with_the_live_shapes() {
+    let trade = r#"{"type":"historical_data","channel":"lighter_trades","coin":"BTC","symbol":"BTC","timestamp":1790521266168,"data":[{"closed_pnl":"-0.061239","coin":"BTC","crossed":true,"dir":null,"fee":"0","fee_token":null,"hash":"5f66","oid":562953432224725,"px":"84518","side":"A","start_position":"0.01183","sz":"0.00411","tid":32228458048,"time":1790521266168,"users":["736647"]}]}"#;
+    let msg: ServerMsg = serde_json::from_str(trade).unwrap();
+    let Some(Ok(LighterLiveData::Trades(fills))) = msg.lighter_live_data() else {
+        panic!("expected a replayed trade leg, got {msg:?}");
+    };
+    assert_eq!(fills.len(), 1);
+    assert_eq!(fills[0].tid, 32228458048);
+    assert_eq!(fills[0].closed_pnl.as_deref(), Some("-0.061239"));
+    assert_eq!(fills[0].fee.as_deref(), Some("0"));
+
+    let snapshot = r#"{"type":"replay_snapshot","channel":"rh_lighter_open_interest","coin":"BTC","symbol":"BTC","timestamp":1790521260650,"data":{"coin":"BTC","ctx":{"dayBaseVlm":null,"dayNtlVlm":null,"funding":null,"impactPxs":null,"markPx":"84511.4","midPx":null,"openInterest":"172850198.76447","oraclePx":"84552.7","premium":null,"prevDayPx":null}}}"#;
+    let msg: ServerMsg = serde_json::from_str(snapshot).unwrap();
+    let Some(Ok(LighterLiveData::OpenInterest(stats))) = msg.lighter_live_data() else {
+        panic!("expected replayed open interest, got {msg:?}");
+    };
+    assert_eq!(stats.ctx.open_interest.as_deref(), Some("172850198.76447"));
+    assert_eq!(stats.ctx.funding, None);
+
+    let book = r#"{"type":"historical_data","channel":"rh_lighter_orderbook","coin":"BTC","symbol":"BTC","timestamp":1790522085209,"data":{"coin":"BTC","levels":[[{"n":1,"px":"84465.1","sz":"1.3517"}],[]],"time":1790522085209}}"#;
+    let msg: ServerMsg = serde_json::from_str(book).unwrap();
+    assert!(matches!(
+        msg.lighter_live_data(),
+        Some(Ok(LighterLiveData::OrderBook(_)))
+    ));
+
+    // Candles have no live shape and are not decoded.
+    let candles = r#"{"type":"historical_data","channel":"lighter_candles","coin":"BTC","symbol":"BTC","timestamp":1,"data":{"open":"1"}}"#;
+    let msg: ServerMsg = serde_json::from_str(candles).unwrap();
+    assert!(msg.lighter_live_data().is_none());
+}
+
+/// Channel rows of `GET /v1/capabilities` as served on 2026-09-29.
+const CAPABILITY_CHANNELS: &str = r#"[
+{"venue":"hyperliquid","datatype":"l2_orderbook","ws_channels":["orderbook"],"live":true,"replay":true,"available_from":"2023-04-15T00:00:00.000Z"},
+{"venue":"hyperliquid","datatype":"l2_full_depth","ws_channels":["orderbook_full"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
+{"venue":"hyperliquid","datatype":"l4_diffs","ws_channels":["l4_diffs"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
+{"venue":"hyperliquid","datatype":"l4_orders","ws_channels":["l4_orders"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
+{"venue":"hyperliquid","datatype":"trades","ws_channels":["trades"],"live":true,"replay":true,"available_from":"2023-04-15T03:31:00.000Z"},
+{"venue":"hyperliquid","datatype":"candles","ws_channels":["candles"],"live":false,"replay":true,"available_from":"2025-03-01T00:00:00.000Z"},
+{"venue":"hyperliquid","datatype":"funding","ws_channels":["funding"],"live":true,"replay":true,"available_from":"2023-05-20T02:50:00.000Z"},
+{"venue":"hyperliquid","datatype":"oi","ws_channels":["open_interest"],"live":true,"replay":true,"available_from":"2023-05-20T02:50:00.000Z"},
+{"venue":"hyperliquid","datatype":"liquidations","ws_channels":["liquidations"],"live":true,"replay":true,"available_from":"2025-12-22T00:00:00.000Z"},
+{"venue":"hyperliquid","datatype":"ticker","ws_channels":["ticker","all_tickers"],"live":true,"replay":false,"available_from":null},
+{"venue":"hip3","datatype":"l2_orderbook","ws_channels":["hip3_orderbook"],"live":true,"replay":true,"available_from":"2026-02-16T16:57:00.000Z"},
+{"venue":"hip3","datatype":"l2_full_depth","ws_channels":["hip3_orderbook_full"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
+{"venue":"hip3","datatype":"l4_diffs","ws_channels":["hip3_l4_diffs"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
+{"venue":"hip3","datatype":"l4_orders","ws_channels":["hip3_l4_orders"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
+{"venue":"hip3","datatype":"trades","ws_channels":["hip3_trades"],"live":true,"replay":true,"available_from":"2025-10-13T12:24:00.000Z"},
+{"venue":"hip3","datatype":"candles","ws_channels":["hip3_candles"],"live":false,"replay":true,"available_from":"2025-12-22T00:00:00.000Z"},
+{"venue":"hip3","datatype":"funding","ws_channels":["hip3_funding"],"live":true,"replay":true,"available_from":"2026-02-16T17:03:00.000Z"},
+{"venue":"hip3","datatype":"oi","ws_channels":["hip3_open_interest"],"live":true,"replay":true,"available_from":"2026-02-16T17:03:00.000Z"},
+{"venue":"hip3","datatype":"liquidations","ws_channels":["hip3_liquidations"],"live":true,"replay":true,"available_from":"2025-12-22T00:00:00.000Z"},
+{"venue":"hip4","datatype":"l2_orderbook","ws_channels":["hip4_orderbook"],"live":true,"replay":true,"available_from":"2026-05-02T16:51:00.000Z"},
+{"venue":"hip4","datatype":"l4_diffs","ws_channels":["hip4_l4_diffs"],"live":true,"replay":true,"available_from":"2026-05-02T07:47:00.000Z"},
+{"venue":"hip4","datatype":"l4_orders","ws_channels":["hip4_l4_orders"],"live":true,"replay":true,"available_from":"2026-05-02T07:47:00.000Z"},
+{"venue":"hip4","datatype":"trades","ws_channels":["hip4_trades"],"live":true,"replay":true,"available_from":"2026-05-02T08:00:00.000Z"},
+{"venue":"hip4","datatype":"oi","ws_channels":["hip4_open_interest"],"live":true,"replay":true,"available_from":"2026-05-02T16:51:00.000Z"},
+{"venue":"spot","datatype":"l2_orderbook","ws_channels":["spot_orderbook"],"live":true,"replay":false,"available_from":"2026-05-05T19:56:00.000Z"},
+{"venue":"spot","datatype":"l4_diffs","ws_channels":["spot_l4_diffs"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
+{"venue":"spot","datatype":"l4_orders","ws_channels":["spot_l4_orders"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
+{"venue":"spot","datatype":"trades","ws_channels":["spot_trades"],"live":true,"replay":false,"available_from":"2025-03-22T10:50:22.000Z"},
+{"venue":"spot","datatype":"twap","ws_channels":["spot_twap"],"live":true,"replay":false,"available_from":null},
+{"venue":"lighter","datatype":"l2_orderbook","ws_channels":["lighter_orderbook"],"live":true,"replay":true,"available_from":"2026-01-29T02:13:00.000Z"},
+{"venue":"lighter","datatype":"l3_orderbook","ws_channels":["lighter_l3_orderbook"],"live":false,"replay":true,"available_from":"2026-03-05T03:33:00.000Z"},
+{"venue":"lighter","datatype":"trades","ws_channels":["lighter_trades"],"live":true,"replay":true,"available_from":"2025-01-17T08:43:00.000Z"},
+{"venue":"lighter","datatype":"candles","ws_channels":["lighter_candles"],"live":false,"replay":true,"available_from":"2025-08-01T00:00:00.000Z"},
+{"venue":"lighter","datatype":"funding","ws_channels":["lighter_funding"],"live":true,"replay":true,"available_from":"2025-08-25T15:28:00.000Z"},
+{"venue":"lighter","datatype":"oi","ws_channels":["lighter_open_interest"],"live":true,"replay":true,"available_from":"2025-08-25T15:28:00.000Z"},
+{"venue":"rh-lighter","datatype":"l2_orderbook","ws_channels":["rh_lighter_orderbook"],"live":true,"replay":true,"available_from":"2026-08-22T18:43:00.000Z"},
+{"venue":"rh-lighter","datatype":"trades","ws_channels":["rh_lighter_trades"],"live":true,"replay":true,"available_from":"2026-06-26T20:10:26.000Z"},
+{"venue":"rh-lighter","datatype":"candles","ws_channels":["rh_lighter_candles"],"live":false,"replay":true,"available_from":"2026-06-26T20:10:00.000Z"},
+{"venue":"rh-lighter","datatype":"funding","ws_channels":["rh_lighter_funding"],"live":true,"replay":true,"available_from":"2026-08-22T18:43:00.000Z"},
+{"venue":"rh-lighter","datatype":"oi","ws_channels":["rh_lighter_open_interest"],"live":true,"replay":true,"available_from":"2026-08-22T18:43:00.000Z"}
+]"#;
+
+#[derive(serde::Deserialize)]
+struct ChannelRow {
+    ws_channels: Vec<String>,
+    live: bool,
+    replay: bool,
+}
+
+#[tokio::test]
+async fn client_side_refusals_follow_the_capabilities() {
+    let rows: Vec<ChannelRow> = serde_json::from_str(CAPABILITY_CHANNELS).unwrap();
+    let ws = OxArchiveWs::new(WsOptions::new("test-key"));
+    let mut replayable = 0;
+    for row in &rows {
+        for channel in &row.ws_channels {
+            let replay = ws.replay(channel, "BTC", 1, Some(2), None).await;
+            let multi = ws
+                .replay_multi(&[channel.as_str()], "BTC", 1, Some(2), None)
+                .await;
+            let live = ws.subscribe(channel, Some("BTC")).await;
+            if row.replay {
+                replayable += 1;
+                // Nothing the API replays is refused before sending; only
+                // the single-channel rule applies to multi-channel replay.
+                assert!(replay.is_ok(), "{channel} replays but was refused");
+                assert_eq!(
+                    multi.is_err(),
+                    is_single_channel_replay(channel),
+                    "{channel}"
+                );
+            }
+            // A live subscription is refused only where the API has none.
+            if live.is_err() {
+                assert!(!row.live, "{channel} streams live but was refused");
+            }
+        }
+    }
+    assert!(replayable >= 30);
 }

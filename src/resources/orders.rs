@@ -6,6 +6,9 @@ use crate::types::{
 };
 
 /// Parameters for paginated order history.
+///
+/// Built with a struct literal; start from `..Default::default()` so a
+/// literal keeps compiling when fields are added.
 #[derive(Debug, Default)]
 pub struct OrderHistoryParams {
     pub start: Option<Timestamp>,
@@ -15,6 +18,10 @@ pub struct OrderHistoryParams {
     pub order_type: Option<String>,
     pub cursor: Option<String>,
     pub limit: Option<i64>,
+    /// `Some(true)` keeps only orders whose trigger fired (status
+    /// `triggered`); `Some(false)` leaves them out. Keep it unchanged while
+    /// paging.
+    pub triggered: Option<bool>,
 }
 
 /// Parameters for order flow aggregation.
@@ -105,11 +112,9 @@ impl SpotOrdersResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/orders/{}/history", self.prefix, symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }
 
@@ -151,17 +156,18 @@ impl OrdersResource {
         if let Some(ref t) = params.order_type {
             qp.push(("order_type", t.clone()));
         }
+        if let Some(t) = params.triggered {
+            qp.push(("triggered", t.to_string()));
+        }
         if let Some(ref c) = params.cursor {
             qp.push(("cursor", c.clone()));
         }
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/orders/{}/history", self.prefix, symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get order flow aggregation for a symbol, one page of time buckets.
@@ -189,11 +195,9 @@ impl OrdersResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/orders/{}/flow", self.prefix, symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get TP/SL (take-profit / stop-loss) orders for a symbol.
@@ -221,11 +225,9 @@ impl OrdersResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/orders/{}/tpsl", self.prefix, symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get the pending trigger-order map for a symbol.
@@ -269,13 +271,11 @@ impl OrdersResource {
         params: LevelsHistoryParams,
     ) -> Result<CursorResponse<Vec<TriggerLevelsHistoryItem>>> {
         let qp = params.to_query();
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/orders/{}/trigger-levels/history", self.prefix, symbol),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }

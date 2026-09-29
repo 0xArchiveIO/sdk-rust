@@ -29,7 +29,7 @@ async fn main() -> oxarchive::Result<()> {
     let oi = client.hyperliquid.open_interest.current("BTC").await?;
     println!("BTC open interest: {}", oi.open_interest);
 
-    // Lighter.xyz
+    // Lighter
     let lighter = client.lighter.instruments.list().await?;
     println!("\nLighter: {} instruments", lighter.len());
 

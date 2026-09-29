@@ -6,7 +6,7 @@
 //! candles, funding rates, open interest, liquidations, and account
 //! positions, and manage signed webhook delivery. Two venues are covered:
 //! Hyperliquid (core perps, Hyperliquid Spot, HIP-3 builder perps, and HIP-4
-//! outcome markets) and Lighter.xyz.
+//! outcome markets) and Lighter.
 //! Lighter has two deployments, mainnet (`client.lighter`) and Robinhood
 //! Chain (`client.rh_lighter`).
 //!
@@ -23,7 +23,7 @@
 //!     let ob = client.hyperliquid.orderbook.get("BTC", None).await?;
 //!     println!("BTC mid price: {:?}", ob.mid_price);
 //!
-//!     // List Lighter.xyz instruments (mainnet)
+//!     // List Lighter instruments (mainnet)
 //!     let instruments = client.lighter.instruments.list().await?;
 //!     println!("Lighter has {} instruments", instruments.len());
 //!
@@ -39,11 +39,21 @@
 //! }
 //! ```
 //!
+//! ## API version
+//!
+//! Every request sends the `0xArchive-Version: 2026-10-01` header
+//! ([`API_VERSION`]), and the WebSocket connects with `version=2026-10-01`.
+//! The version selects the response shapes this crate's types describe: the
+//! standard `{success, data, meta}` envelope, RFC 3339 times with `*_ms`
+//! integer twins, and the stable error codes.
+//!
 //! ## Pagination
 //!
-//! Historical endpoints return [`CursorResponse`] with an optional
-//! `next_cursor`. Pass it back as the `cursor` parameter to fetch the
-//! next page:
+//! Historical endpoints return [`CursorResponse`]: the page's `data`,
+//! `next_cursor`, `has_more` and the full `meta` block (including the
+//! canonical `meta.symbol` and `meta.venue` on per-symbol routes). Pass
+//! `next_cursor` back as the `cursor` parameter, with the other parameters
+//! unchanged, while `has_more` is `true`:
 //!
 //! ```no_run
 //! # use oxarchive::{OxArchive, types::CursorResponse};
@@ -54,18 +64,40 @@
 //! let mut cursor = None;
 //!
 //! loop {
-//!     let result = client.hyperliquid.trades.list("BTC", GetTradesParams {
-//!         start: 1704067200000_i64.into(),
-//!         end: 1704153600000_i64.into(),
+//!     let page = client.hyperliquid.trades.history("BTC", GetTradesParams {
+//!         start: 1790553600000_i64.into(), // 2026-09-28 00:00 UTC
+//!         end: 1790557200000_i64.into(),   // 2026-09-28 01:00 UTC
 //!         cursor,
 //!         limit: Some(1000),
+//!         side: None,
 //!     }).await?;
 //!
-//!     all_trades.extend(result.data);
-//!     cursor = result.next_cursor;
-//!     if cursor.is_none() {
+//!     all_trades.extend(page.data);
+//!     if !page.has_more {
 //!         break;
 //!     }
+//!     cursor = page.next_cursor;
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Errors
+//!
+//! An API error is [`Error::Api`], which carries the HTTP status, the stable
+//! [`ErrorCode`] (`invalid_symbol`, `rate_limited`, ...), the request id and,
+//! for a bad parameter, its name and accepted values:
+//!
+//! ```no_run
+//! # use oxarchive::{Error, ErrorCode, OxArchive};
+//! # async fn example() -> oxarchive::Result<()> {
+//! # let client = OxArchive::new("key")?;
+//! match client.hyperliquid.orderbook.get("NOT-A-MARKET", None).await {
+//!     Err(Error::Api { error_code: Some(ErrorCode::InvalidSymbol), message, .. }) => {
+//!         eprintln!("{message}");
+//!     }
+//!     Err(e) => eprintln!("{e} ({:?})", e.error_code()),
+//!     Ok(book) => println!("{:?}", book.mid_price),
 //! }
 //! # Ok(())
 //! # }
@@ -123,8 +155,14 @@
 //! channels on each Lighter deployment: `lighter_orderbook`,
 //! `lighter_trades`, `lighter_open_interest` and `lighter_funding` on
 //! mainnet, and the same four with the `rh_lighter_` prefix on Robinhood
-//! Chain. Their payloads decode into [`LighterLiveData`]. `lighter_candles`,
-//! `lighter_l3_orderbook` and `rh_lighter_candles` remain replay-only.
+//! Chain. Their payloads, live and replayed, decode into [`LighterLiveData`].
+//! `lighter_candles`, `lighter_l3_orderbook` and `rh_lighter_candles` remain
+//! replay-only.
+//!
+//! Every L4 channel (Hyperliquid core, HIP-3, Spot and HIP-4) and both
+//! full-depth order book channels (`orderbook_full`, `hip3_orderbook_full`)
+//! replay as bulk, single-channel streams. `client.capabilities()` lists
+//! which channels stream live and which replay.
 //!
 //! Bulk streaming over WebSocket has been discontinued, so
 //! `OxArchiveWs::stream` is deprecated. For large historical downloads, use
@@ -142,8 +180,8 @@ pub mod webhook_signature;
 pub mod ws;
 
 // Re-export the main entry points at the crate root.
-pub use client::{ClientBuilder, OxArchive};
-pub use error::{Error, Result};
+pub use client::{ClientBuilder, OxArchive, API_VERSION, API_VERSION_HEADER};
+pub use error::{Error, ErrorCode, Result};
 pub use exchanges::{Hip4, Hip4ListQuestionsParams, RhLighterClient};
 pub use l4_reconstructor::{L4OrderBookReconstructor, L4Order, L4Diff, L2Level};
 pub use orderbook_reconstructor::{
@@ -173,6 +211,8 @@ pub use resources::webhooks::{
     CreateEndpointParams, CreateSubscriptionParams, DryRunParams, EstimateParams,
     UpdateSubscriptionParams, WebhooksResource,
 };
+pub use resources::trades::RecentTradesParams;
+pub use types::{Capability, TradeSide};
 pub use types::{
     BreadthSnapshot, ClassifiedWallet, CvdBucket, Hip3OracleDiscoveryBounds,
     Hip3OracleExternalPrice, Hip4Question, SymbolEntry, WalletClassification, WalletMetrics,

@@ -46,11 +46,9 @@ impl OpenInterestResource {
         if let Some(i) = params.interval {
             qp.push(("interval", i.as_str().to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/openinterest/{}", self.prefix, symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get the current open interest.

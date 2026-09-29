@@ -1,5 +1,5 @@
 use oxarchive::ws::{OxArchiveWs, ServerMsg, WsOptions};
-use oxarchive::LighterLiveData;
+use oxarchive::{ErrorCode, LighterLiveData};
 
 #[tokio::main]
 async fn main() -> oxarchive::Result<()> {
@@ -46,8 +46,11 @@ async fn main() -> oxarchive::Result<()> {
                 // Server has already auto-unsubscribed our hip4_* subs for
                 // this coin. Treat as terminal for the coin.
             }
-            ServerMsg::Error { message } => {
-                eprintln!("Error: {message}");
+            ServerMsg::Error {
+                message,
+                error_code,
+            } => {
+                eprintln!("Error ({error_code:?}): {message}");
                 break;
             }
             ServerMsg::Pong => println!("pong"),
@@ -61,7 +64,7 @@ async fn main() -> oxarchive::Result<()> {
     ws.unsubscribe("hip4_trades", Some("#0")).await?;
     ws.disconnect().await;
 
-    // --- Lighter.xyz live streaming (order book, trades, funding) ---
+    // --- Lighter live streaming (order book, trades, funding) ---
     // Served on the default wss://api.0xarchive.io/ws endpoint.
     // lighter_candles and lighter_l3_orderbook remain replay-only.
     let mut ws = OxArchiveWs::new(WsOptions::new(&api_key));
@@ -100,10 +103,19 @@ async fn main() -> oxarchive::Result<()> {
             }
             Some(Err(e)) => eprintln!("Unexpected Lighter payload: {e}"),
             None => {
-                if let ServerMsg::Error { message } = &msg {
-                    // Lag notices ("Dropped ...") keep the subscription open;
-                    // a "Stopped ..." notice ends it until you subscribe again.
-                    eprintln!("Notice: {message}");
+                if let ServerMsg::Error {
+                    message,
+                    error_code,
+                } = &msg
+                {
+                    // Lag notices carry `slow_consumer`. "Dropped ..." keeps
+                    // the subscription open; "Stopped ..." ends it until you
+                    // subscribe again.
+                    if error_code == &Some(ErrorCode::SlowConsumer) {
+                        eprintln!("Fell behind: {message}");
+                    } else {
+                        eprintln!("Notice: {message}");
+                    }
                 }
                 continue;
             }
@@ -148,7 +160,7 @@ async fn main() -> oxarchive::Result<()> {
                 println!("Replay complete: {} snapshots", snapshots_sent.unwrap_or(0));
                 break;
             }
-            ServerMsg::Error { message } => {
+            ServerMsg::Error { message, .. } => {
                 eprintln!("Replay error: {message}");
                 break;
             }

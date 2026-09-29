@@ -78,11 +78,9 @@ impl SpotTwapResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/twap/{}", self.prefix, symbol), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 
     /// Get TWAP execution statuses for a user address (across every spot symbol).
@@ -104,10 +102,8 @@ impl SpotTwapResource {
         if let Some(l) = params.limit {
             qp.push(("limit", l.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/twap/user/{}", self.prefix, user), &qp)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }

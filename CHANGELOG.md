@@ -6,6 +6,83 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 ## [1.12.0] - 2026-09-28
 
 ### Added
+- API version 2026-10-01. Every request sends the `0xArchive-Version:
+  2026-10-01` header and the WebSocket client connects with
+  `version=2026-10-01` (`API_VERSION`, `API_VERSION_HEADER`). The version
+  selects the standard `{success, data, meta}` envelope on every route,
+  RFC 3339 UTC times with an integer `*_ms` field alongside, the stable error
+  codes, and the live row shapes on Lighter replay.
+- Typed error codes. `Error::Api` gains `error_code` (`ErrorCode`), `param`
+  and `valid_values` next to `code` (the HTTP status) and `request_id`, and
+  `Error` has `error_code()`, `status()`, `request_id()`, `param()` and
+  `valid_values()` accessors. `ErrorCode` names every documented code
+  (`invalid_parameter`, `invalid_symbol`, `invalid_interval`,
+  `invalid_cursor`, `invalid_time_range`, `range_before_coverage`,
+  `historical_range_exceeded`, `historical_depth_exceeded`,
+  `unsupported_for_venue`, `route_not_found`, `not_found`, `unauthorized`,
+  `forbidden`, `insufficient_credits`, `rate_limited`, `conflict`,
+  `upstream_unavailable`, `internal_error`, `endpoint_unsupported`,
+  `slow_consumer`, `positions_unavailable`, `api_key_limit_reached`,
+  `oauth_not_permitted`) and keeps any other as `ErrorCode::Other`. The
+  error's `Display` output includes the code.
+- WebSocket `ServerMsg::Error` carries `error_code`, and
+  `ServerMsg::error_code()` reads it. Lag notices carry `slow_consumer`; an
+  endpoint that does not serve a channel answers `endpoint_unsupported`; a
+  channel without a mode (live, replay, `replay.seek`) answers
+  `unsupported_for_venue`.
+- `has_more` on every paged response. `CursorResponse` and `MetaResponse`
+  are one type with `data`, `next_cursor`, `has_more` and the full `meta`
+  block; page while `has_more` is `true`. `ResponseMeta` gains `has_more`,
+  `symbol` (the canonical public symbol a per-symbol route answered for, such
+  as `#0` for a HIP-4 `"0"`) and `venue` (`hyperliquid`, `hip3`, `hip4`,
+  `spot`, `lighter` or `rh-lighter`).
+- `client.capabilities()` (`GET /v1/capabilities`): one `Capability` row per
+  venue and datatype with its REST routes, WebSocket channels, `live` and
+  `replay` flags, `available_from`, cadence, `page_limit` and `intervals`.
+  `Capability::for_channel()` finds a channel's row.
+- `client.data_quality.status_coverage()` (`GET /v1/status/coverage`), the
+  public coverage summary, and `client.list_symbols()`, the same call as
+  `client.symbols()`.
+- Trade side filter: `side` (`TradeSide::Buy` or `TradeSide::Sell`, sent as
+  `buy` or `sell`) on `GetTradesParams` and `Hip4TradesParams`, and
+  `RecentTradesParams` for `trades.recent_with()` and
+  `hip4.get_trades_recent_with()`, on every venue. The filter keeps rows
+  whose `side` is `"B"` or `"A"` and applies before paging.
+- `triggered` on `OrderHistoryParams` and `Hip4OrderHistoryParams`:
+  `Some(true)` keeps only orders whose trigger fired, `Some(false)` leaves
+  them out (Hyperliquid, HIP-3 and HIP-4).
+- `depth` on `L2HistoryParams` (full-depth L2 history, Hyperliquid and
+  HIP-3) and `Hip4OrderBookHistoryParams`, which
+  `hip4.get_orderbook_history()` now takes; a `Hip4HistoryRange` still
+  converts into it. `OrderBookHistoryParams::depth` applies to HIP-3 and
+  Spot order book history too.
+- Verb aliases, next to the existing names: `trades.history()` for
+  `trades.list()`, and on HIP-4 `list_instruments()`, `get_trades_history()`,
+  `get_open_interest_history()` and `get_price_history()` for
+  `get_instruments()`, `get_trades()`, `get_open_interest()` and
+  `get_prices()`.
+- `orderbook.history_tick_page()` with `TickPageParams` and `TickPage`: one
+  page of tick-level order book data with its cursor and `has_more`, for
+  paging through a range. The first page carries the checkpoint; later pages
+  carry deltas only.
+- WebSocket replay for every L4 channel and both full-depth order book
+  channels: `hip3_l4_diffs`, `hip3_l4_orders`, `spot_l4_diffs`,
+  `spot_l4_orders`, `hip4_l4_diffs`, `hip4_l4_orders`, `orderbook_full` and
+  `hip3_orderbook_full` replay like core `l4_diffs` and `l4_orders`: an
+  `l4_snapshot` from the nearest L4 checkpoint, then ordered `l4_batch`
+  frames, in bulk (`speed` is ignored, `replay.seek` is refused) and one
+  channel at a time. `replay()` sends them; `replay_multi()` rejects them
+  before sending. `L4_REPLAY_CHANNELS`, `is_l4_channel()`,
+  `FULL_DEPTH_CHANNELS`, `is_full_depth_channel()` and
+  `is_single_channel_replay()` name them.
+- `OrderHistoryEntry` gains `trigger_condition` and `trigger_price`, sent on
+  `triggered` rows, and decodes rows without `tif`, such as `triggered`
+  rows, with an empty `tif`.
+- `L4OrderEntry` gains `timestamp` (RFC 3339) and `timestamp_ms`, the resting
+  order's queue time (`None` when unknown). Checkpoint history rows, which
+  send the queue time as integer milliseconds, fill both fields the same
+  way. `LiquidationLevels`, `LiquidationLevelsHistoryItem` and
+  `TriggerLevelsHistoryItem` gain `snapshot_ts_ms`.
 - `client.rh_lighter`, a client for Lighter on Robinhood Chain
   (`/v1/rh-lighter`), the second Lighter deployment. It has the same
   resources as `client.lighter` except the L3 order book: `orderbook`,
@@ -20,7 +97,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   preliminary tier, as on mainnet.
 - `liquidations` on both Lighter clients (`LighterLiquidationsResource`), with
   `history()` returning `LighterLiquidation` rows and `volume()` returning
-  `LighterLiquidationVolume` buckets. Mainnet history starts on 2026-06-10
+  `LighterLiquidationVolume` buckets, each with `timestamp` as an RFC 3339
+  UTC string and `timestamp_ms`. Mainnet history starts on 2026-06-10
   and Robinhood Chain history at the venue launch, 2026-06-26 20:10:26 UTC.
   On Robinhood Chain, rows from before live capture were backfilled from the
   venue's finalized export and have `source` `"bucket"` and an empty
@@ -28,8 +106,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   JSON.
 - `TradesResource::list_with_meta()` and `TradesResource::recent_with_meta()`,
   which return the same rows as `list()` and `recent()` as a
-  `MetaResponse<Vec<Trade>>` with the full response `meta`. On both Lighter
-  deployments that includes the finalization boundary
+  `MetaResponse<Vec<Trade>>` with the full response `meta` (`list()` returns
+  the same value, since every paged response carries `meta`). On both
+  Lighter deployments that includes the finalization boundary
   (`meta.finalized_through`), the clamp of a range that reached past it
   (`meta.requested_end`, `meta.clamped_to`) and, on `recent_with_meta()`,
   `meta.preliminary_row_count`.
@@ -66,6 +145,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   served on `wss://api.0xarchive.io/ws`, and replay for those four and
   `rh_lighter_candles`. Live payloads have the mainnet Lighter shapes and
   decode with `ServerMsg::lighter_live_data()` and `LighterLiveData::decode()`.
+  Replay rows of the book, trades, open interest and funding channels, on
+  both deployments, now have the live shapes too and decode the same way
+  (`historical_data` and `replay_snapshot`); a replayed trades row is one
+  fill.
   `subscribe_with_interval()` accepts `rh_lighter_orderbook` (100 to 5000 ms).
 - `RH_LIGHTER_REPLAY_CHANNELS`, `RH_LIGHTER_LIVE_CHANNELS`,
   `RH_LIGHTER_REPLAY_ONLY_CHANNELS`, `RH_LIGHTER_SUBSCRIPTION_ERROR`,
@@ -107,8 +190,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `parse_signature_header()` returns the parsed parts. The verifier's `Debug`
   output never includes a secret.
 - `client.hyperliquid.cvd()` and `client.hyperliquid.hip3.cvd()`: cumulative
-  volume delta buckets (`CvdBucket`: taker buy and sell notional, `delta`,
-  `cumulative_delta`) at `1m` to `1w`, cursor-paged with `CvdParams`. They
+  volume delta buckets (`CvdBucket`: open time as `timestamp` (RFC 3339) and
+  `timestamp_ms`, taker buy and sell notional, `delta`, `cumulative_delta`)
+  at `1m` to `1w`, cursor-paged with `CvdParams`. They
   return a `MetaResponse`, whose `meta.notice` says when a response is one
   page of several; `cumulative_delta` restarts on every page.
 - `client.symbols()`: the public symbol universe (`GET /v1/symbols`), one
@@ -123,7 +207,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 - `client.hyperliquid.hip3.oracle`: `external_price()` returns the latest
   deployer-pushed external price and mark price
   (`Hip3OracleExternalPrice`), and `discovery_bounds()` the instantaneous
-  discovery bounds (`Hip3OracleDiscoveryBounds`).
+  discovery bounds (`Hip3OracleDiscoveryBounds`), both with the source time
+  as `timestamp` (RFC 3339) and `timestamp_ms`.
 - `client.hyperliquid.hip4.list_questions()` and `get_question()`: HIP-4
   questions (`Hip4Question`), which group binary outcomes under one ballot.
   `list_questions()` is cursor-paged with `Hip4ListQuestionsParams`.
@@ -133,11 +218,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `WalletMetrics`), filtered, sorted and offset-paged with
   `WalletClassifyParams`.
 - WebSocket: `orderbook_full` and `hip3_orderbook_full`, the full-depth L2
-  order books, are documented in the README channel table. They are
-  live-only: `replay()` and `replay_multi()` reject them before sending
-  (`LIVE_ONLY_FULL_DEPTH_CHANNELS`, `is_live_only_full_depth_channel()`,
-  `FULL_DEPTH_REPLAY_ERROR`). Their frames decode as `ServerMsg::L4Snapshot`
-  (the whole book) and `ServerMsg::L4Batch` (price-level changes).
+  order books, are documented in the README channel table. Their frames
+  decode as `ServerMsg::L4Snapshot` (the whole book) and `ServerMsg::L4Batch`
+  (price-level changes), live and in replay.
 - `client.lighter.l3_orderbook.get_with_params()` with `L3OrderBookParams`:
   a snapshot at `timestamp`, filtered to one `account` index, with `depth`.
   `L3HistoryParams` gains `account`; it is built with a struct literal, so a
@@ -150,11 +233,26 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Changed
 - New dependencies `hmac` and `sha2`, used only by `webhook_signature`.
-- Parameters the API ignores are no longer sent or offered:
-  `GetTradesParams::side` and `Hip4TradesParams::side` (trades are not
-  filtered by side), and `depth` on `L2HistoryParams`, `L4HistoryParams` and
-  `Hip4L4HistoryParams` (history returns whole snapshots). Remove these
-  fields from struct literals.
+- `GetTradesParams::side` and `Hip4TradesParams::side` are
+  `Option<TradeSide>` (`buy` or `sell`), which the API now applies, in
+  place of the `"A"` / `"B"` strings it ignored. A literal with
+  `side: None` is unchanged.
+- `depth` is no longer offered on `L4HistoryParams` and
+  `Hip4L4HistoryParams`: L4 history returns whole snapshots. Remove it from
+  struct literals.
+- `CursorResponse<T>` is now the same type as `MetaResponse<T>` and gains
+  `has_more` and `meta`. A struct literal or a pattern that names every
+  field needs the two new fields (or `..`).
+- `Error::Api` gains `error_code`, `param` and `valid_values`, and
+  `ServerMsg::Error` gains `error_code`. A pattern that names every field,
+  such as `ServerMsg::Error { message }`, needs the new fields or `..`.
+- `ServerMsg::lighter_live_data()` also decodes Lighter replay rows, which
+  arrive in the live shapes.
+- `replay()` no longer rejects the HIP-3, Spot and HIP-4 L4 channels or the
+  full-depth channels, which the API now replays.
+- `client.symbols()` and the data quality methods read the standard
+  envelope, and still read the older bodies.
+- Documentation and messages name the venue "Lighter".
 - `client.hyperliquid.spot.orders` is a `SpotOrdersResource` whose
   `history()` takes `SpotOrderHistoryParams` (`start`, `end`, `cursor`,
   `limit`). The Spot route does not filter by user, status or order type,
@@ -172,6 +270,11 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   the buckets the API serves: `"1m"` (the default), `"5m"`, `"15m"` and
   `"1h"`.
 
+### Deprecated
+- `LIVE_ONLY_L4_CHANNELS` and `is_live_only_l4_channel()`: every L4 channel
+  now replays, and `is_live_only_l4_channel()` always returns `false`. Use
+  `L4_REPLAY_CHANNELS` and `is_l4_channel()`.
+
 ### Removed
 - `client.hyperliquid.hip3.liquidations.by_user()`, and `flow()`, `tpsl()`,
   `trigger_levels()` and `trigger_levels_history()` on
@@ -180,6 +283,16 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   remains.
 
 ### Fixed
+- `orderbook.collect_tick_history()` returned only the first page of a
+  range: it stopped on a page of fewer than 1,000 deltas, while tick pages
+  hold 100 by default, and it advanced by time, which reopened the same
+  checkpoint. It now follows the response's cursor (`cursor` and
+  `cursor_seq`) and applies every delta until `has_more` is `false`. The
+  README's manual pagination example does the same with
+  `history_tick_page()`.
+- `spot.twap.by_symbol()` and `by_user()` failed to decode rows whose
+  `executed_size` or `executed_notional` arrive as numbers. Both fields
+  accept a number or a string and keep the decimal string.
 - `data_quality.symbol_coverage()` and `exchange_coverage()` percent-encode
   their path segments and keep the symbol's case, so `km:US500`,
   `HYPE-USDC` and HIP-4 `#0` reach the right route. A `#0` was cut off as a

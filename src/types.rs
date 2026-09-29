@@ -64,9 +64,14 @@ where
 // ---------------------------------------------------------------------------
 
 /// Metadata returned with every API response.
+///
+/// Not returned by any method; [`ResponseMeta`] is the full `meta` block that
+/// [`MetaResponse`] carries.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiMeta {
+    #[serde(default)]
     pub count: usize,
+    #[serde(default)]
     pub request_id: String,
     pub next_cursor: Option<String>,
     /// Coverage start date (ISO 8601), present when the requested window ends
@@ -80,29 +85,23 @@ pub struct ApiMeta {
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ApiEnvelope<T> {
     pub data: T,
-    pub meta: Option<ApiMeta>,
-}
-
-/// A paginated response containing data and an optional cursor for the next page.
-#[derive(Debug, Clone)]
-pub struct CursorResponse<T> {
-    /// The response data.
-    pub data: T,
-    /// Pass this value as the `cursor` parameter to fetch the next page.
-    /// `None` means there are no more pages.
-    pub next_cursor: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub meta: Option<ResponseMeta>,
 }
 
 /// The full `meta` block of a response.
 ///
-/// Returned by the methods that give snapshot or finalization context with
-/// their data, such as the account positions resources. Every field is
-/// optional on the wire and is `None` (or `0` / empty for `count` and
-/// `request_id`) when the server did not send it. Instants are RFC 3339 UTC
-/// strings. The positions routes and the trades finalization fields always
-/// send milliseconds (`2026-09-25T00:00:00.000Z`), while instants in data
-/// rows carry a fraction only when it is not zero (`2026-09-25T00:00:00Z`),
-/// so parse both before comparing them.
+/// Every paged method returns it on [`MetaResponse::meta`] (a
+/// [`CursorResponse`] is the same type), as do the methods that give snapshot
+/// or finalization context with their data, such as the account positions
+/// resources. Every field is optional on the wire and is `None` (or `0` /
+/// empty for `count` and `request_id`) when the server did not send it.
+/// Instants are RFC 3339 UTC strings. The positions routes and the trades
+/// finalization fields always send milliseconds
+/// (`2026-09-25T00:00:00.000Z`), while instants in data rows carry a
+/// fraction only when it is not zero (`2026-09-25T00:00:00Z`), so parse both
+/// before comparing them.
 ///
 /// New fields may be added in minor releases, so the struct cannot be built
 /// with a literal outside this crate; start from `ResponseMeta::default()`.
@@ -116,8 +115,23 @@ pub struct ResponseMeta {
     #[serde(default)]
     pub request_id: String,
     /// Pass this value as the `cursor` parameter to fetch the next page.
+    /// Present exactly when `has_more` is `true`.
     #[serde(default)]
     pub next_cursor: Option<String>,
+    /// `true` while more pages may follow, `false` on the last page. Every
+    /// cursor-paged route sends it; a final page can be empty when the page
+    /// before it was exactly full.
+    #[serde(default)]
+    pub has_more: Option<bool>,
+    /// The canonical public symbol a per-symbol route answered for (`BTC`,
+    /// `km:US500`, `#0`, `HYPE-USDC`), which can differ from the path input:
+    /// a HIP-4 `"0"` is answered as `#0`.
+    #[serde(default)]
+    pub symbol: Option<String>,
+    /// The venue a per-symbol route answered for: `hyperliquid`, `hip3`,
+    /// `hip4`, `spot`, `lighter` or `rh-lighter`.
+    #[serde(default)]
+    pub venue: Option<String>,
     /// Instant the returned state describes: the snapshot tick, the hour, or
     /// the requested as-of time. Taken from the data, never the request time.
     #[serde(default)]
@@ -190,8 +204,35 @@ pub(crate) struct MetaEnvelope<T> {
     pub meta: Option<ResponseMeta>,
 }
 
-/// A response with its data, the cursor for the next page, and the full
-/// `meta` block.
+/// A response with its data, the paging state and the full `meta` block.
+///
+/// Every paged method returns one (as [`CursorResponse`], the same type).
+/// To page, pass `next_cursor` back as the `cursor` parameter with unchanged
+/// filters while `has_more` is `true`:
+///
+/// ```no_run
+/// # use oxarchive::OxArchive;
+/// # use oxarchive::resources::trades::GetTradesParams;
+/// # async fn example() -> oxarchive::Result<()> {
+/// # let client = OxArchive::new("key")?;
+/// let mut cursor = None;
+/// loop {
+///     let page = client.hyperliquid.trades.history("BTC", GetTradesParams {
+///         start: 1790553600000_i64.into(),
+///         end: 1790640000000_i64.into(),
+///         cursor,
+///         limit: Some(1000),
+///         side: None,
+///     }).await?;
+///     println!("{} trades for {:?} on {:?}", page.data.len(), page.meta.symbol, page.meta.venue);
+///     if !page.has_more {
+///         break;
+///     }
+///     cursor = page.next_cursor;
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct MetaResponse<T> {
     /// The response data.
@@ -199,15 +240,26 @@ pub struct MetaResponse<T> {
     /// Pass this value as the `cursor` parameter to fetch the next page.
     /// `None` means there are no more pages.
     pub next_cursor: Option<String>,
-    /// Snapshot context, finalization boundaries and notices.
+    /// `true` while more pages may follow. It is `meta.has_more` when the
+    /// server sent it, and otherwise whether `next_cursor` is set. Stop
+    /// paging when it is `false`.
+    pub has_more: bool,
+    /// The full `meta` block: `symbol` and `venue` on per-symbol routes,
+    /// snapshot context, finalization boundaries and notices.
     pub meta: ResponseMeta,
 }
 
+/// A paginated response: the data, the cursor for the next page, `has_more`
+/// and the full `meta` block. The same type as [`MetaResponse`].
+pub type CursorResponse<T> = MetaResponse<T>;
+
 impl<T> MetaResponse<T> {
     pub(crate) fn new(data: T, meta: ResponseMeta) -> Self {
+        let has_more = meta.has_more.unwrap_or(meta.next_cursor.is_some());
         Self {
             data,
             next_cursor: meta.next_cursor.clone(),
+            has_more,
             meta,
         }
     }
@@ -407,7 +459,7 @@ pub struct Instrument {
     pub is_active: bool,
 }
 
-/// A Lighter.xyz instrument with fee and precision metadata.
+/// A Lighter instrument with fee and precision metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LighterInstrument {
     pub symbol: String,
@@ -477,7 +529,11 @@ pub struct SpotTwapStatus {
     pub user_address: Option<String>,
     pub side: Option<String>,
     pub status: Option<String>,
+    /// Executed size as a decimal string; the API may send a number.
+    #[serde(default, deserialize_with = "deserialize_opt_number_or_string")]
     pub executed_size: Option<String>,
+    /// Executed notional as a decimal string; the API may send a number.
+    #[serde(default, deserialize_with = "deserialize_opt_number_or_string")]
     pub executed_notional: Option<String>,
     pub minutes: Option<i64>,
     pub randomize: Option<bool>,
@@ -755,6 +811,31 @@ impl CandleInterval {
     }
 }
 
+/// Side filter for trade queries (`side=buy` or `side=sell`).
+///
+/// `Buy` keeps the rows whose `side` is `"B"` and `Sell` the rows whose
+/// `side` is `"A"`. The filter reads each row's own side: where a trade is
+/// returned as one fill per side (maker and taker), `Buy` keeps the buying
+/// fill of each trade, whichever of the two was the taker. The filter applies
+/// before paging, so a full page still holds `limit` matching rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TradeSide {
+    /// Rows with `side` `"B"`.
+    Buy,
+    /// Rows with `side` `"A"`.
+    Sell,
+}
+
+impl TradeSide {
+    /// The wire value: `"buy"` or `"sell"`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TradeSide::Buy => "buy",
+            TradeSide::Sell => "sell",
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Liquidations
 // ---------------------------------------------------------------------------
@@ -814,8 +895,10 @@ pub struct LiquidationVolume {
 pub struct LighterLiquidation {
     /// Market symbol, uppercase for perps (`BTC`).
     pub symbol: String,
+    /// Trade time, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
     /// Trade time in Unix milliseconds.
-    pub timestamp: i64,
+    pub timestamp_ms: i64,
     /// Transaction time in microseconds, for ordering within a block.
     #[serde(default)]
     pub transaction_time_us: Option<i64>,
@@ -897,8 +980,10 @@ pub struct LighterLiquidation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LighterLiquidationVolume {
     pub symbol: String,
+    /// Bucket start, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
     /// Bucket start in Unix milliseconds.
-    pub timestamp: i64,
+    pub timestamp_ms: i64,
     /// Total liquidated notional in the quote asset, as a decimal string.
     #[serde(deserialize_with = "deserialize_number_or_string")]
     pub total_usd: String,
@@ -939,7 +1024,7 @@ impl OiFundingInterval {
 // Lighter orderbook granularity
 // ---------------------------------------------------------------------------
 
-/// Lighter.xyz orderbook snapshot granularity.
+/// Lighter orderbook snapshot granularity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LighterGranularity {
     Checkpoint,
@@ -1039,11 +1124,13 @@ pub struct LighterLiveTrade {
     pub crossed: bool,
     /// Always `None` in live messages.
     pub dir: Option<String>,
-    /// Always `None` in live messages. Fees are on the finalized REST record.
+    /// Always `None` in live messages. Fees are on the finalized REST record,
+    /// and replayed rows from it carry them.
     pub fee: Option<String>,
     /// Always `None` in live messages.
     pub fee_token: Option<String>,
-    /// Always `None` in live messages.
+    /// Always `None` in live messages; set on replayed rows from the
+    /// finalized record.
     pub closed_pnl: Option<String>,
     /// This account's signed position before the trade, as a decimal string.
     pub start_position: Option<String>,
@@ -1105,9 +1192,9 @@ pub struct LighterLiveAssetCtx {
 /// `channel` tells the deployments apart.
 ///
 /// Decode with [`LighterLiveData::decode`], or with `ServerMsg::lighter_live_data`
-/// when the `websocket` feature is enabled. Replay messages keep their
-/// existing replay row shapes, which differ from these live payloads, so they
-/// are not decoded by this type.
+/// when the `websocket` feature is enabled. Replay rows (`historical_data` and
+/// `replay_snapshot`) have the same shapes under the API version the SDK
+/// requests, so they decode alike; a replayed trades row is a single fill.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LighterLiveData {
     /// A `lighter_orderbook` or `rh_lighter_orderbook` book.
@@ -1122,7 +1209,8 @@ pub enum LighterLiveData {
 }
 
 impl LighterLiveData {
-    /// Decode the `data` field of a live `data` message.
+    /// Decode the `data` field of a live `data` message or of a replay row
+    /// (`historical_data`, `replay_snapshot`).
     ///
     /// Returns `None` when `channel` is not one of the live Lighter channels
     /// (`lighter_orderbook`, `lighter_trades`, `lighter_open_interest`,
@@ -1437,12 +1525,68 @@ impl Default for ReconstructOptions {
 
 /// A single order in an L4 orderbook snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "RawL4OrderEntry")]
 pub struct L4OrderEntry {
     pub oid: u64,
     pub user_address: String,
     pub side: String,
     pub price: f64,
     pub size: f64,
+    /// When the order took its place in the queue, as an RFC 3339 UTC string
+    /// with milliseconds. `None` when the queue time is unknown or the row
+    /// does not carry it.
+    pub timestamp: Option<String>,
+    /// `timestamp` in Unix milliseconds.
+    pub timestamp_ms: Option<i64>,
+}
+
+/// Wire form of [`L4OrderEntry`]: the queue time arrives as an RFC 3339
+/// string with `timestamp_ms` on current and point-in-time snapshots, and as
+/// integer milliseconds on checkpoint history rows.
+#[derive(Deserialize)]
+struct RawL4OrderEntry {
+    oid: u64,
+    user_address: String,
+    side: String,
+    price: f64,
+    size: f64,
+    #[serde(default)]
+    timestamp: Option<serde_json::Value>,
+    #[serde(default)]
+    timestamp_ms: Option<i64>,
+}
+
+impl From<RawL4OrderEntry> for L4OrderEntry {
+    fn from(raw: RawL4OrderEntry) -> Self {
+        let (timestamp, timestamp_ms) = match raw.timestamp {
+            Some(serde_json::Value::String(s)) => {
+                let ms = raw.timestamp_ms.or_else(|| parse_timestamp_str(&s));
+                (Some(s), ms)
+            }
+            Some(serde_json::Value::Number(n)) => match n.as_i64().filter(|ms| *ms > 0) {
+                // Zero means the queue time is unknown.
+                Some(ms) => (rfc3339_millis(ms), Some(ms)),
+                None => (None, None),
+            },
+            _ => (None, None),
+        };
+        L4OrderEntry {
+            oid: raw.oid,
+            user_address: raw.user_address,
+            side: raw.side,
+            price: raw.price,
+            size: raw.size,
+            timestamp,
+            timestamp_ms,
+        }
+    }
+}
+
+/// Unix milliseconds as an RFC 3339 UTC string with milliseconds, the form
+/// the API writes.
+fn rfc3339_millis(ms: i64) -> Option<String> {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
 }
 
 /// L4 orderbook snapshot with individual orders and user attribution.
@@ -1509,8 +1653,12 @@ pub struct LiquidationLevelBucket {
 pub struct LiquidationLevels {
     /// Mark price at the snapshot, center of the requested range.
     pub mid_price: f64,
-    /// UTC snapshot time the levels reflect.
+    /// UTC snapshot time the levels reflect, as an RFC 3339 string with
+    /// milliseconds.
     pub snapshot_ts: String,
+    /// `snapshot_ts` in Unix milliseconds.
+    #[serde(default)]
+    pub snapshot_ts_ms: Option<i64>,
     /// Hyperliquid block height the snapshot reflects.
     pub block_number: u64,
     /// Total long notional at risk across the whole book.
@@ -1527,7 +1675,11 @@ pub struct LiquidationLevels {
 /// history was requested with `summary = true`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiquidationLevelsHistoryItem {
+    /// UTC snapshot time, as an RFC 3339 string with milliseconds.
     pub snapshot_ts: String,
+    /// `snapshot_ts` in Unix milliseconds.
+    #[serde(default)]
+    pub snapshot_ts_ms: Option<i64>,
     pub block_number: u64,
     pub mid_price: f64,
     pub total_long: f64,
@@ -1577,7 +1729,11 @@ pub struct TriggerLevels {
 /// `None` when the history was requested with `summary = true`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerLevelsHistoryItem {
+    /// UTC snapshot time, as an RFC 3339 string with milliseconds.
     pub snapshot_ts: String,
+    /// `snapshot_ts` in Unix milliseconds.
+    #[serde(default)]
+    pub snapshot_ts_ms: Option<i64>,
     pub mid_price: f64,
     pub total_bid_size: f64,
     pub total_ask_size: f64,
@@ -1643,11 +1799,20 @@ pub struct OrderHistoryEntry {
     pub orig_size: f64,
     pub status: String,
     pub order_type: String,
+    /// Time in force. Empty on rows that carry none, such as `triggered`
+    /// rows.
+    #[serde(default)]
     pub tif: String,
     pub reduce_only: bool,
     pub is_trigger: bool,
     pub is_position_tpsl: bool,
     pub cloid: Option<String>,
+    /// Trigger condition of a trigger order, on `triggered` rows.
+    #[serde(default)]
+    pub trigger_condition: Option<String>,
+    /// Trigger price of a trigger order, on `triggered` rows.
+    #[serde(default)]
+    pub trigger_price: Option<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -2098,10 +2263,97 @@ pub struct SymbolEntry {
     pub extra: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
-/// Body of `GET /v1/symbols`, which is not wrapped in `data`.
+/// Body of `GET /v1/symbols` (internal use). With the API version the SDK
+/// sends, the symbols arrive as the envelope's `data` array; the older body
+/// carried them in a `symbols` member.
 #[derive(Debug, Clone, Deserialize)]
-pub(crate) struct SymbolsResponse {
-    pub symbols: Vec<SymbolEntry>,
+#[serde(untagged)]
+pub(crate) enum SymbolsResponse {
+    List(Vec<SymbolEntry>),
+    Legacy { symbols: Vec<SymbolEntry> },
+}
+
+impl SymbolsResponse {
+    pub(crate) fn into_symbols(self) -> Vec<SymbolEntry> {
+        match self {
+            SymbolsResponse::List(symbols) | SymbolsResponse::Legacy { symbols } => symbols,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Capabilities
+// ---------------------------------------------------------------------------
+
+/// One venue and datatype the API serves, from `client.capabilities()`
+/// (`GET /v1/capabilities`).
+///
+/// A row lists the REST routes and WebSocket channels for the datatype on
+/// that venue, whether the channels stream live and replay history, the
+/// first instant served, the cadence, the largest page and the accepted
+/// intervals. It is the source for which channels can be replayed: see
+/// [`Capability::for_channel`].
+///
+/// New fields may be added in minor releases, so the struct cannot be built
+/// with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Capability {
+    /// `hyperliquid`, `hip3`, `hip4`, `spot`, `lighter` or `rh-lighter`.
+    pub venue: String,
+    /// Datatype id, for example `trades`, `l4_diffs` or `l2_full_depth`.
+    pub datatype: String,
+    /// REST route templates, for example `/v1/hyperliquid/trades/{symbol}`.
+    #[serde(default)]
+    pub rest_routes: Vec<String>,
+    /// WebSocket channels for this venue and datatype.
+    #[serde(default)]
+    pub ws_channels: Vec<String>,
+    /// `true` when a WebSocket subscription streams it live.
+    #[serde(default)]
+    pub live: bool,
+    /// `true` when a WebSocket replay serves its history.
+    #[serde(default)]
+    pub replay: bool,
+    /// First instant served, as an RFC 3339 UTC string, when the datatype has
+    /// a fixed start.
+    #[serde(default)]
+    pub available_from: Option<String>,
+    /// `event`, `snapshot`, `sample`, `interval` or `reference`.
+    #[serde(default)]
+    pub cadence: Option<String>,
+    /// Largest `limit` one page accepts.
+    #[serde(default)]
+    pub page_limit: Option<u64>,
+    /// Values `interval` accepts, empty when the datatype has none.
+    #[serde(default)]
+    pub intervals: Vec<String>,
+    /// Further detail, such as how replay behaves.
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+impl Capability {
+    /// Whether this row lists the WebSocket `channel`.
+    pub fn has_channel(&self, channel: &str) -> bool {
+        self.ws_channels.iter().any(|c| c == channel)
+    }
+
+    /// The row that lists the WebSocket `channel`, if any.
+    ///
+    /// ```no_run
+    /// # use oxarchive::{Capability, OxArchive};
+    /// # async fn example() -> oxarchive::Result<()> {
+    /// # let client = OxArchive::new("key")?;
+    /// let rows = client.capabilities().await?;
+    /// let replayable = Capability::for_channel(&rows, "spot_l4_diffs").map(|row| row.replay);
+    /// println!("spot_l4_diffs replay: {replayable:?}");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn for_channel<'a>(rows: &'a [Capability], channel: &str) -> Option<&'a Capability> {
+        rows.iter().find(|row| row.has_channel(channel))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2115,8 +2367,10 @@ pub(crate) struct SymbolsResponse {
 /// no trades.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CvdBucket {
-    /// Bucket open time, in Unix milliseconds (UTC).
-    pub timestamp: i64,
+    /// Bucket open time, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
+    /// Bucket open time, in Unix milliseconds.
+    pub timestamp_ms: i64,
     /// Taker buy notional in the bucket.
     pub buy_volume: f64,
     /// Taker sell notional in the bucket.
@@ -2146,8 +2400,10 @@ pub struct Hip3OracleExternalPrice {
     pub mark_price: Option<f64>,
     /// Source block number.
     pub block_number: i64,
+    /// Source timestamp, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
     /// Source timestamp, in Unix milliseconds.
-    pub timestamp: i64,
+    pub timestamp_ms: i64,
 }
 
 /// Instantaneous discovery bounds of a HIP-3 market, from
@@ -2175,8 +2431,10 @@ pub struct Hip3OracleDiscoveryBounds {
     pub upper_bound: f64,
     /// Source block number.
     pub block_number: i64,
+    /// Source timestamp, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
     /// Source timestamp, in Unix milliseconds.
-    pub timestamp: i64,
+    pub timestamp_ms: i64,
 }
 
 // ---------------------------------------------------------------------------
