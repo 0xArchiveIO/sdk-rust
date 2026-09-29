@@ -130,9 +130,11 @@ The sections below show which resources are available on each exchange client:
 | `funding` | Yes | Yes | -- | Yes | Yes |
 | `open_interest` | Yes | Yes | -- | Yes | Yes |
 | `candles` | Yes | Yes | Yes | Yes | Yes |
-| `breadth` (above session VWAP) | -- | Yes | -- | -- | -- |
+| `breadth` (above session VWAP) | Yes | Yes | -- | -- | -- |
 | `liquidations` | Yes | Yes | -- | Yes | Yes |
 | `positions` | Yes | Yes | -- | Yes | Yes |
+| `wallets` (wallet classification) | Yes | Yes | -- | -- | -- |
+| `oracle` (external price, discovery bounds) | -- | Yes | -- | -- | -- |
 | `accounts` (L1 address lookup) | -- | -- | -- | Yes | -- |
 | `orders` | Yes | Yes | Yes | -- | -- |
 | `l4_orderbook` | Yes | Yes | Yes | -- | -- |
@@ -142,6 +144,9 @@ The sections below show which resources are available on each exchange client:
 | `freshness()` | Yes | Yes | Yes | Yes | Yes |
 | `summary()` | Yes | Yes | -- | Yes | Yes |
 | `price_history()` | Yes | Yes | -- | Yes | Yes |
+| `cvd()` (cumulative volume delta) | Yes | Yes | -- | -- | -- |
+
+HIP-4 outcome markets (`client.hyperliquid.hip4`) have their own methods, listed in [HIP-4 Outcome Markets](#hip-4-outcome-markets-hyperliquid). Webhook management is on `client.webhooks`; see [Webhooks](#webhooks).
 
 ### Order Book
 
@@ -390,15 +395,17 @@ for inst in &hip3_instruments {
 }
 ```
 
-### HIP-3 Breadth Above Session VWAP
+### Breadth Above Session VWAP (Hyperliquid and HIP-3)
 
-HIP-3 breadth is the percentage of eligible instruments trading above their
+Breadth is the percentage of eligible instruments trading above their
 current UTC-session VWAP. The session resets at 00:00 UTC, uses the close of
 the most recently completed one-minute candle, and excludes instruments with
 no session volume or a price older than five minutes. History begins on
-**2026-08-28**. `value_pct` is unavailable (`None`) when no instrument is
-eligible; do not render it as 0%, and do not average percentages across
-snapshots because the eligible denominator varies.
+**2026-08-28** for HIP-3 and on **2026-08-24** for Hyperliquid core. Core snapshots
+are aggregate only, so their `namespaces` maps are always empty. `value_pct`
+is unavailable (`None`) when no instrument is eligible; do not render it as
+0%, and do not average percentages across snapshots because the eligible
+denominator varies.
 
 ```rust
 use oxarchive::resources::breadth::BreadthHistoryParams;
@@ -407,6 +414,9 @@ use oxarchive::types::OiFundingInterval;
 let current = client.hyperliquid.hip3.breadth.current().await?;
 println!("HIP-3 above session VWAP: {:?}%", current.value_pct);
 
+let core = client.hyperliquid.breadth.current().await?;
+println!("Core perps above session VWAP: {:?}%", core.value_pct);
+
 let history = client.hyperliquid.hip3.breadth.history(BreadthHistoryParams {
     start: Some(1787961600000_i64.into()),
     end: Some(1788048000000_i64.into()),
@@ -414,6 +424,27 @@ let history = client.hyperliquid.hip3.breadth.history(BreadthHistoryParams {
     cursor: None,
     limit: Some(1000),
 }).await?;
+```
+
+### HIP-3 Oracle
+
+The latest deployer-pushed external reference price of a HIP-3 market, and its
+instantaneous discovery bounds. The bounds apply `bound_fraction`, derived from
+the market's maximum leverage, on each side of the reference price, which is
+the external price when there is one and the mark price otherwise. The full
+ratcheted range can be wider when deployer-specific reset configuration
+applies. Keep the builder prefix and case in the symbol.
+
+```rust
+let price = client.hyperliquid.hip3.oracle.external_price("xyz:XYZ100").await?;
+println!("external {:?}, mark {:?} at block {}", price.external_price, price.mark_price, price.block_number);
+
+let bounds = client.hyperliquid.hip3.oracle.discovery_bounds("xyz:XYZ100").await?;
+println!(
+    "{} to {} around {} ({}), max leverage {}",
+    bounds.lower_bound, bounds.upper_bound, bounds.reference_price,
+    bounds.reference_source, bounds.max_leverage,
+);
 ```
 
 ### Funding Rates
@@ -638,15 +669,29 @@ let user_orders = client.hyperliquid.orders.history("BTC", OrderHistoryParams {
     limit: None,
 }).await?;
 
-// Get aggregated order flow in time buckets, oldest first (2026-07-13 UTC at 15m).
-// `limit` caps the number of buckets (default 1000, max 10000).
+// Get aggregated order flow, one page of time buckets (2026-07-13 UTC at 1m).
+// A page holds up to `limit` buckets (default 1000, max 10000); follow
+// next_cursor with the same start, end and interval until it is None.
 let flow = client.hyperliquid.orders.flow("BTC", OrderFlowParams {
     start: Some(1783900800000_i64.into()),
     end: Some(1783987200000_i64.into()),
-    interval: Some("15m".to_string()), // 1m (default), 5m, 15m, 1h
+    interval: Some("1m".to_string()), // 1m (default), 5m, 15m, 1h
     cursor: None,
     limit: None,
 }).await?;
+let mut flow_buckets = flow.data;
+let mut cursor = flow.next_cursor;
+while let Some(c) = cursor {
+    let page = client.hyperliquid.orders.flow("BTC", OrderFlowParams {
+        start: Some(1783900800000_i64.into()),
+        end: Some(1783987200000_i64.into()),
+        interval: Some("1m".to_string()),
+        cursor: Some(c),
+        limit: None,
+    }).await?;
+    flow_buckets.extend(page.data);
+    cursor = page.next_cursor;
+}
 
 // Get TP/SL (take-profit / stop-loss) orders
 let tpsl = client.hyperliquid.orders.tpsl("BTC", TpslParams {
@@ -778,7 +823,7 @@ updates at ~10s. HIP-4 has **no funding rates and no liquidations**.
 
 ```rust
 use oxarchive::exchanges::{Hip4HistoryRange, Hip4ListOutcomesParams,
-    Hip4OrderBookParams, Hip4TradesParams};
+    Hip4ListQuestionsParams, Hip4OrderBookParams, Hip4TradesParams};
 use oxarchive::resources::candles::CandleHistoryParams;
 use oxarchive::types::CandleInterval;
 
@@ -802,6 +847,18 @@ println!("aggregated_oi: {:?}", one.aggregated_oi);
 
 // Outcome detail (with aggregated_oi)
 let detail = client.hyperliquid.hip4.get_outcome(5585).await?;
+
+// Questions: a question groups binary outcomes, one named outcome per choice
+// plus a fallback outcome that resolves Yes when no named choice does.
+let questions = client.hyperliquid.hip4.list_questions(Some(Hip4ListQuestionsParams {
+    cursor: None,
+    limit: Some(100),
+})).await?;
+for q in &questions.data {
+    println!("{}: {} named outcomes, fallback {}", q.question_id, q.named_outcome_ids.len(), q.fallback_outcome_id);
+}
+// Page with questions.next_cursor until it is None.
+let question = client.hyperliquid.hip4.get_question(1).await?;
 
 // Per-side instruments (`#0`, `#1`, ...)
 let insts = client.hyperliquid.hip4.get_instruments().await?;
@@ -1135,6 +1192,37 @@ routes cost one credit per 1,000 rows returned, with a minimum of one credit
 per request, the same rate as trades. `account()`, `account_history()`, and
 `accounts.by_l1()` cost one credit per request.
 
+### Wallet Classification (Hyperliquid and HIP-3)
+
+Precomputed daily behavior metrics for active wallets: order counts, cancel
+and fill rates, maker share, order sizes, volume, fees, realized PnL, and TWAP,
+priority gas, and builder usage. Filter, sort, and page with `offset` until it
+reaches `total`. The snapshot date defaults to yesterday (UTC). Available on
+`client.hyperliquid.wallets` and `client.hyperliquid.hip3.wallets`.
+
+```rust
+use oxarchive::WalletClassifyParams;
+
+let page = client.hyperliquid.wallets.classify(WalletClassifyParams {
+    min_orders: Some(1000),
+    sort: Some("total_volume_usd".to_string()),
+    order: Some("desc".to_string()),
+    limit: Some(100),
+    uses_twap: Some(true),
+    date: chrono::NaiveDate::from_ymd_opt(2026, 9, 28),
+    ..Default::default()
+}).await?;
+println!("{} wallets match on {}", page.total, page.date);
+for wallet in &page.wallets {
+    println!("{}: cancel rate {:?}, maker ratio {:?}", wallet.address, wallet.metrics.cancel_rate, wallet.metrics.maker_ratio);
+}
+
+let hip3 = client.hyperliquid.hip3.wallets.classify(WalletClassifyParams::default()).await?;
+```
+
+Every metric is an `Option`, and metrics added to the API later are kept in
+`metrics.extra`.
+
 ### Freshness
 
 Check when each data type was last updated for a specific coin.
@@ -1173,6 +1261,54 @@ let prices = client.hyperliquid.price_history(
 ).await?;
 ```
 
+### Cumulative Volume Delta
+
+Taker buy and sell notional per bucket, their difference (`delta`), and a
+running total (`cumulative_delta`), for Hyperliquid core and HIP-3 symbols.
+Intervals are `1m`, `5m`, `15m`, `30m`, `1h` (the default), `4h`, `1d`, and
+`1w`. Buckets are labelled by their open time in UTC and omitted when they
+hold no trades; `4h`, `1d`, and `1w` buckets open on UTC epoch boundaries, so
+`1w` buckets open on Thursdays.
+
+A page holds up to `limit` buckets (default 500, max 10,000). Follow
+`next_cursor` with the same `start`, `end`, and `interval` until it is `None`;
+below `1h` a page can be short and still carry a cursor. `cumulative_delta`
+restarts on every page, so rebuild it from `delta` when joining pages, and
+`meta.notice` says when a response is one page of several. Without `start` or
+`cursor`, the response is the newest `limit` buckets of the 24 hours before
+`end`.
+
+```rust
+use oxarchive::CvdParams;
+use oxarchive::types::CandleInterval;
+
+let mut buckets = Vec::new();
+let mut cursor = None;
+loop {
+    let page = client.hyperliquid.cvd("BTC", CvdParams {
+        start: Some(1790553600000_i64.into()), // 2026-09-28 00:00 UTC
+        end: Some(1790640000000_i64.into()),   // 2026-09-29 00:00 UTC
+        interval: Some(CandleInterval::FiveMinutes),
+        cursor,
+        limit: None,
+    }).await?;
+    buckets.extend(page.data);
+    cursor = page.next_cursor;
+    if cursor.is_none() {
+        break;
+    }
+}
+// Rebuild the running total across pages from `delta`.
+let mut running = 0.0;
+for bucket in &buckets {
+    running += bucket.delta;
+    println!("{} delta {:.2} running {:.2}", bucket.timestamp, bucket.delta, running);
+}
+
+// HIP-3 keeps the builder prefix and case; the last 24 hours at 1h.
+let hip3 = client.hyperliquid.hip3.cvd("xyz:XYZ100", CvdParams::default()).await?;
+```
+
 ## Data Quality Monitoring
 
 Monitor data coverage, incidents, latency, and SLA compliance.
@@ -1201,6 +1337,203 @@ for venue in client.data_quality.positions_freshness().await? {
     println!("{} {}: {:?}s old, stale={}", venue.venue, venue.product, venue.live_age_seconds, venue.stale);
 }
 ```
+
+## Webhooks
+
+Signed HTTP notifications for market, account, archive, export, and billing
+events. `client.webhooks` covers the management routes under `/v1/webhooks`,
+and `oxarchive::webhook_signature` verifies the deliveries your receiver gets.
+Management calls cost no credits; the estimate and the dry-run are metered like
+the market data they return.
+
+Webhook delivery starts on the Build plan. Free keeps the estimate and the
+dry-run, so a rule can be designed and sized before there is anywhere to
+deliver it.
+
+| Plan | Endpoints | Subscriptions | Watched wallets | Deliveries per day |
+|------|-----------|---------------|-----------------|--------------------|
+| Free | Not available | Not available | Not available | Not available |
+| Build | 1 | 8 | 2 | 5,000 |
+| Pro | 4 | 40 | 15 | 50,000 |
+| Scale | 12 | 200 | 50 | 500,000 |
+| Enterprise | Custom | Custom | Custom | Custom |
+
+`client.webhooks.limits()` returns your own plan's caps with what is in use
+against each.
+
+### Design and Size a Rule
+
+The event catalog declares each event type's scope, venues, filters,
+parameters, and the metrics a condition can be written against. The estimate
+replays a config over up to 30 days and returns the daily rate, a ladder of
+rates at other thresholds, and a sample of matches. The dry-run returns the
+individual occurrences a config would have delivered over up to 24 hours
+(`account.fill`, `account.transfer`, and `market.liquidation`). Estimates and
+dry-runs share a budget of six a minute per account.
+
+```rust
+use oxarchive::{DryRunParams, EstimateParams};
+use oxarchive::types::{WebhookSubscriptionCondition, WebhookSubscriptionConfig};
+
+let catalog = client.webhooks.event_types().await?;
+for event_type in catalog.iter().filter(|t| t.live) {
+    println!("{} ({}): {}", event_type.event_type, event_type.scope, event_type.description);
+}
+
+let config = WebhookSubscriptionConfig::default()
+    .venue("hyperliquid")
+    .symbols(["BTC", "ETH"])
+    .condition(WebhookSubscriptionCondition::new(
+        "notional_usd",
+        "greater_than_or_equal",
+        250_000,
+    ));
+
+// How often would this have fired over the last week?
+let estimate = client.webhooks.estimate(
+    EstimateParams::new("market.liquidation").config(config.clone()).lookback_days(7),
+).await?;
+println!("median {} a day, busiest day {}", estimate.per_day_p50, estimate.per_day_max);
+for rung in &estimate.ladder {
+    println!("at {}: {:.1} a day", rung.value, rung.per_day);
+}
+
+// Which occurrences would it have delivered in the last six hours?
+let dry_run = client.webhooks.dry_run(
+    DryRunParams::new("market.liquidation").config(config.clone()).lookback_s(21_600).limit(5),
+).await?;
+println!("{} matched", dry_run.matched);
+```
+
+### Endpoints and Subscriptions
+
+```rust
+use oxarchive::{CreateEndpointParams, CreateSubscriptionParams, UpdateSubscriptionParams};
+
+// The signing secret is returned here and on rotation, and nowhere else.
+let endpoint = client.webhooks.create_endpoint(
+    CreateEndpointParams::new("https://example.com/hooks/0xarchive").description("liquidation alerts"),
+).await?;
+let secret = endpoint.secret.clone(); // store it now
+
+// The response carries the stored, normalized config.
+let subscription = client.webhooks.create_subscription(
+    CreateSubscriptionParams::new(&endpoint.id, "market.liquidation").filters(config),
+).await?;
+
+// Queue a signed webhook.test through the delivery path, then read the log.
+let queued = client.webhooks.test_endpoint(&endpoint.id).await?;
+let log = client.webhooks.list_deliveries(&endpoint.id, Some(10)).await?;
+for delivery in &log {
+    println!("{} {} after {} attempts ({:?})", delivery.event_type, delivery.state, delivery.attempts, delivery.last_status_code);
+}
+
+// Switch a rule off without deleting it, or replace its config.
+client.webhooks.update_subscription(
+    &subscription.id,
+    UpdateSubscriptionParams::default().enabled(false),
+).await?;
+
+// Watched wallets: address scoped event types (`account.*`) report only on these,
+// and a subscription's `addresses` must already be on the list.
+let added = client.webhooks.add_address("0x0000000000000000000000000000000000000001", Some("treasury")).await?;
+let watched = client.webhooks.list_addresses().await?;
+println!("{} watched, plan allows {:?}", watched.addresses.len(), watched.limit);
+```
+
+| Method | Route |
+|--------|-------|
+| `event_types()` | `GET /v1/webhooks/event-types` |
+| `limits()` | `GET /v1/webhooks/limits` |
+| `list_endpoints()` | `GET /v1/webhooks/endpoints` |
+| `create_endpoint(params)` | `POST /v1/webhooks/endpoints` |
+| `delete_endpoint(id)` | `DELETE /v1/webhooks/endpoints/{id}` |
+| `enable_endpoint(id)` | `POST /v1/webhooks/endpoints/{id}/enable` |
+| `rotate_secret(id)` | `POST /v1/webhooks/endpoints/{id}/rotate` |
+| `test_endpoint(id)` | `POST /v1/webhooks/endpoints/{id}/test` |
+| `list_deliveries(id, limit)` | `GET /v1/webhooks/endpoints/{id}/deliveries` |
+| `redeliver(delivery_id)` | `POST /v1/webhooks/deliveries/{id}/redeliver` |
+| `list_subscriptions()` | `GET /v1/webhooks/subscriptions` |
+| `create_subscription(params)` | `POST /v1/webhooks/subscriptions` |
+| `update_subscription(id, params)` | `PATCH /v1/webhooks/subscriptions/{id}` |
+| `delete_subscription(id)` | `DELETE /v1/webhooks/subscriptions/{id}` |
+| `resume_subscription(id)` | `POST /v1/webhooks/subscriptions/{id}/resume` |
+| `resume_all_subscriptions()` | `POST /v1/webhooks/subscriptions/resume` |
+| `dry_run(params)` | `POST /v1/webhooks/subscriptions/dry-run` |
+| `estimate(params)` | `POST /v1/webhooks/subscriptions/estimate` |
+| `list_addresses()` | `GET /v1/webhooks/addresses` |
+| `add_address(address, label)` | `POST /v1/webhooks/addresses` |
+| `delete_address(id)` | `DELETE /v1/webhooks/addresses/{id}` |
+
+A refusal, such as a plan without webhook delivery or a cap already reached,
+is an `Error::Api` whose message gives the reason. `test_endpoint()`,
+`redeliver()`, and the resume calls answer HTTP 409 when today's delivery
+budget is already spent.
+
+### Pauses and Resuming
+
+When an account reaches its deliveries per day, the rule that crossed the
+limit pauses and says so, rather than dropping events without a signal:
+`status` is `auto_paused`, `pause_message` explains it in plain words, and
+`pause_reason` is `deliveries_per_day_cap` or `plan_no_webhooks`. A paused rule
+delivers and buffers nothing. A pause at the daily limit lasts until the rule
+is resumed; the resume response describes the missed window, which can be
+re-read from the REST routes.
+
+```rust
+let limits = client.webhooks.limits().await?;
+if limits.paused_subscriptions.count > 0 {
+    let resumed = client.webhooks.resume_all_subscriptions().await?;
+    if let Some(gap) = resumed.gap {
+        println!(
+            "resumed {}; re-read {:?} to {:?}",
+            resumed.resumed_count, gap.replay_window.start, gap.replay_window.end,
+        );
+    }
+}
+```
+
+### Verifying Deliveries
+
+Every delivery carries `0xa-signature: t=<unix seconds>,v1=<hex>`, where the
+digest is HMAC-SHA256 over `<t>.<raw body>` keyed with the endpoint's whole
+secret string, plus `0xa-event-id` and `0xa-event-type`. `WebhookVerifier`
+checks it:
+
+- **Raw bytes.** Pass the request body exactly as it arrived, before any JSON
+  parsing. A re-serialized body has different bytes and fails.
+- **Replay window.** `t` must be within 5 minutes of your clock by default;
+  change it with `tolerance_secs()`.
+- **Rotation.** For 24 hours after `rotate_secret()`, each delivery carries a
+  `v1` for the new secret and one for the previous secret. The verifier
+  accepts a delivery when any `v1` matches any secret it holds.
+- **Constant time.** Signatures are compared in constant time.
+
+```rust
+use oxarchive::webhook_signature::{WebhookVerifier, EVENT_ID_HEADER, SIGNATURE_HEADER};
+
+// Hold both secrets while rolling over after a rotation.
+let verifier = WebhookVerifier::with_secrets([new_secret, previous_secret]);
+
+// In your HTTP handler, with the raw body and the `0xa-signature` header value:
+match verifier.verify(raw_body, signature_header) {
+    Ok(_) => {
+        let event: serde_json::Value = serde_json::from_slice(raw_body)?;
+        // Deduplicate on the `0xa-event-id` header (the payload `id`), then
+        // answer 2xx and do the work off the request.
+    }
+    Err(err) => {
+        // Answer 4xx and log `err`.
+    }
+}
+```
+
+Answer with any 2xx within 10 seconds. Delivery is at least once: a non-2xx
+response, a timeout, or a connection error is retried (5 seconds, 30 seconds,
+2 minutes, 10 minutes, 1 hour, then hourly) for up to 24 hours, and retries and
+`redeliver()` keep the event id. An endpoint with 10 or more consecutive
+failures sustained for 6 hours or more is disabled automatically; bring it
+back with `enable_endpoint()`.
 
 ## Web3 Authentication
 
@@ -1392,6 +1725,7 @@ ws.replay_stop().await?;
 | `funding` | Funding rate snapshots | Yes | Yes |
 | `ticker` | Price and 24h volume | Yes | No |
 | `all_tickers` | All market tickers | Yes | No |
+| `orderbook_full` | Hyperliquid core full-depth L2 order book, aggregated from order-level data (every price level, no user attribution). Live: an `l4_snapshot` frame (`ServerMsg::L4Snapshot`) with the whole book, then `l4_batch` frames (`ServerMsg::L4Batch`) of price-level changes (`side`, `px`, `sz`, `n`, `bn`; `sz` and `n` are `0` when a level is removed). | Yes | Yes |
 | `lighter_orderbook` | Lighter.xyz L2 order book | Yes | Yes |
 | `lighter_trades` | Lighter.xyz trades | Yes | Yes |
 | `lighter_candles` | Lighter.xyz candles | No | Yes |
@@ -1409,6 +1743,7 @@ ws.replay_stop().await?;
 | `hip3_open_interest` | HIP-3 open interest | No | Yes |
 | `hip3_funding` | HIP-3 funding rates | No | Yes |
 | `hip3_liquidations` | HIP-3 liquidation events. Same wire shape as `liquidations`. | Yes | Yes |
+| `hip3_orderbook_full` | HIP-3 full-depth L2 order book. Same frames as `orderbook_full`. | Yes | Yes |
 | `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Yes |
 | `hip4_trades` | HIP-4 trade/fill updates | Yes | Yes |
 | `hip4_open_interest` | HIP-4 open interest snapshots | No | Yes |

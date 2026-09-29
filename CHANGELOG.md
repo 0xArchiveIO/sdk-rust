@@ -77,14 +77,65 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `#[non_exhaustive]`, so a `match` on it without a wildcard arm needs a
   `OneMinute` arm.
 - `cursor` on `OrderFlowParams` and `Hip4OrderFlowParams`, sent by
-  `orders.flow()` (Hyperliquid and HIP-3) and `hip4.get_order_flow()`: a
-  resume point in Unix milliseconds, and the API starts the response at the
-  first bucket that opens after it. The API does not return `next_cursor` on
-  order flow yet, so `next_cursor` on an order-flow response is `None`. Both
-  structs are built with struct literals, so a literal that lists every
-  field needs `cursor: None` (or `..Default::default()`).
+  `orders.flow()` (Hyperliquid and HIP-3) and `hip4.get_order_flow()`. The
+  API pages order flow: a page holds the oldest `limit` buckets of the
+  window, and `next_cursor` is set while more may follow. Pass it back as
+  `cursor` with the same `start`, `end` and `interval` until it is `None`.
+  Both structs are built with struct literals, so a literal that lists
+  every field needs `cursor: None` (or `..Default::default()`).
+- Webhooks: `client.webhooks` (`WebhooksResource`) covers all 21 routes
+  under `/v1/webhooks`: `event_types()`, `limits()`, `list_endpoints()`,
+  `create_endpoint()`, `delete_endpoint()`, `enable_endpoint()`,
+  `rotate_secret()`, `test_endpoint()`, `list_deliveries()`, `redeliver()`,
+  `list_subscriptions()`, `create_subscription()`, `update_subscription()`,
+  `delete_subscription()`, `resume_subscription()`,
+  `resume_all_subscriptions()`, `dry_run()`, `estimate()`,
+  `list_addresses()`, `add_address()` and `delete_address()`. Parameter
+  structs `CreateEndpointParams`, `CreateSubscriptionParams`,
+  `UpdateSubscriptionParams`, `DryRunParams` and `EstimateParams`, and typed
+  models for the catalog, limits, endpoints, deliveries, subscriptions (with
+  their pause state), resume gaps, previews and watched wallets.
+  `WebhookSubscriptionConfig` and `WebhookSubscriptionCondition` build a
+  rule's config. Webhook delivery starts on the Build plan; the estimate and
+  the dry-run answer on every plan.
+- `webhook_signature`: `WebhookVerifier` verifies a delivery from the raw
+  body bytes and the `0xa-signature` header. It checks HMAC-SHA256 over
+  `<t>.<body>` in constant time, enforces a replay window (300 seconds by
+  default, `tolerance_secs()` to change it), and accepts a delivery when any
+  `v1` in the header matches any secret it holds, so a receiver keeps
+  verifying through the 24 hours after a secret rotation.
+  `parse_signature_header()` returns the parsed parts. The verifier's `Debug`
+  output never includes a secret.
+- `client.hyperliquid.cvd()` and `client.hyperliquid.hip3.cvd()`: cumulative
+  volume delta buckets (`CvdBucket`: taker buy and sell notional, `delta`,
+  `cumulative_delta`) at `1m` to `1w`, cursor-paged with `CvdParams`. They
+  return a `MetaResponse`, whose `meta.notice` says when a response is one
+  page of several; `cumulative_delta` restarts on every page.
+- `client.hyperliquid.breadth`: breadth above session VWAP for Hyperliquid
+  core perps (`current()` and `history()`, from 2026-08-24), on the same
+  `BreadthResource` as `client.hyperliquid.hip3.breadth`. Core snapshots are
+  aggregate only, with empty `namespaces` maps. `BreadthSnapshot` is a
+  venue-neutral alias of `Hip3BreadthSnapshot`.
+- `client.hyperliquid.hip3.oracle`: `external_price()` returns the latest
+  deployer-pushed external price and mark price
+  (`Hip3OracleExternalPrice`), and `discovery_bounds()` the instantaneous
+  discovery bounds (`Hip3OracleDiscoveryBounds`).
+- `client.hyperliquid.hip4.list_questions()` and `get_question()`: HIP-4
+  questions (`Hip4Question`), which group binary outcomes under one ballot.
+  `list_questions()` is cursor-paged with `Hip4ListQuestionsParams`.
+- `client.hyperliquid.wallets.classify()` and
+  `client.hyperliquid.hip3.wallets.classify()`: precomputed daily behavior
+  metrics for active wallets (`WalletClassification`, `ClassifiedWallet`,
+  `WalletMetrics`), filtered, sorted and offset-paged with
+  `WalletClassifyParams`.
+- WebSocket: the README channel table lists `orderbook_full` and
+  `hip3_orderbook_full`, the full-depth L2 order books, with live
+  subscriptions and replay. Their live frames decode as
+  `ServerMsg::L4Snapshot` (the whole book) and `ServerMsg::L4Batch`
+  (price-level changes).
 
 ### Changed
+- New dependencies `hmac` and `sha2`, used only by `webhook_signature`.
 - `subscribe()` rejects `rh_lighter_candles` before sending, since it is
   replay-only.
 - Install snippets and rustdoc examples reference `1.12`.

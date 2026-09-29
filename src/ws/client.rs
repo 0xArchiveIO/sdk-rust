@@ -328,6 +328,11 @@ pub enum ServerMsg {
     /// frames. `data` contains the full `bids`/`asks` book plus checkpoint
     /// metadata; large symbols can be tens of MB of JSON. HIP-3, HIP-4, and
     /// Spot L4 channels remain live-only and never use this replay sequence.
+    ///
+    /// The live full-depth L2 channels, `orderbook_full` and
+    /// `hip3_orderbook_full`, also open with this frame: `data` holds the
+    /// aggregated `bids` and `asks` at every price level, without user
+    /// attribution.
     L4Snapshot {
         channel: String,
         coin: String,
@@ -343,6 +348,11 @@ pub enum ServerMsg {
     /// order after [`ServerMsg::L4Snapshot`]. Diff and order-lifecycle items
     /// have channel-specific fields, so the payload remains JSON while the
     /// envelope and event ordering are typed by this enum.
+    ///
+    /// On the live full-depth L2 channels (`orderbook_full`,
+    /// `hip3_orderbook_full`), each item is a price-level change: `side`
+    /// (`"B"` or `"A"`), `px`, `sz` and `n` (the new level size and order
+    /// count, both `0` when the level is removed) and `bn` (block number).
     L4Batch {
         channel: String,
         coin: String,

@@ -2,7 +2,8 @@ use crate::error::{Error, Result};
 use crate::http::HttpClient;
 use crate::types::{CursorResponse, Hip3BreadthSnapshot, OiFundingInterval, Timestamp};
 
-/// Parameters for HIP-3 breadth-above-session-VWAP history.
+/// Parameters for breadth-above-session-VWAP history (Hyperliquid core and
+/// HIP-3).
 #[derive(Debug, Default, Clone)]
 pub struct BreadthHistoryParams {
     /// Inclusive range start in epoch milliseconds.
@@ -22,7 +23,7 @@ impl BreadthHistoryParams {
         if let Some(limit) = self.limit {
             if !(1..=1_000).contains(&limit) {
                 return Err(Error::InvalidParam(
-                    "HIP-3 breadth history limit must be between 1 and 1000".to_string(),
+                    "breadth history limit must be between 1 and 1000".to_string(),
                 ));
             }
         }
@@ -47,7 +48,9 @@ impl BreadthHistoryParams {
     }
 }
 
-/// Typed access to HIP-3 market breadth above the current UTC-session VWAP.
+/// Typed access to market breadth above the current UTC-session VWAP, as
+/// `client.hyperliquid.breadth` (core perps, aggregate only) and
+/// `client.hyperliquid.hip3.breadth` (HIP-3, with per-namespace counts).
 #[derive(Debug, Clone)]
 pub struct BreadthResource {
     http: HttpClient,
@@ -62,19 +65,20 @@ impl BreadthResource {
         }
     }
 
-    /// Get the latest validated HIP-3 breadth snapshot.
+    /// Get the latest validated breadth snapshot.
     ///
     /// `value_pct` is `None` when no instrument is eligible. The snapshot
     /// compares the close of the most recently completed one-minute candle
-    /// with the instrument's current UTC-session VWAP. History begins on
-    /// 2026-08-28; no pre-launch snapshots are synthesized.
+    /// with the instrument's current UTC-session VWAP. HIP-3 history begins
+    /// on 2026-08-28 and core history on 2026-08-24; no earlier snapshots are
+    /// synthesized. Core snapshots always have empty `namespaces` maps.
     pub async fn current(&self) -> Result<Hip3BreadthSnapshot> {
         self.http
             .get(&format!("{}/breadth/above-vwap/current", self.prefix), &[])
             .await
     }
 
-    /// Get ascending HIP-3 breadth history with cursor pagination.
+    /// Get ascending breadth history with cursor pagination.
     ///
     /// The server performs last-snapshot-per-bucket downsampling for the
     /// optional `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, or `1d` interval. Do not average

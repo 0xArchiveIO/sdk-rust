@@ -647,7 +647,11 @@ pub struct Hip3BreadthNamespaces {
     pub below: std::collections::HashMap<String, i64>,
 }
 
-/// A validated HIP-3 percentage-above-session-VWAP snapshot.
+/// A validated percentage-above-session-VWAP snapshot.
+///
+/// Returned by `client.hyperliquid.hip3.breadth` and, with empty
+/// `namespaces` maps, by `client.hyperliquid.breadth`. [`BreadthSnapshot`]
+/// is the same type under a venue-neutral name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hip3BreadthSnapshot {
     /// UTC calendar date for the current session.
@@ -661,6 +665,9 @@ pub struct Hip3BreadthSnapshot {
     pub counts: Hip3BreadthCounts,
     pub namespaces: Hip3BreadthNamespaces,
 }
+
+/// A breadth-above-session-VWAP snapshot, for Hyperliquid core or HIP-3.
+pub type BreadthSnapshot = Hip3BreadthSnapshot;
 
 // ---------------------------------------------------------------------------
 // Funding rates
@@ -2029,6 +2036,1103 @@ pub struct PositionsFreshness {
     /// Every event before this instant is final and will not be re-derived.
     #[serde(default)]
     pub finalized_through: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Cumulative volume delta (Hyperliquid core and HIP-3)
+// ---------------------------------------------------------------------------
+
+/// One cumulative volume delta bucket, from `client.hyperliquid.cvd()` or
+/// `client.hyperliquid.hip3.cvd()`.
+///
+/// A bucket is labelled by its open time in UTC and is omitted when it holds
+/// no trades.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CvdBucket {
+    /// Bucket open time, in Unix milliseconds (UTC).
+    pub timestamp: i64,
+    /// Taker buy notional in the bucket.
+    pub buy_volume: f64,
+    /// Taker sell notional in the bucket.
+    pub sell_volume: f64,
+    /// `buy_volume` minus `sell_volume`.
+    pub delta: f64,
+    /// Running total of `delta` from the first bucket of this response. It
+    /// restarts on every page, so rebuild it from `delta` when joining pages.
+    pub cumulative_delta: f64,
+}
+
+// ---------------------------------------------------------------------------
+// HIP-3 oracle
+// ---------------------------------------------------------------------------
+
+/// The latest deployer-pushed external price and mark price of a HIP-3
+/// market, from `client.hyperliquid.hip3.oracle.external_price()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Hip3OracleExternalPrice {
+    /// HIP-3 symbol, with its builder prefix (`xyz:XYZ100`).
+    pub symbol: String,
+    /// Externally derived reference price, when available.
+    #[serde(default)]
+    pub external_price: Option<f64>,
+    /// On-chain mark input.
+    #[serde(default)]
+    pub mark_price: Option<f64>,
+    /// Source block number.
+    pub block_number: i64,
+    /// Source timestamp, in Unix milliseconds.
+    pub timestamp: i64,
+}
+
+/// Instantaneous discovery bounds of a HIP-3 market, from
+/// `client.hyperliquid.hip3.oracle.discovery_bounds()`.
+///
+/// The bounds are `reference_price` times `1 - bound_fraction` and
+/// `1 + bound_fraction`, with the fraction derived from the market's maximum
+/// leverage. The full ratcheted range can be wider when deployer-specific
+/// reset configuration applies.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Hip3OracleDiscoveryBounds {
+    /// HIP-3 symbol, with its builder prefix.
+    pub symbol: String,
+    /// The external price when available, otherwise the mark price.
+    pub reference_price: f64,
+    /// Price source used for the bounds: `external` or `mark`.
+    pub reference_source: String,
+    /// Market maximum leverage used for the bound fraction.
+    pub max_leverage: i64,
+    /// Fraction applied on each side of `reference_price`.
+    pub bound_fraction: f64,
+    /// Instantaneous lower discovery bound.
+    pub lower_bound: f64,
+    /// Instantaneous upper discovery bound.
+    pub upper_bound: f64,
+    /// Source block number.
+    pub block_number: i64,
+    /// Source timestamp, in Unix milliseconds.
+    pub timestamp: i64,
+}
+
+// ---------------------------------------------------------------------------
+// HIP-4 questions
+// ---------------------------------------------------------------------------
+
+/// A HIP-4 question: a multi-choice resolver that groups binary outcome
+/// markets under one ballot.
+///
+/// Each named choice is its own outcome, and the fallback outcome resolves
+/// Yes when no named choice does. Look outcomes up with
+/// `client.hyperliquid.hip4.get_outcome()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Hip4Question {
+    /// Question identifier.
+    pub question_id: i64,
+    /// Question name as published on-chain. Recurring markets use a generic
+    /// name such as `Recurring`.
+    pub name: String,
+    /// Pipe-delimited question metadata: class, underlying, expiry, price
+    /// thresholds and period.
+    pub description: String,
+    /// Outcome that resolves Yes when no named outcome does.
+    pub fallback_outcome_id: i64,
+    /// Outcomes of the named choices grouped under this question.
+    #[serde(default)]
+    pub named_outcome_ids: Vec<i64>,
+    /// The subset of `named_outcome_ids` that has already settled.
+    #[serde(default)]
+    pub settled_named_outcomes: Vec<i64>,
+    /// When the question was first observed (UTC, RFC 3339).
+    pub first_seen_at: String,
+    /// When the question was last updated (UTC, RFC 3339).
+    pub last_updated_at: String,
+}
+
+// ---------------------------------------------------------------------------
+// Wallet classification (Hyperliquid core and HIP-3)
+// ---------------------------------------------------------------------------
+
+/// One page of wallet classification results, from
+/// `client.hyperliquid.wallets.classify()` or
+/// `client.hyperliquid.hip3.wallets.classify()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WalletClassification {
+    /// Wallets on this page, in the requested sort order.
+    #[serde(default)]
+    pub wallets: Vec<ClassifiedWallet>,
+    /// Wallets matching the filters, across every page.
+    pub total: i64,
+    /// The daily snapshot date the metrics describe (`YYYY-MM-DD`).
+    pub date: String,
+}
+
+/// A wallet with its precomputed behavior metrics.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClassifiedWallet {
+    /// Wallet address.
+    pub address: String,
+    /// Behavior metrics over `period`.
+    pub metrics: WalletMetrics,
+    /// Metric lookback period, for example `24h`.
+    pub period: String,
+}
+
+/// Precomputed behavior metrics of one wallet.
+///
+/// Every field is optional: a metric the API does not send for a wallet is
+/// `None`. Ratios and rates are fractions from 0 to 1. Metrics the API adds
+/// after this release are kept in `extra`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WalletMetrics {
+    /// Orders placed.
+    #[serde(default)]
+    pub total_orders: Option<i64>,
+    /// Share of orders that were canceled.
+    #[serde(default)]
+    pub cancel_rate: Option<f64>,
+    /// Share of orders that filled.
+    #[serde(default)]
+    pub fill_rate: Option<f64>,
+    /// Orders placed per fill.
+    #[serde(default)]
+    pub order_to_trade_ratio: Option<f64>,
+    /// Share of orders sent immediate-or-cancel.
+    #[serde(default)]
+    pub ioc_ratio: Option<f64>,
+    /// Share of orders sent post-only.
+    #[serde(default)]
+    pub post_only_ratio: Option<f64>,
+    /// Share of orders that were take-profit or stop-loss orders.
+    #[serde(default)]
+    pub tpsl_ratio: Option<f64>,
+    /// Share of orders that were trigger orders.
+    #[serde(default)]
+    pub trigger_order_ratio: Option<f64>,
+    /// Distinct coins the wallet placed orders on.
+    #[serde(default)]
+    pub unique_coins_traded: Option<i64>,
+    /// Whether the wallet placed take-profit or stop-loss orders.
+    #[serde(default)]
+    pub uses_tpsl: Option<bool>,
+    /// Whether the wallet routed orders through a builder.
+    #[serde(default)]
+    pub uses_builder: Option<bool>,
+    /// The builder the wallet used most, when it used one.
+    #[serde(default)]
+    pub top_builder: Option<String>,
+    /// Mean order size, in USD.
+    #[serde(default)]
+    pub avg_order_size_usd: Option<f64>,
+    /// Largest order size, in USD.
+    #[serde(default)]
+    pub max_order_size_usd: Option<f64>,
+    /// Typical time from placement to cancel, in milliseconds.
+    #[serde(default)]
+    pub median_cancel_speed_ms: Option<f64>,
+    /// Distinct hours in which the wallet was active.
+    #[serde(default)]
+    pub active_hours: Option<i64>,
+    /// Fills received.
+    #[serde(default)]
+    pub total_fills: Option<i64>,
+    /// Filled volume, in USD.
+    #[serde(default)]
+    pub total_volume_usd: Option<f64>,
+    /// Share of fills on the maker side.
+    #[serde(default)]
+    pub maker_ratio: Option<f64>,
+    /// Buy volume divided by sell volume.
+    #[serde(default)]
+    pub long_short_ratio: Option<f64>,
+    /// Buy volume, in USD.
+    #[serde(default)]
+    pub buy_volume_usd: Option<f64>,
+    /// Sell volume, in USD.
+    #[serde(default)]
+    pub sell_volume_usd: Option<f64>,
+    /// Fees paid, in USD. Negative when rebates exceeded fees.
+    #[serde(default)]
+    pub total_fees_usd: Option<f64>,
+    /// Realized profit and loss, in USD.
+    #[serde(default)]
+    pub realized_pnl_usd: Option<f64>,
+    /// Liquidation fills.
+    #[serde(default)]
+    pub liquidation_count: Option<i64>,
+    /// Largest single fill, in USD.
+    #[serde(default)]
+    pub max_single_fill_usd: Option<f64>,
+    /// Distinct coins the wallet received fills on.
+    #[serde(default)]
+    pub unique_fill_coins: Option<i64>,
+    /// Whether the wallet received TWAP fills.
+    #[serde(default)]
+    pub uses_twap: Option<bool>,
+    /// Share of fills that came from TWAP orders.
+    #[serde(default)]
+    pub twap_fill_ratio: Option<f64>,
+    /// Whether the wallet set client order ids.
+    #[serde(default)]
+    pub uses_cloid: Option<bool>,
+    /// Share of orders with a client order id.
+    #[serde(default)]
+    pub cloid_ratio: Option<f64>,
+    /// Whether the wallet paid priority gas.
+    #[serde(default)]
+    pub uses_priority_gas: Option<bool>,
+    /// Priority gas paid.
+    #[serde(default)]
+    pub total_priority_gas_paid: Option<f64>,
+    /// Builder fees paid.
+    #[serde(default)]
+    pub total_builder_fees_paid: Option<f64>,
+    /// Metrics this release does not name yet.
+    #[serde(default, flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+// ---------------------------------------------------------------------------
+// Webhooks
+// ---------------------------------------------------------------------------
+//
+// Instants are RFC 3339 UTC strings. Identifiers are UUID strings.
+
+/// Deserialize `null` (or an absent field, with `#[serde(default)]`) as the
+/// type's default.
+fn null_as_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+/// One entry of the served event catalog, from
+/// `client.webhooks.event_types()`.
+///
+/// Subscriptions are validated against this declaration, so it is the
+/// authority on the filters, parameters and metrics an event type accepts.
+/// Read `params` and `metrics` from here rather than hardcoding them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEventType {
+    /// Event type identifier, for example `market.liquidation`. Send it as
+    /// `event_type` when creating a subscription.
+    #[serde(rename = "type")]
+    pub event_type: String,
+    /// Version of the delivered payload shape for this event type.
+    pub schema_version: i64,
+    /// `true` when the type accepts subscriptions. A type that is published
+    /// but not yet live is refused at create time.
+    pub live: bool,
+    /// Who the event is about: `public` (market wide), `user` (your own
+    /// account and platform activity) or `addresses` (only wallets on your
+    /// watched list).
+    pub scope: String,
+    /// Venues the type covers. Empty when the type is not venue scoped.
+    #[serde(default)]
+    pub venues: Vec<String>,
+    /// Filter keys the subscription config accepts for this type, from
+    /// `venue`, `symbols` and `addresses`. A key not listed is refused.
+    #[serde(default)]
+    pub filters: Vec<String>,
+    /// Tunable parameters, keyed by parameter name.
+    #[serde(default)]
+    pub params: std::collections::BTreeMap<String, WebhookEventTypeParam>,
+    /// Metrics the event carries, keyed by metric name. A condition may only
+    /// reference a metric declared here.
+    #[serde(default)]
+    pub metrics: std::collections::BTreeMap<String, WebhookEventTypeMetric>,
+    /// The smallest occurrence the type reports at all. `None` when the type
+    /// has no floor.
+    #[serde(default)]
+    pub cost_floor: Option<WebhookCostFloor>,
+    /// Rough delivery latency from the occurrence to the first delivery
+    /// attempt: `seconds` or `minutes`.
+    pub latency_class: String,
+    /// What the event reports and what one occurrence means.
+    pub description: String,
+    /// A worked example of a config for this type.
+    #[serde(default)]
+    pub filters_example: Option<serde_json::Value>,
+    /// Operator vocabulary grouped by metric type, plus the `any` group that
+    /// applies to every metric.
+    #[serde(default)]
+    pub operators: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+/// A tunable parameter declared by an event type.
+///
+/// Values sent under `params` are validated against this declaration, and a
+/// declared parameter left unset is stored at its default.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEventTypeParam {
+    /// Value type: `integer`, `number`, `string` or `array_of_number`.
+    #[serde(rename = "type")]
+    pub value_type: String,
+    /// Unit the value is expressed in, when it has one.
+    #[serde(default)]
+    pub unit: Option<String>,
+    /// Value used when the parameter is not supplied.
+    #[serde(default)]
+    pub default: Option<serde_json::Value>,
+    /// Lowest accepted value, when the parameter is bounded below.
+    #[serde(default)]
+    pub min: Option<f64>,
+    /// Highest accepted value, when the parameter is bounded above.
+    #[serde(default)]
+    pub max: Option<f64>,
+    /// Accepted values, when the parameter is a fixed choice. Sent on the
+    /// wire as `enum`.
+    #[serde(default, rename = "enum")]
+    pub allowed: Option<Vec<serde_json::Value>>,
+    /// What the parameter changes.
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// A metric an event carries, and so a metric a condition may be written
+/// against.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEventTypeMetric {
+    /// Value type of the metric, for example `number`, `integer`, `string`,
+    /// `enum`, `boolean` or `timestamp`. It decides which operators a
+    /// condition on the metric may use.
+    #[serde(rename = "type")]
+    pub value_type: String,
+    /// Unit the metric is expressed in, when it has one.
+    #[serde(default)]
+    pub unit: Option<String>,
+    /// Accepted values, when the metric is a fixed choice.
+    #[serde(default)]
+    pub values: Option<Vec<String>>,
+    /// What the metric measures, including when it is null.
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// The smallest occurrence an event type reports.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookCostFloor {
+    /// Metric the floor applies to, for example `notional_usd`.
+    pub metric: String,
+    /// Lowest value still reported.
+    pub min: f64,
+    /// Unit of `min`, when the API sends one.
+    #[serde(default)]
+    pub unit: Option<String>,
+    /// How the floor relates to the default subscription threshold, when the
+    /// API sends one.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// A delivery destination, from `client.webhooks.list_endpoints()`.
+///
+/// The signing secret is never part of this shape. It is returned once by
+/// [`create_endpoint`](crate::resources::webhooks::WebhooksResource::create_endpoint)
+/// and again by
+/// [`rotate_secret`](crate::resources::webhooks::WebhooksResource::rotate_secret).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEndpoint {
+    /// Endpoint identifier.
+    pub id: String,
+    /// HTTPS destination that receives deliveries.
+    pub url: String,
+    /// Your own label for the endpoint.
+    #[serde(default)]
+    pub description: String,
+    /// `active`, `disabled` (switched off by you) or `auto_disabled`
+    /// (switched off after a long run of failed deliveries; bring it back
+    /// with `enable_endpoint`).
+    pub status: String,
+    /// Failed attempts since the last success.
+    #[serde(default)]
+    pub consecutive_failures: i32,
+    /// When the endpoint was created.
+    pub created_at: String,
+    /// Fields the API sends that this release does not name.
+    #[serde(default, flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+/// A newly created endpoint with its signing secret, from
+/// `client.webhooks.create_endpoint()`.
+///
+/// This and a rotation are the only responses that carry a secret. Store
+/// `secret` before doing anything else: it is not shown again.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEndpointCreated {
+    /// Endpoint identifier.
+    pub id: String,
+    /// HTTPS destination that receives deliveries.
+    pub url: String,
+    /// Your own label for the endpoint.
+    #[serde(default)]
+    pub description: String,
+    /// `active`, `disabled` or `auto_disabled`.
+    pub status: String,
+    /// Failed attempts since the last success.
+    #[serde(default)]
+    pub consecutive_failures: i32,
+    /// When the endpoint was created.
+    pub created_at: String,
+    /// Signing secret for this endpoint. Every delivery is signed with it.
+    pub secret: String,
+    /// The API's reminder that the secret is shown once.
+    #[serde(default)]
+    pub note: Option<String>,
+    /// Fields the API sends that this release does not name.
+    #[serde(default, flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+/// A freshly rotated signing secret, from `client.webhooks.rotate_secret()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEndpointSecret {
+    /// The new signing secret. The previous one keeps verifying for 24
+    /// hours, and every delivery in that window carries a signature for
+    /// each.
+    pub secret: String,
+    /// How long the previous secret keeps verifying.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// Venue filter of a subscription config: one venue, or several.
+///
+/// A single string may also hold several venues separated by `|`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum WebhookVenueFilter {
+    /// One venue, for example `hyperliquid`.
+    One(String),
+    /// Several venues.
+    Many(Vec<String>),
+}
+
+/// What a subscription matches on.
+///
+/// Every key is checked against the event type's catalog declaration, so an
+/// unknown key, an undeclared parameter or a condition on an undeclared
+/// metric is refused rather than ignored. The config the API stores and
+/// returns is the normalized form: venues and addresses lowercased, declared
+/// parameters filled in at their defaults, and operators in their canonical
+/// spelling.
+///
+/// ```
+/// use oxarchive::types::{WebhookSubscriptionCondition, WebhookSubscriptionConfig};
+///
+/// let config = WebhookSubscriptionConfig::default()
+///     .venue("hyperliquid")
+///     .symbols(["BTC", "ETH"])
+///     .condition(WebhookSubscriptionCondition::new(
+///         "notional_usd",
+///         "greater_than_or_equal",
+///         250_000,
+///     ));
+/// assert_eq!(config.conditions.len(), 1);
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WebhookSubscriptionConfig {
+    /// Venue or venues to match, from the event type's `venues`. `None`
+    /// matches every covered venue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub venue: Option<WebhookVenueFilter>,
+    /// Instrument symbols to match. `None` matches every symbol.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbols: Option<Vec<String>>,
+    /// Wallets to match, for an address scoped event type. Each one must
+    /// already be on your watched list. `None` matches all of them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub addresses: Option<Vec<String>>,
+    /// Parameter values, keyed by the parameter names the event type
+    /// declares. A declared parameter left out is stored at its default.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub params: std::collections::BTreeMap<String, serde_json::Value>,
+    /// Conditions on the event's metrics, all of which must hold for a
+    /// delivery. At most 16.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<WebhookSubscriptionCondition>,
+    /// Shorthand for a `notional_usd` at-or-above condition, kept for
+    /// compatibility. It is stored as a condition and mirrored back here as
+    /// the loosest notional lower bound the config carries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_notional_usd: Option<f64>,
+    /// Other top-level keys. A declared parameter may also be written at the
+    /// top level of the config, and the API may add keys in later releases.
+    #[serde(default, flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+impl WebhookSubscriptionConfig {
+    /// Match one venue, or several written as `a|b`.
+    pub fn venue(mut self, venue: impl Into<String>) -> Self {
+        self.venue = Some(WebhookVenueFilter::One(venue.into()));
+        self
+    }
+
+    /// Match several venues.
+    pub fn venues<I, S>(mut self, venues: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.venue = Some(WebhookVenueFilter::Many(
+            venues.into_iter().map(Into::into).collect(),
+        ));
+        self
+    }
+
+    /// Match these instrument symbols.
+    pub fn symbols<I, S>(mut self, symbols: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.symbols = Some(symbols.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Match these watched wallets.
+    pub fn addresses<I, S>(mut self, addresses: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.addresses = Some(addresses.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Set one declared parameter.
+    pub fn param(mut self, name: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+        self.params.insert(name.into(), value.into());
+        self
+    }
+
+    /// Add a condition.
+    pub fn condition(mut self, condition: WebhookSubscriptionCondition) -> Self {
+        self.conditions.push(condition);
+        self
+    }
+}
+
+/// One condition on an event metric.
+///
+/// The operator vocabulary is grouped by the metric's type; see
+/// [`WebhookEventType::operators`]. Symbol spellings such as `>=` are
+/// accepted and stored in the canonical spelling (`greater_than_or_equal`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookSubscriptionCondition {
+    /// A metric declared by the event type.
+    pub metric: String,
+    /// Comparison to apply, for example `greater_than_or_equal`, `between`,
+    /// `in` or `is_empty`.
+    pub op: String,
+    /// What to compare against: a single value, a `[low, high]` pair for
+    /// `between` and `not_between`, or a non-empty list for `in` and
+    /// `not_in`. `None` for `is_empty` and `is_not_empty`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<serde_json::Value>,
+}
+
+impl WebhookSubscriptionCondition {
+    /// A condition that compares `metric` against `value`.
+    pub fn new(
+        metric: impl Into<String>,
+        op: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
+        Self {
+            metric: metric.into(),
+            op: op.into(),
+            value: Some(value.into()),
+        }
+    }
+
+    /// A condition without a value, for `is_empty` and `is_not_empty`.
+    pub fn without_value(metric: impl Into<String>, op: impl Into<String>) -> Self {
+        Self {
+            metric: metric.into(),
+            op: op.into(),
+            value: None,
+        }
+    }
+}
+
+/// A rule: one event type and one config, delivered to one endpoint.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookSubscription {
+    /// Subscription identifier.
+    pub id: String,
+    /// Endpoint that receives this rule's deliveries.
+    pub endpoint_id: String,
+    /// Event type the rule subscribes to.
+    pub event_type: String,
+    /// The stored, normalized config.
+    #[serde(default, deserialize_with = "null_as_default")]
+    pub filters: WebhookSubscriptionConfig,
+    /// Your own on and off switch. Resuming a paused rule never changes it.
+    pub enabled: bool,
+    /// When the rule was created.
+    pub created_at: String,
+    /// `active` while serving, `auto_paused` while delivery is paused. A
+    /// pause at the daily delivery limit lasts until the rule is resumed.
+    #[serde(default)]
+    pub status: String,
+    /// Why the rule is paused and what clears it, in plain words. Present
+    /// only while it is paused. This is the field to show a person.
+    #[serde(default)]
+    pub pause_message: Option<String>,
+    /// Start of the current pause. `None` while serving.
+    #[serde(default)]
+    pub paused_at: Option<String>,
+    /// Machine readable cause of the current pause:
+    /// `deliveries_per_day_cap` or `plan_no_webhooks`. `None` while serving.
+    #[serde(default)]
+    pub pause_reason: Option<String>,
+    /// Matches observed but not delivered since the current pause began. A
+    /// lower bound, not a total.
+    #[serde(default)]
+    pub suppressed_count: i64,
+    /// First suppressed match of the current pause.
+    #[serde(default)]
+    pub suppressed_first_at: Option<String>,
+    /// Most recent suppressed match of the current pause.
+    #[serde(default)]
+    pub suppressed_last_at: Option<String>,
+    /// Start of the last pause that has already ended.
+    #[serde(default)]
+    pub last_paused_at: Option<String>,
+    /// When that pause ended.
+    #[serde(default)]
+    pub last_resumed_at: Option<String>,
+    /// Cause of the last pause that has already ended.
+    #[serde(default)]
+    pub last_pause_reason: Option<String>,
+    /// Matches suppressed during the last pause that has already ended.
+    #[serde(default)]
+    pub last_suppressed_count: i64,
+    /// First suppressed match of that pause.
+    #[serde(default)]
+    pub last_suppressed_first_at: Option<String>,
+    /// Most recent suppressed match of that pause.
+    #[serde(default)]
+    pub last_suppressed_last_at: Option<String>,
+    /// Fields the API sends that this release does not name.
+    #[serde(default, flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+impl WebhookSubscription {
+    /// `true` while delivery is paused (`status` is `auto_paused`).
+    pub fn is_paused(&self) -> bool {
+        self.status == "auto_paused"
+    }
+}
+
+/// The window a resume closed.
+///
+/// Nothing is buffered while a rule is paused, so this describes what was
+/// missed rather than replaying it. Re-read `replay_window` from the REST
+/// routes to recover it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookResumeGap {
+    /// Start of the gap.
+    #[serde(default)]
+    pub paused_at: Option<String>,
+    /// End of the gap.
+    #[serde(default)]
+    pub resumed_at: Option<String>,
+    /// The gap as a window to re-read.
+    #[serde(default, deserialize_with = "null_as_default")]
+    pub replay_window: WebhookReplayWindow,
+    /// Cause of the pause that was cleared. `None` on a bulk resume whose
+    /// rules were paused for more than one reason.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// Distinct causes across the resumed rules. Sent on a bulk resume only.
+    #[serde(default)]
+    pub reasons: Option<Vec<String>>,
+    /// The cause in plain words.
+    #[serde(default)]
+    pub pause_message: Option<String>,
+    /// Matches suppressed inside the window. `None` when the rules were
+    /// address scoped, because their occurrences were never looked at.
+    #[serde(default)]
+    pub suppressed_count: Option<i64>,
+    /// Whether anything inside the window was counted. `false` means the
+    /// count is `None` because nothing was looked at, not because nothing
+    /// happened.
+    #[serde(default)]
+    pub counted: bool,
+    /// First suppressed match inside the window.
+    #[serde(default)]
+    pub suppressed_first_at: Option<String>,
+    /// Most recent suppressed match inside the window.
+    #[serde(default)]
+    pub suppressed_last_at: Option<String>,
+    /// How many of the resumed rules were address scoped, and so not
+    /// counted. Sent on a bulk resume only.
+    #[serde(default)]
+    pub uncounted_subscriptions: Option<i64>,
+    /// What can and cannot be recovered for the window, and how.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// A window to re-read from the REST routes.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WebhookReplayWindow {
+    /// Window start.
+    #[serde(default)]
+    pub start: Option<String>,
+    /// Window end.
+    #[serde(default)]
+    pub end: Option<String>,
+}
+
+/// The result of resuming one subscription, from
+/// `client.webhooks.resume_subscription()`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WebhookResume {
+    /// The subscription after the call.
+    pub subscription: WebhookSubscription,
+    /// The window the resume closed. `None` when the rule was already
+    /// serving, in which case nothing changed.
+    pub gap: Option<WebhookResumeGap>,
+    /// Why nothing changed, when nothing did.
+    pub note: Option<String>,
+}
+
+/// The result of resuming every paused subscription, from
+/// `client.webhooks.resume_all_subscriptions()`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WebhookResumeAll {
+    /// The rules that were put back into service.
+    pub subscriptions: Vec<WebhookSubscription>,
+    /// How many rules were put back into service.
+    pub resumed_count: i64,
+    /// The window the resume closed, across the rules it cleared. `None`
+    /// when nothing was paused.
+    pub gap: Option<WebhookResumeGap>,
+    /// Why nothing changed, when nothing did.
+    pub note: Option<String>,
+}
+
+/// One delivery record for one event to one endpoint.
+///
+/// An event and an endpoint share a single record for their whole life, so
+/// a repeat delivery rewrites this record rather than adding another.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookDelivery {
+    /// Delivery identifier.
+    pub id: String,
+    /// Event identifier, stable across retries and repeat deliveries.
+    /// Deduplicate on it in your receiver.
+    pub event_id: String,
+    /// Event type delivered.
+    pub event_type: String,
+    /// `pending`, `delivered`, `failed` or `exhausted`.
+    pub state: String,
+    /// Attempts made so far.
+    pub attempts: i32,
+    /// HTTP status your receiver returned on the last attempt.
+    #[serde(default)]
+    pub last_status_code: Option<i32>,
+    /// Why the last attempt failed. `None` when it succeeded.
+    #[serde(default)]
+    pub last_error: Option<String>,
+    /// How long the last attempt took, in milliseconds.
+    #[serde(default)]
+    pub last_latency_ms: Option<i32>,
+    /// When the next attempt is due.
+    pub next_attempt_at: String,
+    /// When the delivery landed. `None` until it does.
+    #[serde(default)]
+    pub delivered_at: Option<String>,
+    /// When the delivery was queued. A repeat delivery resets it.
+    pub created_at: String,
+    /// The event body as sent: `id`, `type`, `schema_version`,
+    /// `observed_at` and `data`.
+    pub payload: serde_json::Value,
+}
+
+/// A delivery that has just been queued, from
+/// `client.webhooks.test_endpoint()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookDeliveryQueued {
+    /// Delivery identifier. Read it back from the endpoint's delivery log.
+    pub delivery_id: String,
+    /// Event identifier carried in the delivered payload.
+    pub event_id: String,
+}
+
+/// A past delivery queued for another attempt, from
+/// `client.webhooks.redeliver()`.
+///
+/// The identifiers are unchanged because the delivery is re-queued in place.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookRedelivery {
+    /// Delivery identifier, the one that was asked for.
+    pub delivery_id: String,
+    /// Event identifier, unchanged, so a receiver that already processed the
+    /// event can deduplicate on it.
+    pub event_id: String,
+    /// Event type being delivered again.
+    pub event_type: String,
+    /// `pending` immediately after the repeat delivery is queued.
+    pub state: String,
+    /// Attempt counter, restarted from zero.
+    pub attempts: i32,
+    /// When the attempt is due, which is immediately.
+    pub next_attempt_at: String,
+    /// What the repeat delivery rewrites on the delivery record.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// A wallet on your watched list. Address scoped event types report only on
+/// these.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookWatchedAddress {
+    /// Watched address identifier.
+    pub id: String,
+    /// The wallet, stored lowercase.
+    pub address: String,
+    /// Your own label for the wallet. At most 64 characters.
+    #[serde(default)]
+    pub label: String,
+    /// When the wallet was added.
+    pub created_at: String,
+}
+
+/// Watched wallets with the plan's cap, from
+/// `client.webhooks.list_addresses()`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WebhookWatchedAddressList {
+    /// The watched wallets.
+    pub addresses: Vec<WebhookWatchedAddress>,
+    /// Watched wallets this plan allows. `Some(0)` on a plan without webhook
+    /// delivery.
+    pub limit: Option<i64>,
+}
+
+/// A watched wallet that was just added, with the plan's cap, from
+/// `client.webhooks.add_address()`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WebhookWatchedAddressAdded {
+    /// The watched wallet.
+    pub address: WebhookWatchedAddress,
+    /// Watched wallets this plan allows.
+    pub limit: Option<i64>,
+}
+
+/// One cap: what the plan allows, what is in use, and what is left.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookLimitUsage {
+    /// In use now.
+    pub used: i64,
+    /// What the plan allows. Zero on a plan without webhook delivery.
+    pub limit: i64,
+    /// What is left, never below zero. A plan change can leave an account
+    /// over a cap.
+    pub remaining: i64,
+}
+
+/// Today's delivery budget. It resets on its own; a paused rule does not.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookDeliveryBudget {
+    /// Deliveries today.
+    pub used: i64,
+    /// Deliveries a day the plan allows. `None` when the plan has no
+    /// ceiling.
+    #[serde(default)]
+    pub limit: Option<i64>,
+    /// Deliveries left today, never below zero. `None` when the plan has no
+    /// ceiling.
+    #[serde(default)]
+    pub remaining: Option<i64>,
+    /// `true` when the plan has no daily ceiling.
+    pub unlimited: bool,
+    /// When the budget resets.
+    pub resets_at: String,
+    /// Sent only while something is paused, to say that `resets_at` is the
+    /// budget's reset and not the pause's.
+    #[serde(default)]
+    pub resets_at_note: Option<String>,
+}
+
+/// Paused rules on the account.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookPausedSubscriptions {
+    /// How many rules are paused and delivering nothing.
+    pub count: i64,
+    /// Start of the oldest pause still in force.
+    #[serde(default)]
+    pub earliest_paused_at: Option<String>,
+    /// Distinct causes across the paused rules.
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    /// What is paused and what clears it, in plain words. Sent only when
+    /// something is paused.
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+/// What the plan allows for webhooks and what is in use, from
+/// `client.webhooks.limits()`.
+///
+/// Every number is read from the same place the caps are enforced from, so
+/// a refusal and this report cannot disagree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookLimits {
+    /// The plan webhook decisions are priced at.
+    pub plan: String,
+    /// The plan's display name, when known.
+    #[serde(default)]
+    pub plan_label: Option<String>,
+    /// Whether the plan includes webhook delivery at all. `false` on Free,
+    /// where every cap is zero.
+    pub included: bool,
+    /// Whether the estimate and the dry-run are available. `true` on every
+    /// plan, Free included.
+    pub preview_included: bool,
+    /// Delivery endpoints.
+    pub endpoints: WebhookLimitUsage,
+    /// Subscriptions, counted across every endpoint.
+    pub subscriptions: WebhookLimitUsage,
+    /// Watched wallets.
+    pub watched_addresses: WebhookLimitUsage,
+    /// Today's delivery budget.
+    pub deliveries_per_day: WebhookDeliveryBudget,
+    /// Paused rules on the account.
+    pub paused_subscriptions: WebhookPausedSubscriptions,
+    /// Why the caps are zero and what to do about it. Sent only on a plan
+    /// without webhook delivery.
+    #[serde(default)]
+    pub notice: Option<String>,
+}
+
+/// The window a preview answer covers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookPreviewWindow {
+    /// Start of the window. It can be later than requested when a scan
+    /// reached its row cap.
+    pub from: String,
+    /// End of the window, the moment of the request.
+    pub to: String,
+}
+
+/// One occurrence a preview found, in the shape a delivery carries.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookPreviewOccurrence {
+    /// The occurrence's own timestamp. A real delivery's `observed_at` is
+    /// this plus the time it takes to see the occurrence.
+    pub observed_at_estimate: String,
+    /// The `data` a delivery would carry.
+    pub data: serde_json::Value,
+}
+
+/// Which occurrences a would-be subscription would have delivered, from
+/// `client.webhooks.dry_run()`. Nothing is stored and nothing is sent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookDryRun {
+    /// Event type that was evaluated.
+    pub event_type: String,
+    /// The window the answer covers.
+    pub window: WebhookPreviewWindow,
+    /// Occurrences that matched inside the window, before `limit` applies.
+    pub matched: i64,
+    /// `true` when fewer occurrences are returned than matched, or when a
+    /// scan hit its row cap and the window was narrowed.
+    pub truncated: bool,
+    /// Newest first, at most `limit`.
+    #[serde(default)]
+    pub occurrences: Vec<WebhookPreviewOccurrence>,
+}
+
+/// How often a would-be subscription would have fired, from
+/// `client.webhooks.estimate()`. Nothing is stored and nothing is sent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEstimate {
+    /// Event type that was evaluated.
+    pub event_type: String,
+    /// The window the answer covers.
+    pub window: WebhookPreviewWindow,
+    /// Days the answer covers. Shorter than requested when the event type
+    /// has a shorter cap.
+    pub days: i64,
+    /// Occurrences that would have been delivered across the window.
+    pub total: i64,
+    /// One entry per day, oldest first, zero filled.
+    #[serde(default)]
+    pub per_day: Vec<WebhookEstimateDayCount>,
+    /// Median deliveries a day across the window.
+    pub per_day_p50: f64,
+    /// Busiest day in the window.
+    pub per_day_max: i64,
+    /// The metric the ladder and the distribution are about. `None` when the
+    /// type has none.
+    #[serde(default)]
+    pub primary_metric: Option<String>,
+    /// Ascending: the daily rate the same config would have had at other
+    /// thresholds on `primary_metric`. Empty when there is no primary
+    /// metric.
+    #[serde(default)]
+    pub ladder: Vec<WebhookEstimateRung>,
+    /// Quantiles of `primary_metric`. `None` when the type has no primary
+    /// metric or nothing matched.
+    #[serde(default)]
+    pub distribution: Option<WebhookEstimateDistribution>,
+    /// Newest matches first, in the dry-run's shape.
+    #[serde(default)]
+    pub sample: Vec<WebhookPreviewOccurrence>,
+    /// How the estimate was produced.
+    pub basis: WebhookEstimateBasis,
+}
+
+/// One 24 hour bin of an estimate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEstimateDayCount {
+    /// UTC date the bin ends on (`YYYY-MM-DD`).
+    pub date: String,
+    /// Occurrences that would have been delivered in the bin.
+    pub count: i64,
+}
+
+/// One rung of the threshold ladder.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEstimateRung {
+    /// Threshold on the primary metric.
+    pub value: f64,
+    /// Deliveries a day at that threshold, everything else unchanged.
+    pub per_day: f64,
+}
+
+/// Quantiles of an estimate's primary metric over the matched occurrences.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEstimateDistribution {
+    /// Occurrences the quantiles are computed over.
+    pub n: i64,
+    /// Median.
+    pub p50: f64,
+    /// 90th percentile.
+    pub p90: f64,
+    /// 99th percentile.
+    pub p99: f64,
+    /// Largest value seen.
+    pub max: f64,
+}
+
+/// How an estimate was produced.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookEstimateBasis {
+    /// `exact` (every occurrence counted), `sampled` (scaled from a capped
+    /// scan) or `replayed` (a windowed rule re-run over history at your
+    /// parameters).
+    pub mode: String,
+    /// What qualifies the numbers, when anything does.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 #[cfg(test)]

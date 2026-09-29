@@ -14,6 +14,10 @@ pub mod l3_orderbook;
 pub mod spot;
 pub mod breadth;
 pub mod positions;
+pub mod cvd;
+pub mod oracle;
+pub mod wallets;
+pub mod webhooks;
 
 pub use orderbook::OrderBookResource;
 pub use trades::TradesResource;
@@ -37,4 +41,11 @@ pub use positions::{
     AccountHistoryParams, BulkPositionsParams, GetPositionsParams, LighterAccountsResource,
     LighterPositionsResource, MarketPositionsParams, MarketSummaryParams, PositionRangeParams,
     PositionsResource,
+};
+pub use cvd::CvdParams;
+pub use oracle::OracleResource;
+pub use wallets::{WalletClassifyParams, WalletsResource};
+pub use webhooks::{
+    CreateEndpointParams, CreateSubscriptionParams, DryRunParams, EstimateParams,
+    UpdateSubscriptionParams, WebhooksResource,
 };

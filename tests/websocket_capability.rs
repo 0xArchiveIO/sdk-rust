@@ -373,3 +373,53 @@ fn rh_lighter_live_frames_decode_with_the_mainnet_shapes() {
     let msg: ServerMsg = serde_json::from_str(candles).unwrap();
     assert!(msg.lighter_live_data().is_none());
 }
+
+#[tokio::test]
+async fn full_depth_orderbook_channels_subscribe_and_replay() {
+    let ws = OxArchiveWs::new(WsOptions::new("test-key"));
+    for (channel, symbol) in [
+        ("orderbook_full", "BTC"),
+        ("hip3_orderbook_full", "km:US500"),
+    ] {
+        ws.subscribe(channel, Some(symbol))
+            .await
+            .expect("full-depth live subscriptions must be allowed");
+        ws.replay(channel, symbol, 1, Some(2), Some(10.0))
+            .await
+            .expect("full-depth replay must be allowed");
+    }
+}
+
+#[test]
+fn full_depth_orderbook_frames_decode() {
+    let snapshot = r#"{"type":"l4_snapshot","channel":"orderbook_full","coin":"BTC","symbol":"BTC","last_block_number":1164898902,"timestamp":1790649697779,"data":{"bids":[{"px":108300.0,"sz":1.5,"n":3}],"asks":[{"px":108301.0,"sz":0.2,"n":1}],"bid_count":1,"ask_count":1,"mid_price":108300.5}}"#;
+    match serde_json::from_str::<ServerMsg>(snapshot).unwrap() {
+        ServerMsg::L4Snapshot {
+            channel,
+            last_block_number,
+            data,
+            ..
+        } => {
+            assert_eq!(channel, "orderbook_full");
+            assert_eq!(last_block_number, 1164898902);
+            assert_eq!(data["bids"][0]["n"], 3);
+        }
+        other => panic!("expected an l4_snapshot frame, got {other:?}"),
+    }
+
+    let batch = r#"{"type":"l4_batch","channel":"hip3_orderbook_full","coin":"km:US500","symbol":"km:US500","data":[{"side":"B","px":749.6,"sz":0.0,"n":0,"bn":1164898903},{"side":"A","px":749.7,"sz":12.0,"n":2,"bn":1164898903}]}"#;
+    match serde_json::from_str::<ServerMsg>(batch).unwrap() {
+        ServerMsg::L4Batch {
+            channel,
+            coin,
+            data,
+            ..
+        } => {
+            assert_eq!(channel, "hip3_orderbook_full");
+            assert_eq!(coin, "km:US500");
+            assert_eq!(data.len(), 2);
+            assert_eq!(data[0]["sz"], 0.0);
+        }
+        other => panic!("expected an l4_batch frame, got {other:?}"),
+    }
+}

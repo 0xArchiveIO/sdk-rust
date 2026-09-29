@@ -4,8 +4,9 @@
 //!
 //! Query historical and real-time crypto market data: orderbooks, trades,
 //! candles, funding rates, open interest, liquidations, and account
-//! positions. Two venues are covered: Hyperliquid (core perps, Hyperliquid
-//! Spot, HIP-3 builder perps, and HIP-4 outcome markets) and Lighter.xyz.
+//! positions, and manage signed webhook delivery. Two venues are covered:
+//! Hyperliquid (core perps, Hyperliquid Spot, HIP-3 builder perps, and HIP-4
+//! outcome markets) and Lighter.xyz.
 //! Lighter has two deployments, mainnet (`client.lighter`) and Robinhood
 //! Chain (`client.rh_lighter`).
 //!
@@ -71,6 +72,45 @@
 //! # }
 //! ```
 //!
+//! ## Webhooks
+//!
+//! `client.webhooks` manages webhook delivery: the event catalog, plan
+//! limits, endpoints, deliveries, subscriptions, the estimate and dry-run
+//! previews, and watched wallets. [`webhook_signature`] verifies the
+//! deliveries that arrive.
+//!
+//! ```no_run
+//! # use oxarchive::{CreateEndpointParams, EstimateParams, OxArchive};
+//! # use oxarchive::types::{WebhookSubscriptionCondition, WebhookSubscriptionConfig};
+//! # async fn example() -> oxarchive::Result<()> {
+//! # let client = OxArchive::new("key")?;
+//! // How often would this rule have fired over the last week?
+//! let config = WebhookSubscriptionConfig::default()
+//!     .venue("hyperliquid")
+//!     .condition(WebhookSubscriptionCondition::new(
+//!         "notional_usd",
+//!         "greater_than_or_equal",
+//!         250_000,
+//!     ));
+//! let estimate = client
+//!     .webhooks
+//!     .estimate(EstimateParams::new("market.liquidation").config(config).lookback_days(7))
+//!     .await?;
+//! println!("{} in {} days", estimate.total, estimate.days);
+//!
+//! // Register a destination. The secret is returned once.
+//! let endpoint = client
+//!     .webhooks
+//!     .create_endpoint(CreateEndpointParams::new("https://example.com/hooks/0xarchive"))
+//!     .await?;
+//! let secret = endpoint.secret;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Webhook delivery starts on the Build plan. The estimate and the dry-run
+//! answer on every plan, Free included.
+//!
 //! ## WebSocket (optional)
 //!
 //! Enable the `websocket` feature for real-time streaming and historical
@@ -99,12 +139,13 @@ pub mod l4_reconstructor;
 pub mod orderbook_reconstructor;
 pub mod resources;
 pub mod types;
+pub mod webhook_signature;
 pub mod ws;
 
 // Re-export the main entry points at the crate root.
 pub use client::{ClientBuilder, OxArchive};
 pub use error::{Error, Result};
-pub use exchanges::{Hip4, RhLighterClient};
+pub use exchanges::{Hip4, Hip4ListQuestionsParams, RhLighterClient};
 pub use l4_reconstructor::{L4OrderBookReconstructor, L4Order, L4Diff, L2Level};
 pub use orderbook_reconstructor::{
     reconstruct_final, reconstruct_orderbook, OrderBookReconstructor,
@@ -127,6 +168,28 @@ pub use resources::positions::{
     MarketSummaryParams, PositionRangeParams,
 };
 pub use resources::orders::TriggerLevelsParams;
+pub use resources::cvd::CvdParams;
+pub use resources::wallets::WalletClassifyParams;
+pub use resources::webhooks::{
+    CreateEndpointParams, CreateSubscriptionParams, DryRunParams, EstimateParams,
+    UpdateSubscriptionParams, WebhooksResource,
+};
+pub use types::{
+    BreadthSnapshot, ClassifiedWallet, CvdBucket, Hip3OracleDiscoveryBounds,
+    Hip3OracleExternalPrice, Hip4Question, WalletClassification, WalletMetrics, WebhookCostFloor,
+    WebhookDelivery, WebhookDeliveryBudget, WebhookDeliveryQueued, WebhookDryRun, WebhookEndpoint,
+    WebhookEndpointCreated, WebhookEndpointSecret, WebhookEstimate, WebhookEstimateBasis,
+    WebhookEstimateDayCount, WebhookEstimateDistribution, WebhookEstimateRung, WebhookEventType,
+    WebhookEventTypeMetric, WebhookEventTypeParam, WebhookLimitUsage, WebhookLimits,
+    WebhookPausedSubscriptions, WebhookPreviewOccurrence, WebhookPreviewWindow, WebhookRedelivery,
+    WebhookReplayWindow, WebhookResume, WebhookResumeAll, WebhookResumeGap, WebhookSubscription,
+    WebhookSubscriptionCondition, WebhookSubscriptionConfig, WebhookVenueFilter,
+    WebhookWatchedAddress, WebhookWatchedAddressAdded, WebhookWatchedAddressList,
+};
+pub use webhook_signature::{
+    parse_signature_header, ParsedSignature, SignatureError, WebhookVerifier,
+    DEFAULT_TOLERANCE_SECS, EVENT_ID_HEADER, EVENT_TYPE_HEADER, SIGNATURE_HEADER,
+};
 
 #[cfg(feature = "websocket")]
 pub use ws::{ClientMsg, OxArchiveWs, ServerMsg, WsOptions};

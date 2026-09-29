@@ -5,7 +5,7 @@ use std::time::Duration;
 use crate::error::{self, Error};
 use crate::exchanges::{HyperliquidClient, LighterClient, RhLighterClient};
 use crate::http::{HttpClient, HttpConfig};
-use crate::resources::{DataQualityResource, Web3Resource};
+use crate::resources::{DataQualityResource, Web3Resource, WebhooksResource};
 
 /// Default base URL for the 0xArchive API.
 pub const DEFAULT_BASE_URL: &str = "https://api.0xarchive.io";
@@ -58,6 +58,7 @@ impl ClientBuilder {
             lighter: LighterClient::new(http.clone()),
             rh_lighter: RhLighterClient::new(http.clone()),
             data_quality: DataQualityResource::new(http.clone()),
+            webhooks: WebhooksResource::new(http.clone()),
             web3: Web3Resource::new(http),
         })
     }
@@ -103,6 +104,10 @@ pub struct OxArchive {
     pub rh_lighter: RhLighterClient,
     /// Data quality monitoring.
     pub data_quality: DataQualityResource,
+    /// Webhook management: the event catalog, plan limits, endpoints,
+    /// deliveries, subscriptions, previews and watched wallets. Verify the
+    /// deliveries that arrive with [`crate::webhook_signature`].
+    pub webhooks: WebhooksResource,
     /// Web3 wallet-based authentication.
     pub web3: Web3Resource,
 }

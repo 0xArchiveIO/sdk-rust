@@ -3,18 +3,19 @@
 
 use crate::error::Result;
 use crate::http::HttpClient;
+use crate::resources::cvd::fetch_cvd;
 use crate::resources::{
-    BreadthResource, CandlesResource, FundingResource, Hip3InstrumentsResource,
+    BreadthResource, CandlesResource, CvdParams, FundingResource, Hip3InstrumentsResource,
     Hip4InstrumentsResource, InstrumentsResource, L2OrderBookResource, L3OrderBookResource,
     L4OrderBookResource, LighterAccountsResource, LighterInstrumentsResource,
     LighterLiquidationsResource, LighterPositionsResource, LiquidationsResource,
-    OpenInterestResource, OrderBookResource, OrdersResource, PositionsResource, SpotPairsResource,
-    SpotTwapResource, TradesResource,
+    OpenInterestResource, OracleResource, OrderBookResource, OrdersResource, PositionsResource,
+    SpotPairsResource, SpotTwapResource, TradesResource, WalletsResource,
 };
 use crate::types::{
-    CoinFreshness, CoinSummary, CursorResponse, Hip4OpenInterestRecord, Hip4Outcome,
-    Hip4OutcomeAggregate, L4DiffEntry, L4OrderBookSnapshot, OrderBook, OrderHistoryEntry,
-    PriceSnapshot, Timestamp, Trade,
+    CoinFreshness, CoinSummary, CursorResponse, CvdBucket, Hip4OpenInterestRecord, Hip4Outcome,
+    Hip4OutcomeAggregate, Hip4Question, L4DiffEntry, L4OrderBookSnapshot, MetaResponse, OrderBook,
+    OrderHistoryEntry, PriceSnapshot, Timestamp, Trade,
 };
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,11 @@ pub struct HyperliquidClient {
     pub l2_orderbook: L2OrderBookResource,
     /// Account positions by wallet address, market listings and summaries.
     pub positions: PositionsResource,
+    /// Wallet classification: precomputed daily behavior metrics.
+    pub wallets: WalletsResource,
+    /// Percent of eligible core perps above their current UTC-session VWAP
+    /// (aggregate only; `namespaces` is always empty).
+    pub breadth: BreadthResource,
     pub hip3: Hip3Client,
     /// HIP-4 outcome markets (binary outcome perps, `#`-prefixed coins).
     pub hip4: Hip4,
@@ -65,6 +71,8 @@ impl HyperliquidClient {
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
             positions: PositionsResource::new(http.clone(), prefix),
+            wallets: WalletsResource::new(http.clone(), prefix),
+            breadth: BreadthResource::new(http.clone(), prefix),
             hip3: Hip3Client::new(http.clone()),
             hip4: Hip4::new(http.clone()),
             spot: SpotClient::new(http.clone()),
@@ -115,6 +123,21 @@ impl HyperliquidClient {
             .await?;
         Ok(CursorResponse { data, next_cursor })
     }
+
+    /// Get cumulative volume delta buckets for a symbol
+    /// (`GET /v1/hyperliquid/cvd/{symbol}`): taker buy and sell notional per
+    /// bucket, their difference, and a running total.
+    ///
+    /// Cursor-paged; see [`CvdParams`]. `cumulative_delta` restarts on every
+    /// page, so rebuild it from `delta` when joining pages. A response that
+    /// is one page of several says so in `meta.notice`.
+    pub async fn cvd(
+        &self,
+        symbol: &str,
+        params: CvdParams,
+    ) -> Result<MetaResponse<Vec<CvdBucket>>> {
+        fetch_cvd(&self.http, "/v1/hyperliquid", symbol, params).await
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +166,11 @@ pub struct Hip3Client {
     /// Account positions by wallet address (optional `dex` filter), market
     /// listings and summaries.
     pub positions: PositionsResource,
+    /// Oracle reads: the deployer-pushed external price and the discovery
+    /// bounds.
+    pub oracle: OracleResource,
+    /// Wallet classification: precomputed daily behavior metrics.
+    pub wallets: WalletsResource,
 }
 
 impl Hip3Client {
@@ -166,6 +194,8 @@ impl Hip3Client {
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
             positions: PositionsResource::new(http.clone(), prefix),
+            oracle: OracleResource::new(http.clone(), prefix),
+            wallets: WalletsResource::new(http.clone(), prefix),
             http,
         }
     }
@@ -212,6 +242,22 @@ impl Hip3Client {
             .get_with_cursor(&format!("/v1/hyperliquid/hip3/prices/{}", symbol), &qp)
             .await?;
         Ok(CursorResponse { data, next_cursor })
+    }
+
+    /// Get cumulative volume delta buckets for a HIP-3 symbol
+    /// (`GET /v1/hyperliquid/hip3/cvd/{symbol}`): taker buy and sell
+    /// notional per bucket, their difference, and a running total. Keep the
+    /// builder prefix and case (`xyz:XYZ100`).
+    ///
+    /// Cursor-paged; see [`CvdParams`]. `cumulative_delta` restarts on every
+    /// page, so rebuild it from `delta` when joining pages. A response that
+    /// is one page of several says so in `meta.notice`.
+    pub async fn cvd(
+        &self,
+        symbol: &str,
+        params: CvdParams,
+    ) -> Result<MetaResponse<Vec<CvdBucket>>> {
+        fetch_cvd(&self.http, "/v1/hyperliquid/hip3", symbol, params).await
     }
 }
 
@@ -309,6 +355,16 @@ pub struct Hip4ListOutcomesParams {
     pub limit: Option<i64>,
 }
 
+/// Paging for [`Hip4::list_questions`].
+#[derive(Debug, Default, Clone)]
+pub struct Hip4ListQuestionsParams {
+    /// The previous page's `next_cursor` (a question id): the page starts
+    /// after it.
+    pub cursor: Option<String>,
+    /// Questions per page (default 100, max 1,000).
+    pub limit: Option<i64>,
+}
+
 /// Optional point-in-time / depth controls for orderbook reads.
 #[derive(Debug, Default, Clone)]
 pub struct Hip4OrderBookParams {
@@ -360,7 +416,9 @@ pub struct Hip4OrderHistoryParams {
 
 /// Filters for order-flow aggregation.
 ///
-/// A response holds the oldest `limit` buckets of the window.
+/// A page holds the oldest `limit` buckets of the window. While the
+/// response's `next_cursor` is set, pass it back as `cursor` with the same
+/// `start`, `end` and `interval`, and stop when it is `None`.
 #[derive(Debug, Default, Clone)]
 pub struct Hip4OrderFlowParams {
     /// Start of the window, inclusive.
@@ -369,10 +427,10 @@ pub struct Hip4OrderFlowParams {
     pub end: Option<Timestamp>,
     /// Bucket width: `"1m"` (the default), `"5m"`, `"15m"` or `"1h"`.
     pub interval: Option<String>,
-    /// Optional resume point, a Unix millisecond timestamp: the response
-    /// starts at the first bucket that opens after it.
+    /// The previous response's `next_cursor`: the page starts at the bucket
+    /// after it.
     pub cursor: Option<String>,
-    /// Maximum number of buckets (default 1000, max 10000).
+    /// Buckets per page (default 1000, max 10000).
     pub limit: Option<i64>,
 }
 
@@ -470,6 +528,41 @@ impl Hip4 {
                 &format!("{}/outcomes/by-slug/{}", HIP4_PREFIX, urlencoding::encode(slug)),
                 &[],
             )
+            .await
+    }
+
+    // ---- Questions (groupings of outcomes) --------------------------------
+
+    /// List HIP-4 questions (`GET /v1/hyperliquid/hip4/questions`), in
+    /// question id order.
+    ///
+    /// A question groups one or more binary outcome markets: one named
+    /// outcome per choice plus a fallback outcome. Page with
+    /// `next_cursor` until it is `None`.
+    pub async fn list_questions(
+        &self,
+        params: Option<Hip4ListQuestionsParams>,
+    ) -> Result<CursorResponse<Vec<Hip4Question>>> {
+        let p = params.unwrap_or_default();
+        let mut qp = vec![];
+        if let Some(c) = p.cursor {
+            qp.push(("cursor", c));
+        }
+        if let Some(l) = p.limit {
+            qp.push(("limit", l.to_string()));
+        }
+        let (data, next_cursor) = self
+            .http
+            .get_with_cursor(&format!("{}/questions", HIP4_PREFIX), &qp)
+            .await?;
+        Ok(CursorResponse { data, next_cursor })
+    }
+
+    /// Get one HIP-4 question by id
+    /// (`GET /v1/hyperliquid/hip4/questions/{question_id}`).
+    pub async fn get_question(&self, question_id: i64) -> Result<Hip4Question> {
+        self.http
+            .get(&format!("{}/questions/{}", HIP4_PREFIX, question_id), &[])
             .await
     }
 
@@ -737,9 +830,9 @@ impl Hip4 {
         Ok(CursorResponse { data, next_cursor })
     }
 
-    /// Get aggregated order flow for a HIP-4 coin, in time buckets. Buckets
-    /// are labelled by their open time in UTC, and buckets with no events
-    /// are omitted.
+    /// Get aggregated order flow for a HIP-4 coin, one page of time buckets.
+    /// Buckets are labelled by their open time in UTC, and buckets with no
+    /// events are omitted. See [`Hip4OrderFlowParams`] for paging.
     pub async fn get_order_flow(
         &self,
         symbol: &str,
