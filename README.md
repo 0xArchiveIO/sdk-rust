@@ -117,6 +117,20 @@ let client = OxArchive::builder("0xa_your_api_key")
     .build()?;
 ```
 
+## Symbols
+
+`client.symbols()` lists the public symbol universe across every venue family
+in one response: each market's symbol, venue family (`hyperliquid`, `hip3`,
+`hip4`, `spot`, `lighter`, `rh-lighter`), coverage start by data type, and
+estimated size per day. HIP-4 entries also carry the slug, side pair, title,
+and settlement state.
+
+```rust
+let symbols = client.symbols().await?;
+let hip3: Vec<_> = symbols.iter().filter(|s| s.exchange == "hip3").collect();
+println!("{} symbols, {} on HIP-3", symbols.len(), hip3.len());
+```
+
 ## REST API Reference
 
 The sections below show which resources are available on each exchange client:
@@ -1725,7 +1739,7 @@ ws.replay_stop().await?;
 | `funding` | Funding rate snapshots | Yes | Yes |
 | `ticker` | Price and 24h volume | Yes | No |
 | `all_tickers` | All market tickers | Yes | No |
-| `orderbook_full` | Hyperliquid core full-depth L2 order book, aggregated from order-level data (every price level, no user attribution). Live: an `l4_snapshot` frame (`ServerMsg::L4Snapshot`) with the whole book, then `l4_batch` frames (`ServerMsg::L4Batch`) of price-level changes (`side`, `px`, `sz`, `n`, `bn`; `sz` and `n` are `0` when a level is removed). | Yes | Yes |
+| `orderbook_full` | Hyperliquid core full-depth L2 order book, aggregated from order-level data (every price level, no user attribution): an `l4_snapshot` frame (`ServerMsg::L4Snapshot`) with the whole book, then `l4_batch` frames (`ServerMsg::L4Batch`) of price-level changes (`side`, `px`, `sz`, `n`, `bn`; `sz` and `n` are `0` when a level is removed). For full-depth history, use the `l2_orderbook` REST resource. | Yes | No, live-only |
 | `lighter_orderbook` | Lighter.xyz L2 order book | Yes | Yes |
 | `lighter_trades` | Lighter.xyz trades | Yes | Yes |
 | `lighter_candles` | Lighter.xyz candles | No | Yes |
@@ -1743,7 +1757,7 @@ ws.replay_stop().await?;
 | `hip3_open_interest` | HIP-3 open interest | No | Yes |
 | `hip3_funding` | HIP-3 funding rates | No | Yes |
 | `hip3_liquidations` | HIP-3 liquidation events. Same wire shape as `liquidations`. | Yes | Yes |
-| `hip3_orderbook_full` | HIP-3 full-depth L2 order book. Same frames as `orderbook_full`. | Yes | Yes |
+| `hip3_orderbook_full` | HIP-3 full-depth L2 order book. Same frames as `orderbook_full`. | Yes | No, live-only |
 | `hip4_orderbook` | HIP-4 outcome-market L2 order book | No | Yes |
 | `hip4_trades` | HIP-4 trade/fill updates | Yes | Yes |
 | `hip4_open_interest` | HIP-4 open interest snapshots | No | Yes |

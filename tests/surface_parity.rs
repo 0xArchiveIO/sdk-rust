@@ -38,6 +38,50 @@ fn meta(count: usize) -> Value {
 }
 
 // ---------------------------------------------------------------------------
+// Public symbol universe
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn symbols_parse_the_unwrapped_response() {
+    let server = MockServer::start().await;
+    // This route answers `{"symbols": [...]}`, with no `success` or `data`.
+    Mock::given(method("GET"))
+        .and(path("/v1/symbols"))
+        .respond_with(body(json!({"symbols": [
+            {
+                "symbol": "BTC", "exchange": "hyperliquid",
+                "coverage_from": "2023-04-15T00:00:00Z",
+                "data_types": ["orderbook", "trades"],
+                "coverage_by_type": {"orderbook": "2023-04-15T00:00:00Z"},
+                "size_per_day": {"orderbook": 812.5}
+            },
+            {
+                "symbol": "#0", "exchange": "hip4",
+                "coverage_from": "2026-05-02T00:00:00Z", "coverage_to": "2026-05-03T06:00:05Z",
+                "data_types": ["trades"], "coverage_by_type": {},
+                "slug": "btc-above-78213-yes-may-03-0600", "outcome_pair": ["#0", "#1"],
+                "display_title": "BTC above 78,213 on May 3 at 06:00 UTC? Yes",
+                "is_settled": true
+            }
+        ]})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let symbols = client(&server).symbols().await.unwrap();
+    assert_eq!(symbols.len(), 2);
+    assert_eq!(symbols[0].exchange, "hyperliquid");
+    assert_eq!(symbols[0].size_per_day["orderbook"], 812.5);
+    assert_eq!(symbols[0].coverage_to, None);
+    assert_eq!(
+        symbols[1].outcome_pair.as_deref(),
+        Some(&["#0".to_string(), "#1".to_string()][..])
+    );
+    assert_eq!(symbols[1].is_settled, Some(true));
+    assert!(symbols[1].size_per_day.is_empty());
+}
+
+// ---------------------------------------------------------------------------
 // Cumulative volume delta
 // ---------------------------------------------------------------------------
 

@@ -2039,6 +2039,60 @@ pub struct PositionsFreshness {
 }
 
 // ---------------------------------------------------------------------------
+// Public symbol universe
+// ---------------------------------------------------------------------------
+
+/// One market in the public symbol universe, from `client.symbols()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SymbolEntry {
+    /// Symbol in the venue family's own form (`BTC`, `km:US500`,
+    /// `HYPE-USDC`, `#0`).
+    pub symbol: String,
+    /// Venue family: `hyperliquid`, `hip3`, `hip4`, `spot`, `lighter` or
+    /// `rh-lighter`.
+    pub exchange: String,
+    /// Earliest coverage across the symbol's data types.
+    #[serde(default)]
+    pub coverage_from: Option<String>,
+    /// Latest coverage, when the market has stopped trading or settled.
+    #[serde(default)]
+    pub coverage_to: Option<String>,
+    /// Data types served for the symbol.
+    #[serde(default)]
+    pub data_types: Vec<String>,
+    /// Coverage start for each data type.
+    #[serde(default)]
+    pub coverage_by_type: std::collections::BTreeMap<String, String>,
+    /// Estimated data size per day, by data type.
+    #[serde(default)]
+    pub size_per_day: std::collections::BTreeMap<String, f64>,
+    /// HIP-4 slug, when available.
+    #[serde(default)]
+    pub slug: Option<String>,
+    /// HIP-4 pair of side coins, for example `["#0", "#1"]`.
+    #[serde(default)]
+    pub outcome_pair: Option<Vec<String>>,
+    /// HIP-4 human-readable title.
+    #[serde(default)]
+    pub display_title: Option<String>,
+    /// HIP-4 settlement state.
+    #[serde(default)]
+    pub is_settled: Option<bool>,
+    /// Whether the market is active, when the API reports it.
+    #[serde(default)]
+    pub is_active: Option<bool>,
+    /// Fields the API sends that this release does not name.
+    #[serde(default, flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+/// Body of `GET /v1/symbols`, which is not wrapped in `data`.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct SymbolsResponse {
+    pub symbols: Vec<SymbolEntry>,
+}
+
+// ---------------------------------------------------------------------------
 // Cumulative volume delta (Hyperliquid core and HIP-3)
 // ---------------------------------------------------------------------------
 

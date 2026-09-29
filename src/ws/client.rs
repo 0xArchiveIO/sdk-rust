@@ -210,9 +210,24 @@ pub fn is_live_only_l4_channel(channel: &str) -> bool {
 const LIVE_ONLY_L4_REPLAY_ERROR: &str =
     "HIP-3, HIP-4, and Spot L4 channels are live-only; replay is supported only for Hyperliquid core l4_diffs and l4_orders.";
 
+/// Full-depth L2 order book channels. Both are live-only.
+pub const LIVE_ONLY_FULL_DEPTH_CHANNELS: [&str; 2] = ["orderbook_full", "hip3_orderbook_full"];
+
+/// Return whether a channel is a live-only full-depth L2 order book channel.
+pub fn is_live_only_full_depth_channel(channel: &str) -> bool {
+    LIVE_ONLY_FULL_DEPTH_CHANNELS.contains(&channel)
+}
+
+/// Error returned when a replay names a full-depth order book channel.
+pub const FULL_DEPTH_REPLAY_ERROR: &str =
+    "orderbook_full and hip3_orderbook_full are live-only. For full-depth history, use the l2_orderbook REST resource.";
+
 fn validate_replay_channel(channel: &str) -> Result<()> {
     if is_live_only_l4_channel(channel) {
         return Err(Error::InvalidParam(LIVE_ONLY_L4_REPLAY_ERROR.to_string()));
+    }
+    if is_live_only_full_depth_channel(channel) {
+        return Err(Error::InvalidParam(FULL_DEPTH_REPLAY_ERROR.to_string()));
     }
     Ok(())
 }
@@ -329,10 +344,9 @@ pub enum ServerMsg {
     /// metadata; large symbols can be tens of MB of JSON. HIP-3, HIP-4, and
     /// Spot L4 channels remain live-only and never use this replay sequence.
     ///
-    /// The live full-depth L2 channels, `orderbook_full` and
-    /// `hip3_orderbook_full`, also open with this frame: `data` holds the
-    /// aggregated `bids` and `asks` at every price level, without user
-    /// attribution.
+    /// The full-depth L2 channels, `orderbook_full` and `hip3_orderbook_full`
+    /// (live-only), also open with this frame: `data` holds the aggregated
+    /// `bids` and `asks` at every price level, without user attribution.
     L4Snapshot {
         channel: String,
         coin: String,
@@ -349,7 +363,7 @@ pub enum ServerMsg {
     /// have channel-specific fields, so the payload remains JSON while the
     /// envelope and event ordering are typed by this enum.
     ///
-    /// On the live full-depth L2 channels (`orderbook_full`,
+    /// On the full-depth L2 channels (`orderbook_full`,
     /// `hip3_orderbook_full`), each item is a price-level change: `side`
     /// (`"B"` or `"A"`), `px`, `sz` and `n` (the new level size and order
     /// count, both `0` when the level is removed) and `bn` (block number).
@@ -638,6 +652,7 @@ impl OxArchiveWs {
     /// [`ServerMsg::lighter_live_data`]. Hyperliquid
     /// core `l4_diffs` and `l4_orders` replay as `l4_snapshot` followed by
     /// ordered `l4_batch` frames, and ignore `speed`. HIP-3, HIP-4, and Spot L4
+    /// channels and the full-depth `orderbook_full` and `hip3_orderbook_full`
     /// channels are live-only and are rejected before a request is sent. A
     /// successful replay terminates with a `replay_completed` server message.
     pub async fn replay(

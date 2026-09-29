@@ -3,9 +3,10 @@
 use oxarchive::error::Error;
 use oxarchive::ws::{
     is_core_l4_replay_channel, is_lighter_live_channel, is_lighter_replay_channel,
-    is_lighter_replay_only_channel, is_live_only_l4_channel, is_rh_lighter_channel,
-    is_rh_lighter_live_channel, is_rh_lighter_replay_only_channel, OxArchiveWs, ServerMsg,
-    WsOptions, LIGHTER_LIVE_CHANNELS, LIGHTER_REPLAY_ONLY_CHANNELS, LIGHTER_SUBSCRIPTION_ERROR,
+    is_lighter_replay_only_channel, is_live_only_full_depth_channel, is_live_only_l4_channel,
+    is_rh_lighter_channel, is_rh_lighter_live_channel, is_rh_lighter_replay_only_channel,
+    OxArchiveWs, ServerMsg, WsOptions, FULL_DEPTH_REPLAY_ERROR, LIGHTER_LIVE_CHANNELS,
+    LIGHTER_REPLAY_ONLY_CHANNELS, LIGHTER_SUBSCRIPTION_ERROR, LIVE_ONLY_FULL_DEPTH_CHANNELS,
     RH_LIGHTER_LIVE_CHANNELS, RH_LIGHTER_REPLAY_CHANNELS, RH_LIGHTER_REPLAY_ONLY_CHANNELS,
     RH_LIGHTER_SUBSCRIPTION_ERROR,
 };
@@ -375,19 +376,38 @@ fn rh_lighter_live_frames_decode_with_the_mainnet_shapes() {
 }
 
 #[tokio::test]
-async fn full_depth_orderbook_channels_subscribe_and_replay() {
+async fn full_depth_orderbook_channels_are_live_only() {
     let ws = OxArchiveWs::new(WsOptions::new("test-key"));
     for (channel, symbol) in [
         ("orderbook_full", "BTC"),
         ("hip3_orderbook_full", "km:US500"),
     ] {
+        assert!(is_live_only_full_depth_channel(channel));
         ws.subscribe(channel, Some(symbol))
             .await
             .expect("full-depth live subscriptions must be allowed");
-        ws.replay(channel, symbol, 1, Some(2), Some(10.0))
-            .await
-            .expect("full-depth replay must be allowed");
+        match ws.replay(channel, symbol, 1, Some(2), None).await {
+            Err(Error::InvalidParam(message)) => {
+                assert_eq!(message, FULL_DEPTH_REPLAY_ERROR);
+            }
+            other => panic!("full-depth replay must be rejected before send, got {other:?}"),
+        }
     }
+    match ws
+        .replay_multi(&["orderbook", "orderbook_full"], "BTC", 1, Some(2), None)
+        .await
+    {
+        Err(Error::InvalidParam(message)) => assert_eq!(message, FULL_DEPTH_REPLAY_ERROR),
+        other => panic!(
+            "a multi-channel replay with a full-depth channel must be rejected, got {other:?}"
+        ),
+    }
+    assert!(!is_live_only_full_depth_channel("orderbook"));
+    assert!(!is_live_only_full_depth_channel("hip3_orderbook"));
+    assert_eq!(
+        LIVE_ONLY_FULL_DEPTH_CHANNELS,
+        ["orderbook_full", "hip3_orderbook_full"]
+    );
 }
 
 #[test]

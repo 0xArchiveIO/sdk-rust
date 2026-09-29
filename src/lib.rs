@@ -176,8 +176,8 @@ pub use resources::webhooks::{
 };
 pub use types::{
     BreadthSnapshot, ClassifiedWallet, CvdBucket, Hip3OracleDiscoveryBounds,
-    Hip3OracleExternalPrice, Hip4Question, WalletClassification, WalletMetrics, WebhookCostFloor,
-    WebhookDelivery, WebhookDeliveryBudget, WebhookDeliveryQueued, WebhookDryRun, WebhookEndpoint,
+    Hip3OracleExternalPrice, Hip4Question, SymbolEntry, WalletClassification, WalletMetrics,
+    WebhookCostFloor, WebhookDelivery, WebhookDeliveryBudget, WebhookDeliveryQueued, WebhookDryRun, WebhookEndpoint,
     WebhookEndpointCreated, WebhookEndpointSecret, WebhookEstimate, WebhookEstimateBasis,
     WebhookEstimateDayCount, WebhookEstimateDistribution, WebhookEstimateRung, WebhookEventType,
     WebhookEventTypeMetric, WebhookEventTypeParam, WebhookLimitUsage, WebhookLimits,

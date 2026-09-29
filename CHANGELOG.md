@@ -111,6 +111,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `cumulative_delta`) at `1m` to `1w`, cursor-paged with `CvdParams`. They
   return a `MetaResponse`, whose `meta.notice` says when a response is one
   page of several; `cumulative_delta` restarts on every page.
+- `client.symbols()`: the public symbol universe (`GET /v1/symbols`), one
+  `SymbolEntry` per market with its venue family, data types, coverage
+  dates by data type and estimated size per day, plus the slug, side pair,
+  title and settlement state on HIP-4 entries.
 - `client.hyperliquid.breadth`: breadth above session VWAP for Hyperliquid
   core perps (`current()` and `history()`, from 2026-08-24), on the same
   `BreadthResource` as `client.hyperliquid.hip3.breadth`. Core snapshots are
@@ -128,11 +132,12 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   metrics for active wallets (`WalletClassification`, `ClassifiedWallet`,
   `WalletMetrics`), filtered, sorted and offset-paged with
   `WalletClassifyParams`.
-- WebSocket: the README channel table lists `orderbook_full` and
-  `hip3_orderbook_full`, the full-depth L2 order books, with live
-  subscriptions and replay. Their live frames decode as
-  `ServerMsg::L4Snapshot` (the whole book) and `ServerMsg::L4Batch`
-  (price-level changes).
+- WebSocket: `orderbook_full` and `hip3_orderbook_full`, the full-depth L2
+  order books, are documented in the README channel table. They are
+  live-only: `replay()` and `replay_multi()` reject them before sending
+  (`LIVE_ONLY_FULL_DEPTH_CHANNELS`, `is_live_only_full_depth_channel()`,
+  `FULL_DEPTH_REPLAY_ERROR`). Their frames decode as `ServerMsg::L4Snapshot`
+  (the whole book) and `ServerMsg::L4Batch` (price-level changes).
 
 ### Changed
 - New dependencies `hmac` and `sha2`, used only by `webhook_signature`.
