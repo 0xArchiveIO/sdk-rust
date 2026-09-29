@@ -46,6 +46,12 @@ indexmap = ">=2.11.4, <2.12"
 native-tls = ">=0.2.13, <0.2.14"
 openssl-sys = ">=0.9.114, <0.9.115"
 
+# Webhook signature verification. Both are small, pure-Rust RustCrypto crates,
+# and `hmac`'s `verify_slice` is the constant-time comparison the verifier
+# needs, so no further dependency is required for it.
+hmac = "0.12"
+sha2 = "0.10"
+
 # WebSocket (optional)
 tokio-tungstenite = { version = "0.24", features = ["native-tls"], optional = true }
 futures-util = { version = "0.3", optional = true }

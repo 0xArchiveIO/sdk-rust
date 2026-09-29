@@ -2,6 +2,7 @@
 tests/*
 !tests/coverage_contract.rs
 !tests/rh_lighter_and_positions.rs
+!tests/surface_parity.rs
 examples/test_all.rs
 
 # Build output

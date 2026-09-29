@@ -167,6 +167,57 @@ impl HttpClient {
         self.handle_response(resp).await
     }
 
+    /// Send a request and return the whole decoded JSON body rather than just
+    /// its `data` member.
+    ///
+    /// The webhook management routes put information in siblings of `data`:
+    /// the watched wallet cap arrives as `limit`, the secret and resume routes
+    /// add `note`, and the resume routes add `gap` and `resumed_count`. Some
+    /// routes answer `{"success": true}` with no `data` at all. Reading the
+    /// whole body keeps all of that.
+    pub(crate) async fn request_envelope(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: &[(&str, String)],
+        body: Option<&serde_json::Value>,
+    ) -> crate::error::Result<serde_json::Value> {
+        let url = format!("{}{}", self.config.base_url, path);
+
+        let filtered: Vec<(&str, &str)> = query
+            .iter()
+            .filter(|(_, v)| !v.is_empty())
+            .map(|(k, v)| (*k, v.as_str()))
+            .collect();
+
+        let mut req = self.inner.request(method, &url).query(&filtered);
+        if let Some(b) = body {
+            req = req.json(b);
+        }
+
+        let resp = req.send().await.map_err(|e| {
+            if e.is_timeout() {
+                Error::Timeout
+            } else {
+                Error::Http(e)
+            }
+        })?;
+
+        let status = resp.status();
+        let text = resp.text().await.map_err(Error::Http)?;
+
+        if !status.is_success() {
+            return Err(self.parse_error(status.as_u16(), &text));
+        }
+
+        // A 204 or an empty 200 is a success with nothing to read.
+        if text.trim().is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+
+        serde_json::from_str(&text).map_err(|e| Error::Deserialize(format!("{e}: {text}")))
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------

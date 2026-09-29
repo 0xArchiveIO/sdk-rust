@@ -7,10 +7,9 @@ use crate::types::{CursorResponse, MetaResponse, Timestamp, Trade};
 pub struct GetTradesParams {
     pub start: Timestamp,
     pub end: Timestamp,
+    /// The previous page's `next_cursor`, passed through unchanged.
     pub cursor: Option<String>,
     pub limit: Option<i64>,
-    /// Filter by taker side: `"A"` (sell) or `"B"` (buy).
-    pub side: Option<String>,
 }
 
 impl GetTradesParams {
@@ -24,9 +23,6 @@ impl GetTradesParams {
         }
         if let Some(l) = self.limit {
             qp.push(("limit", l.to_string()));
-        }
-        if let Some(s) = &self.side {
-            qp.push(("side", s.clone()));
         }
         qp
     }

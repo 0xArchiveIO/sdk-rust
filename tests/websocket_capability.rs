@@ -3,9 +3,10 @@
 use oxarchive::error::Error;
 use oxarchive::ws::{
     is_core_l4_replay_channel, is_lighter_live_channel, is_lighter_replay_channel,
-    is_lighter_replay_only_channel, is_live_only_l4_channel, is_rh_lighter_channel,
-    is_rh_lighter_live_channel, is_rh_lighter_replay_only_channel, OxArchiveWs, ServerMsg,
-    WsOptions, LIGHTER_LIVE_CHANNELS, LIGHTER_REPLAY_ONLY_CHANNELS, LIGHTER_SUBSCRIPTION_ERROR,
+    is_lighter_replay_only_channel, is_live_only_full_depth_channel, is_live_only_l4_channel,
+    is_rh_lighter_channel, is_rh_lighter_live_channel, is_rh_lighter_replay_only_channel,
+    OxArchiveWs, ServerMsg, WsOptions, FULL_DEPTH_REPLAY_ERROR, LIGHTER_LIVE_CHANNELS,
+    LIGHTER_REPLAY_ONLY_CHANNELS, LIGHTER_SUBSCRIPTION_ERROR, LIVE_ONLY_FULL_DEPTH_CHANNELS,
     RH_LIGHTER_LIVE_CHANNELS, RH_LIGHTER_REPLAY_CHANNELS, RH_LIGHTER_REPLAY_ONLY_CHANNELS,
     RH_LIGHTER_SUBSCRIPTION_ERROR,
 };
@@ -372,4 +373,73 @@ fn rh_lighter_live_frames_decode_with_the_mainnet_shapes() {
         r#"{"type":"data","channel":"rh_lighter_candles","coin":"BTC","symbol":"BTC","data":{}}"#;
     let msg: ServerMsg = serde_json::from_str(candles).unwrap();
     assert!(msg.lighter_live_data().is_none());
+}
+
+#[tokio::test]
+async fn full_depth_orderbook_channels_are_live_only() {
+    let ws = OxArchiveWs::new(WsOptions::new("test-key"));
+    for (channel, symbol) in [
+        ("orderbook_full", "BTC"),
+        ("hip3_orderbook_full", "km:US500"),
+    ] {
+        assert!(is_live_only_full_depth_channel(channel));
+        ws.subscribe(channel, Some(symbol))
+            .await
+            .expect("full-depth live subscriptions must be allowed");
+        match ws.replay(channel, symbol, 1, Some(2), None).await {
+            Err(Error::InvalidParam(message)) => {
+                assert_eq!(message, FULL_DEPTH_REPLAY_ERROR);
+            }
+            other => panic!("full-depth replay must be rejected before send, got {other:?}"),
+        }
+    }
+    match ws
+        .replay_multi(&["orderbook", "orderbook_full"], "BTC", 1, Some(2), None)
+        .await
+    {
+        Err(Error::InvalidParam(message)) => assert_eq!(message, FULL_DEPTH_REPLAY_ERROR),
+        other => panic!(
+            "a multi-channel replay with a full-depth channel must be rejected, got {other:?}"
+        ),
+    }
+    assert!(!is_live_only_full_depth_channel("orderbook"));
+    assert!(!is_live_only_full_depth_channel("hip3_orderbook"));
+    assert_eq!(
+        LIVE_ONLY_FULL_DEPTH_CHANNELS,
+        ["orderbook_full", "hip3_orderbook_full"]
+    );
+}
+
+#[test]
+fn full_depth_orderbook_frames_decode() {
+    let snapshot = r#"{"type":"l4_snapshot","channel":"orderbook_full","coin":"BTC","symbol":"BTC","last_block_number":1164898902,"timestamp":1790649697779,"data":{"bids":[{"px":108300.0,"sz":1.5,"n":3}],"asks":[{"px":108301.0,"sz":0.2,"n":1}],"bid_count":1,"ask_count":1,"mid_price":108300.5}}"#;
+    match serde_json::from_str::<ServerMsg>(snapshot).unwrap() {
+        ServerMsg::L4Snapshot {
+            channel,
+            last_block_number,
+            data,
+            ..
+        } => {
+            assert_eq!(channel, "orderbook_full");
+            assert_eq!(last_block_number, 1164898902);
+            assert_eq!(data["bids"][0]["n"], 3);
+        }
+        other => panic!("expected an l4_snapshot frame, got {other:?}"),
+    }
+
+    let batch = r#"{"type":"l4_batch","channel":"hip3_orderbook_full","coin":"km:US500","symbol":"km:US500","data":[{"side":"B","px":749.6,"sz":0.0,"n":0,"bn":1164898903},{"side":"A","px":749.7,"sz":12.0,"n":2,"bn":1164898903}]}"#;
+    match serde_json::from_str::<ServerMsg>(batch).unwrap() {
+        ServerMsg::L4Batch {
+            channel,
+            coin,
+            data,
+            ..
+        } => {
+            assert_eq!(channel, "hip3_orderbook_full");
+            assert_eq!(coin, "km:US500");
+            assert_eq!(data.len(), 2);
+            assert_eq!(data[0]["sz"], 0.0);
+        }
+        other => panic!("expected an l4_batch frame, got {other:?}"),
+    }
 }

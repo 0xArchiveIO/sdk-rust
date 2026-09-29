@@ -157,7 +157,6 @@ async fn rh_lighter_history_routes_send_the_same_params_as_mainnet() {
                 end: 1788307200000_i64.into(),
                 cursor: None,
                 limit: Some(1000),
-                side: None,
             },
         )
         .await
@@ -253,7 +252,6 @@ async fn trades_with_meta_expose_the_lighter_finalization_boundary() {
                     end: 1790380800000_i64.into(),
                     cursor: None,
                     limit: Some(1000),
-                    side: None,
                 },
             )
             .await

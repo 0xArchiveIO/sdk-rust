@@ -14,6 +14,10 @@ pub mod l3_orderbook;
 pub mod spot;
 pub mod breadth;
 pub mod positions;
+pub mod cvd;
+pub mod oracle;
+pub mod wallets;
+pub mod webhooks;
 
 pub use orderbook::OrderBookResource;
 pub use trades::TradesResource;
@@ -24,10 +28,12 @@ pub use instruments::{
 pub use funding::FundingResource;
 pub use open_interest::OpenInterestResource;
 pub use candles::CandlesResource;
-pub use liquidations::{LighterLiquidationsResource, LiquidationsResource};
+pub use liquidations::{
+    Hip3LiquidationsResource, LighterLiquidationsResource, LiquidationsResource,
+};
 pub use data_quality::DataQualityResource;
 pub use web3::Web3Resource;
-pub use orders::OrdersResource;
+pub use orders::{OrdersResource, SpotOrdersResource};
 pub use l4_orderbook::L4OrderBookResource;
 pub use l2_orderbook::L2OrderBookResource;
 pub use l3_orderbook::L3OrderBookResource;
@@ -37,4 +43,11 @@ pub use positions::{
     AccountHistoryParams, BulkPositionsParams, GetPositionsParams, LighterAccountsResource,
     LighterPositionsResource, MarketPositionsParams, MarketSummaryParams, PositionRangeParams,
     PositionsResource,
+};
+pub use cvd::CvdParams;
+pub use oracle::OracleResource;
+pub use wallets::{WalletClassifyParams, WalletsResource};
+pub use webhooks::{
+    CreateEndpointParams, CreateSubscriptionParams, DryRunParams, EstimateParams,
+    UpdateSubscriptionParams, WebhooksResource,
 };

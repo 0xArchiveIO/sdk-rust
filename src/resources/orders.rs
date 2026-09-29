@@ -19,7 +19,9 @@ pub struct OrderHistoryParams {
 
 /// Parameters for order flow aggregation.
 ///
-/// A response holds the oldest `limit` buckets of the window.
+/// A page holds the oldest `limit` buckets of the window. While the
+/// response's `next_cursor` is set, pass it back as `cursor` with the same
+/// `start`, `end` and `interval`, and stop when it is `None`.
 #[derive(Debug, Default)]
 pub struct OrderFlowParams {
     /// Start of the window, inclusive.
@@ -28,10 +30,10 @@ pub struct OrderFlowParams {
     pub end: Option<Timestamp>,
     /// Bucket width: `"1m"` (the default), `"5m"`, `"15m"` or `"1h"`.
     pub interval: Option<String>,
-    /// Optional resume point, a Unix millisecond timestamp: the response
-    /// starts at the first bucket that opens after it.
+    /// The previous response's `next_cursor`: the page starts at the bucket
+    /// after it.
     pub cursor: Option<String>,
-    /// Maximum number of buckets (default 1000, max 10000).
+    /// Buckets per page (default 1000, max 10000).
     pub limit: Option<i64>,
 }
 
@@ -57,7 +59,62 @@ pub struct TpslParams {
     pub limit: Option<i64>,
 }
 
-/// Access to order history, flow, and TP/SL endpoints for a specific exchange.
+/// Parameters for paginated Hyperliquid Spot order history.
+#[derive(Debug, Default, Clone)]
+pub struct SpotOrderHistoryParams {
+    pub start: Option<Timestamp>,
+    pub end: Option<Timestamp>,
+    /// The previous page's `next_cursor`.
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
+}
+
+/// Access to Hyperliquid Spot order history (`client.hyperliquid.spot.orders`).
+///
+/// Spot serves order history only: no order flow, TP/SL or trigger levels.
+#[derive(Debug, Clone)]
+pub struct SpotOrdersResource {
+    http: HttpClient,
+    prefix: String,
+}
+
+impl SpotOrdersResource {
+    pub(crate) fn new(http: HttpClient, prefix: &str) -> Self {
+        Self {
+            http,
+            prefix: prefix.to_string(),
+        }
+    }
+
+    /// Get paginated order lifecycle history for a spot pair.
+    pub async fn history(
+        &self,
+        symbol: &str,
+        params: SpotOrderHistoryParams,
+    ) -> Result<CursorResponse<Vec<OrderHistoryEntry>>> {
+        let mut qp = vec![];
+        if let Some(ref s) = params.start {
+            qp.push(("start", s.to_millis().to_string()));
+        }
+        if let Some(ref e) = params.end {
+            qp.push(("end", e.to_millis().to_string()));
+        }
+        if let Some(ref c) = params.cursor {
+            qp.push(("cursor", c.clone()));
+        }
+        if let Some(l) = params.limit {
+            qp.push(("limit", l.to_string()));
+        }
+        let (data, next_cursor) = self
+            .http
+            .get_with_cursor(&format!("{}/orders/{}/history", self.prefix, symbol), &qp)
+            .await?;
+        Ok(CursorResponse { data, next_cursor })
+    }
+}
+
+/// Access to order history, flow, and TP/SL endpoints for Hyperliquid and
+/// HIP-3.
 #[derive(Debug, Clone)]
 pub struct OrdersResource {
     http: HttpClient,
@@ -107,10 +164,10 @@ impl OrdersResource {
         Ok(CursorResponse { data, next_cursor })
     }
 
-    /// Get order flow aggregation for a symbol, in time buckets.
+    /// Get order flow aggregation for a symbol, one page of time buckets.
     ///
     /// Buckets are labelled by their open time in UTC, and buckets with no
-    /// events are omitted.
+    /// events are omitted. See [`OrderFlowParams`] for paging.
     pub async fn flow(
         &self,
         symbol: &str,

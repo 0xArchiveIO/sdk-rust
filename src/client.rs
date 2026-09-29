@@ -5,7 +5,8 @@ use std::time::Duration;
 use crate::error::{self, Error};
 use crate::exchanges::{HyperliquidClient, LighterClient, RhLighterClient};
 use crate::http::{HttpClient, HttpConfig};
-use crate::resources::{DataQualityResource, Web3Resource};
+use crate::resources::{DataQualityResource, Web3Resource, WebhooksResource};
+use crate::types::{SymbolEntry, SymbolsResponse};
 
 /// Default base URL for the 0xArchive API.
 pub const DEFAULT_BASE_URL: &str = "https://api.0xarchive.io";
@@ -54,10 +55,12 @@ impl ClientBuilder {
         })?;
 
         Ok(OxArchive {
+            http: http.clone(),
             hyperliquid: HyperliquidClient::new(http.clone()),
             lighter: LighterClient::new(http.clone()),
             rh_lighter: RhLighterClient::new(http.clone()),
             data_quality: DataQualityResource::new(http.clone()),
+            webhooks: WebhooksResource::new(http.clone()),
             web3: Web3Resource::new(http),
         })
     }
@@ -93,6 +96,7 @@ impl ClientBuilder {
 /// ```
 #[derive(Debug, Clone)]
 pub struct OxArchive {
+    http: HttpClient,
     /// Hyperliquid exchange client (includes nested `.hip3` client).
     pub hyperliquid: HyperliquidClient,
     /// Lighter.xyz client for the mainnet deployment (`/v1/lighter`).
@@ -103,6 +107,10 @@ pub struct OxArchive {
     pub rh_lighter: RhLighterClient,
     /// Data quality monitoring.
     pub data_quality: DataQualityResource,
+    /// Webhook management: the event catalog, plan limits, endpoints,
+    /// deliveries, subscriptions, previews and watched wallets. Verify the
+    /// deliveries that arrive with [`crate::webhook_signature`].
+    pub webhooks: WebhooksResource,
     /// Web3 wallet-based authentication.
     pub web3: Web3Resource,
 }
@@ -152,5 +160,17 @@ impl OxArchive {
     /// ```
     pub fn builder(api_key: impl Into<String>) -> ClientBuilder {
         ClientBuilder::new(api_key)
+    }
+
+    /// List the public symbol universe across every venue family
+    /// (`GET /v1/symbols`): each market's symbol, venue family, coverage
+    /// dates by data type and estimated size per day.
+    ///
+    /// The list covers every venue family in one response, HIP-4 outcome
+    /// sides included, so it runs to thousands of entries. Filter on
+    /// `exchange` for one family.
+    pub async fn symbols(&self) -> error::Result<Vec<SymbolEntry>> {
+        let body: SymbolsResponse = self.http.get("/v1/symbols", &[]).await?;
+        Ok(body.symbols)
     }
 }

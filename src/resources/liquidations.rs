@@ -102,8 +102,9 @@ impl LevelsHistoryParams {
     }
 }
 
-/// Access to Hyperliquid and HIP-3 liquidation endpoints.
+/// Access to Hyperliquid liquidation endpoints (`client.hyperliquid.liquidations`).
 ///
+/// HIP-3 uses [`Hip3LiquidationsResource`], which has no by-user route.
 /// Lighter uses [`LighterLiquidationsResource`], which has its own row shape.
 #[derive(Debug, Clone)]
 pub struct LiquidationsResource {
@@ -251,6 +252,61 @@ impl LiquidationsResource {
             )
             .await?;
         Ok(CursorResponse { data, next_cursor })
+    }
+}
+
+/// Access to HIP-3 liquidation endpoints (`client.hyperliquid.hip3.liquidations`).
+///
+/// The same history, volume and liquidation-level reads as the Hyperliquid
+/// [`LiquidationsResource`]. There is no by-user route for HIP-3.
+#[derive(Debug, Clone)]
+pub struct Hip3LiquidationsResource {
+    inner: LiquidationsResource,
+}
+
+impl Hip3LiquidationsResource {
+    pub(crate) fn new(http: HttpClient, prefix: &str) -> Self {
+        Self {
+            inner: LiquidationsResource::new(http, prefix),
+        }
+    }
+
+    /// Get paginated historical liquidations for a HIP-3 symbol.
+    pub async fn history(
+        &self,
+        symbol: &str,
+        params: LiquidationHistoryParams,
+    ) -> Result<CursorResponse<Vec<Liquidation>>> {
+        self.inner.history(symbol, params).await
+    }
+
+    /// Get aggregated liquidation volume by time bucket.
+    pub async fn volume(
+        &self,
+        symbol: &str,
+        params: LiquidationVolumeParams,
+    ) -> Result<CursorResponse<Vec<LiquidationVolume>>> {
+        self.inner.volume(symbol, params).await
+    }
+
+    /// Get projected forced-liquidation levels for a HIP-3 symbol. See
+    /// [`LiquidationsResource::levels`].
+    pub async fn levels(
+        &self,
+        symbol: &str,
+        params: LiquidationLevelsParams,
+    ) -> Result<LiquidationLevels> {
+        self.inner.levels(symbol, params).await
+    }
+
+    /// Get historical liquidation-levels snapshots. See
+    /// [`LiquidationsResource::levels_history`].
+    pub async fn levels_history(
+        &self,
+        symbol: &str,
+        params: LevelsHistoryParams,
+    ) -> Result<CursorResponse<Vec<LiquidationLevelsHistoryItem>>> {
+        self.inner.levels_history(symbol, params).await
     }
 }
 
