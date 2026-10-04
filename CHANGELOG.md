@@ -328,6 +328,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   2026-02-16, L4 and order history from 2026-03-10. Hyperliquid liquidations
   are listed from 2025-12-22 (was "May 2025+").
 - Documentation links point at docs.0xarchive.io.
+- docs.rs builds the documentation with every feature, so the WebSocket
+  client (`oxarchive::ws`, behind the `websocket` feature) is documented
+  there.
 
 ## [1.11.0] - 2026-09-25
 
