@@ -500,21 +500,53 @@ pub struct Hip3Instrument {
 /// wire format (`PURR/USDC`, `@107`) internally. Spot pairs have no funding
 /// rate, no open interest, and no liquidations: those are perp-only
 /// constructs.
+///
+/// The pairs routes send the base and quote as `base_token_name` and
+/// `quote_token_name`, the wire-format pair as `name` and the spot index as
+/// `pair_index`; they fill `base`, `quote`, `wire_symbol` and `spot_index`.
+/// The other registry fields (`is_canonical`, token ids, size and wei
+/// decimals, `base_token_address`, `deployer_fee_share`, `first_seen_at`,
+/// `last_updated_at`) are kept in `extra`. For prices, read the pair's order
+/// book or trades.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpotPair {
     /// Dashed canonical symbol (e.g. `HYPE-USDC`).
     pub symbol: String,
-    /// Base asset (e.g. `HYPE`).
+    /// Base token (e.g. `HYPE`). Sent as `base_token_name`.
+    #[serde(alias = "base_token_name")]
     pub base: Option<String>,
-    /// Quote asset (e.g. `USDC`).
+    /// Quote token (e.g. `USDC`). Sent as `quote_token_name`.
+    #[serde(alias = "quote_token_name")]
     pub quote: Option<String>,
-    /// Hyperliquid wire-format pair (e.g. `PURR/USDC` or `@107`).
+    /// Hyperliquid wire-format pair (e.g. `PURR/USDC` or `@107`). Sent as
+    /// `name`.
+    #[serde(alias = "name")]
     pub wire_symbol: Option<String>,
-    /// Hyperliquid spot index (the `@N` form), when applicable.
+    /// Index of the pair in Hyperliquid's spot universe (the `N` of `@N`).
+    /// Sent as `pair_index`.
+    #[serde(alias = "pair_index")]
     pub spot_index: Option<i64>,
+    /// Not returned by the pairs routes; always `None`.
+    #[deprecated(
+        since = "1.12.0",
+        note = "the pairs routes do not return prices; read the order book or trades"
+    )]
     pub mark_price: Option<f64>,
+    /// Not returned by the pairs routes; always `None`.
+    #[deprecated(
+        since = "1.12.0",
+        note = "the pairs routes do not return prices; read the order book or trades"
+    )]
     pub mid_price: Option<f64>,
+    /// Not returned by the pairs routes; always `None`. The registry's own
+    /// times are `first_seen_at` and `last_updated_at` in `extra`.
+    #[deprecated(
+        since = "1.12.0",
+        note = "the pairs routes do not return it; see first_seen_at and last_updated_at in extra"
+    )]
     pub latest_timestamp: Option<String>,
+    /// Not returned by the pairs routes; always `None`.
+    #[deprecated(since = "1.12.0", note = "the pairs routes do not return it")]
     pub is_active: Option<bool>,
     #[serde(default, flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,

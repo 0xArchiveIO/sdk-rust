@@ -274,6 +274,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 - `LIVE_ONLY_L4_CHANNELS` and `is_live_only_l4_channel()`: every L4 channel
   now replays, and `is_live_only_l4_channel()` always returns `false`. Use
   `L4_REPLAY_CHANNELS` and `is_l4_channel()`.
+- `SpotPair::mark_price`, `mid_price`, `latest_timestamp` and `is_active`.
+  The pairs routes do not return them, so they are always `None`. Read
+  prices from the pair's order book or trades.
 
 ### Removed
 - `client.hyperliquid.hip3.liquidations.by_user()`, and `flow()`, `tpsl()`,
@@ -283,6 +286,16 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   remains.
 
 ### Fixed
+- A WebSocket replay requested with `speed: None` got no answer: the
+  request carried `"speed": null`, which the server does not accept.
+  `replay()` and `replay_multi()` now leave an unset `speed` or `end` out of
+  the request, so the server applies its defaults (1x, and up to now). This
+  matters most for the L4 and full-depth channels, which ignore `speed`.
+- `SpotPair::base`, `quote`, `wire_symbol` and `spot_index` were always
+  `None` on `spot.pairs.list()` and `spot.pairs.get()`: the pairs routes send
+  them as `base_token_name`, `quote_token_name`, `name` and `pair_index`.
+  Both spellings now deserialize. The other registry fields (such as
+  `is_canonical` and the token decimals) stay in `extra`.
 - `orderbook.collect_tick_history()` returned only the first page of a
   range: it stopped on a page of fewer than 1,000 deltas, while tick pages
   hold 100 by default, and it advanced by time, which reopened the same

@@ -724,6 +724,76 @@ async fn spot_twap_reads_numeric_sizes() {
     assert_eq!(page.data[0].twap_id, 2264348);
 }
 
+/// A spot pair row as the pairs routes send it.
+fn spot_pair_row(symbol: &str, index: i64, name: &str, base: &str) -> Value {
+    json!({
+        "coin": symbol, "symbol": symbol, "pair_index": index, "name": name,
+        "is_canonical": index == 0, "base_token_id": 150, "quote_token_id": 0,
+        "base_token_name": base, "quote_token_name": "USDC",
+        "base_sz_decimals": 2, "base_wei_decimals": 8,
+        "quote_sz_decimals": 8, "quote_wei_decimals": 8,
+        "deployer_fee_share": 0.0,
+        "first_seen_at": "2026-10-04T23:30:49.940Z",
+        "last_updated_at": "2026-10-04T23:30:49.940Z"
+    })
+}
+
+#[tokio::test]
+async fn spot_pairs_read_the_route_field_names() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/spot/pairs"))
+        .respond_with(ok(
+            json!([
+                spot_pair_row("PURR-USDC", 0, "PURR/USDC", "PURR"),
+                spot_pair_row("HYPE-USDC", 107, "@107", "HYPE"),
+            ]),
+            json!({"count": 2, "request_id": "r"}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/hyperliquid/spot/pairs/HYPE-USDC"))
+        .respond_with(ok(
+            spot_pair_row("HYPE-USDC", 107, "@107", "HYPE"),
+            json!({"count": 1, "request_id": "r", "symbol": "HYPE-USDC", "venue": "spot"}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let spot = &client(&server).hyperliquid.spot;
+    let pairs = spot.pairs.list().await.unwrap();
+    assert_eq!(pairs.len(), 2);
+    let purr = &pairs[0];
+    assert_eq!(purr.symbol, "PURR-USDC");
+    assert_eq!(purr.base.as_deref(), Some("PURR"));
+    assert_eq!(purr.quote.as_deref(), Some("USDC"));
+    assert_eq!(purr.wire_symbol.as_deref(), Some("PURR/USDC"));
+    assert_eq!(purr.spot_index, Some(0));
+
+    let hype = spot.pairs.get("HYPE-USDC").await.unwrap();
+    assert_eq!(hype.base.as_deref(), Some("HYPE"));
+    assert_eq!(hype.quote.as_deref(), Some("USDC"));
+    assert_eq!(hype.wire_symbol.as_deref(), Some("@107"));
+    assert_eq!(hype.spot_index, Some(107));
+    // Fields without a typed home stay readable in `extra`; the mapped ones
+    // are not repeated there.
+    assert_eq!(hype.extra["is_canonical"], json!(false));
+    assert_eq!(hype.extra["base_sz_decimals"], json!(2));
+    for mapped in ["base_token_name", "quote_token_name", "name", "pair_index"] {
+        assert!(!hype.extra.contains_key(mapped), "{mapped} left in extra");
+    }
+
+    // The SDK's own serialized form reads back the same.
+    let round_trip: oxarchive::types::SpotPair =
+        serde_json::from_value(serde_json::to_value(&hype).unwrap()).unwrap();
+    assert_eq!(round_trip.base.as_deref(), Some("HYPE"));
+    assert_eq!(round_trip.wire_symbol.as_deref(), Some("@107"));
+    assert_eq!(round_trip.spot_index, Some(107));
+}
+
 // ---------------------------------------------------------------------------
 // Capabilities
 // ---------------------------------------------------------------------------

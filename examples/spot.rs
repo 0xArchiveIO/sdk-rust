@@ -13,12 +13,18 @@ async fn main() -> oxarchive::Result<()> {
     let pairs = client.hyperliquid.spot.pairs.list().await?;
     println!("Spot: {} pairs", pairs.len());
     for p in pairs.iter().take(5) {
-        println!("  {} (mark={:?}, mid={:?})", p.symbol, p.mark_price, p.mid_price);
+        println!(
+            "  {}: base={:?}, quote={:?}, wire={:?}",
+            p.symbol, p.base, p.quote, p.wire_symbol
+        );
     }
 
     // Get a single pair detail.
     let hype = client.hyperliquid.spot.pairs.get("HYPE-USDC").await?;
-    println!("\nHYPE-USDC: base={:?}, quote={:?}", hype.base, hype.quote);
+    println!(
+        "\nHYPE-USDC: base={:?}, quote={:?}, wire={:?}, index={:?}",
+        hype.base, hype.quote, hype.wire_symbol, hype.spot_index
+    );
 
     // Current L2 orderbook for HYPE-USDC.
     let ob = client.hyperliquid.spot.orderbook.get("HYPE-USDC", None).await?;
@@ -29,7 +35,8 @@ async fn main() -> oxarchive::Result<()> {
         ob.mid_price
     );
 
-    // Recent trades (last 24h). Spot fills backfill to 2025-03-22.
+    // Trades from the last 24 hours. Spot trade history is served from
+    // 2025-03-22T10:50:22Z.
     let now_ms = chrono::Utc::now().timestamp_millis();
     let day_ago_ms = now_ms - 24 * 60 * 60 * 1000;
     let trades = client
@@ -49,7 +56,9 @@ async fn main() -> oxarchive::Result<()> {
         .await?;
     println!("\nPURR-USDC trades (last 24h): {}", trades.data.len());
 
-    // Candle history starts exactly at 2025-03-22T10:50:22Z; max 1,000 rows.
+    // One-minute candles for the last hour. Spot candle history is served
+    // from 2025-03-22T10:50:00Z; a page holds at most 1,000 rows.
+    let hour_ago_ms = now_ms - 60 * 60 * 1000;
     let candles = client
         .hyperliquid
         .spot
@@ -57,15 +66,15 @@ async fn main() -> oxarchive::Result<()> {
         .history(
             "HYPE-USDC",
             CandleHistoryParams {
-                start: 1742640622000_i64.into(),
-                end: 1742644222000_i64.into(),
+                start: hour_ago_ms.into(),
+                end: now_ms.into(),
                 cursor: None,
                 limit: Some(1000),
                 interval: Some(CandleInterval::OneMinute),
             },
         )
         .await?;
-    println!("HYPE-USDC candles: {} rows", candles.data.len());
+    println!("HYPE-USDC candles (last hour): {} rows", candles.data.len());
 
     // TWAP statuses for a symbol.
     let twap = client

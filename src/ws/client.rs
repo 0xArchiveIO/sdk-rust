@@ -286,20 +286,28 @@ pub enum ClientMsg {
     Unsubscribe { channel: String, symbol: Option<String> },
     #[serde(rename = "ping")]
     Ping,
+    /// A single-channel replay. `end` and `speed` are left out of the
+    /// request when `None`; the server then replays up to now at 1x.
     #[serde(rename = "replay")]
     Replay {
         channel: String,
         symbol: String,
         start: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         speed: Option<f64>,
     },
+    /// A multi-channel replay. `end` and `speed` are left out of the request
+    /// when `None`, as on [`ClientMsg::Replay`].
     #[serde(rename = "replay")]
     ReplayMulti {
         channels: Vec<String>,
         symbol: String,
         start: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         speed: Option<f64>,
     },
     #[serde(rename = "replay.pause")]
@@ -1091,7 +1099,47 @@ mod lighter_live_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::{connect_url, ServerMsg};
+    use super::{connect_url, ClientMsg, ServerMsg};
+
+    #[test]
+    fn replay_requests_leave_out_unset_end_and_speed() {
+        // The server reads a missing `speed` as 1x but does not accept
+        // `"speed": null`, so an unset value must not be sent at all.
+        let single = serde_json::to_value(ClientMsg::Replay {
+            channel: "hip3_l4_diffs".into(),
+            symbol: "xyz:XYZ100".into(),
+            start: 1,
+            end: None,
+            speed: None,
+        })
+        .unwrap();
+        assert_eq!(
+            single,
+            serde_json::json!({"op": "replay", "channel": "hip3_l4_diffs", "symbol": "xyz:XYZ100", "start": 1})
+        );
+        let multi = serde_json::to_value(ClientMsg::ReplayMulti {
+            channels: vec!["orderbook".into(), "trades".into()],
+            symbol: "BTC".into(),
+            start: 1,
+            end: Some(2),
+            speed: None,
+        })
+        .unwrap();
+        assert_eq!(
+            multi,
+            serde_json::json!({"op": "replay", "channels": ["orderbook", "trades"], "symbol": "BTC", "start": 1, "end": 2})
+        );
+        let paced = serde_json::to_value(ClientMsg::Replay {
+            channel: "orderbook".into(),
+            symbol: "BTC".into(),
+            start: 1,
+            end: Some(2),
+            speed: Some(10.0),
+        })
+        .unwrap();
+        assert_eq!(paced["speed"], serde_json::json!(10.0));
+        assert_eq!(paced["end"], serde_json::json!(2));
+    }
 
     #[test]
     fn the_connection_asks_for_the_api_version() {
