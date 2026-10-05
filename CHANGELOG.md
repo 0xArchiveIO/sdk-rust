@@ -5,6 +5,62 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
 ## [1.12.0] - 2026-09-28
 
+### Upgrading from 1.8
+
+1.8.0 is the last release published to crates.io before this one, so
+upgrading from it also brings in the changes listed under 1.9.0 to 1.11.0
+below. These need code changes:
+
+- **Rust 1.85 or later.** The minimum supported Rust version was 1.75.
+- **Removed fields.** `L4HistoryParams::depth` and
+  `Hip4L4HistoryParams::depth` (L4 history returns whole snapshots), and
+  `Hip4OpenInterestRecord::oracle_price` (HIP-4 has no oracle price).
+- **Changed types.** `GetTradesParams::side` and `Hip4TradesParams::side` are
+  `Option<TradeSide>` (`TradeSide::Buy` or `TradeSide::Sell`) instead of
+  `Option<String>`. `client.hyperliquid.spot.orders` is a
+  `SpotOrdersResource` whose `history()` takes `SpotOrderHistoryParams`, and
+  `client.hyperliquid.hip3.liquidations` is a `Hip3LiquidationsResource`.
+- **Removed methods.** `client.hyperliquid.hip3.liquidations.by_user()`, and
+  `flow()`, `tpsl()`, `trigger_levels()` and `trigger_levels_history()` on
+  `client.hyperliquid.spot.orders`. They called routes the API does not
+  serve and always failed.
+- **New fields on parameter structs.** A struct literal that lists every
+  field needs the new ones: `OrderHistoryParams::triggered`,
+  `Hip4OrderHistoryParams::triggered`, `OrderFlowParams::cursor`,
+  `Hip4OrderFlowParams::cursor` and `L3HistoryParams::account`. End
+  literals with `..Default::default()` where the struct implements
+  `Default`, or set the field to `None`.
+- **New fields on response types.** `CursorResponse` gains `has_more` and
+  `meta`; `L4OrderEntry` gains `timestamp` and `timestamp_ms`;
+  `OrderHistoryEntry` gains `trigger_condition` and `trigger_price`;
+  `LiquidationLevels`, `LiquidationLevelsHistoryItem` and
+  `TriggerLevelsHistoryItem` gain `snapshot_ts_ms`; `CoinFreshness` gains
+  `symbol`; `IncidentsResponse` gains `pagination`. This affects only code
+  that builds these types with struct literals, such as test fixtures.
+- **New fields on enum variants.** `Error::Api` gains `error_code`, `param`
+  and `valid_values`, and `ServerMsg::Error` gains `error_code`. A pattern
+  that names every field needs them or `..`.
+- **New enum variants.** `OiFundingInterval::OneMinute` and
+  `ClientMsg::SubscribeWithInterval`. A `match` without a wildcard arm needs
+  an arm for each, and an `as` cast of an `OiFundingInterval` value gives a
+  different number.
+- **`OxArchive`** has a private field, so it can no longer be built with a
+  struct literal. Use `OxArchive::new()` or `OxArchive::builder()`.
+
+These change what a call returns, with no code change needed:
+
+- Every request selects API version 2026-10-01. The SDK's types read the
+  shapes it selects; code that reads raw JSON or `extra` sees RFC 3339 times
+  with integer `*_ms` fields alongside, and Lighter replay rows in the live
+  shapes, which `ServerMsg::lighter_live_data()` decodes.
+- Lighter `funding_rate` values are decimal fractions (`0.0001` means
+  `0.01%`), not percentages (since 1.9.1).
+- `Trade::fee`, `closed_pnl` and `start_position` are `"0"` when the venue
+  recorded a zero; `None` means the source did not record the value (since
+  1.10.0).
+- `OxArchiveWs::stream()` and `stream_stop()` are deprecated: the server no
+  longer streams in bulk over WebSocket (since 1.11.0).
+
 ### Added
 - API version 2026-10-01. Every request sends the `0xArchive-Version:
   2026-10-01` header and the WebSocket client connects with
@@ -91,8 +147,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `price_history()`. Markets are quoted in USDG, with uppercase perp symbols
   (`BTC`) and dashed spot pairs (`AAPL-USDG`). Trades and liquidations are
   served from the venue launch on 2026-06-26 20:10:26 UTC; order book, open
-  interest and funding from 2026-08-22 18:43 UTC; candles from 2026-06-26
-  once candle history is enabled for this deployment. `trades.list()` is
+  interest and funding from 2026-08-22 18:43 UTC; candles from
+  2026-06-26 20:10 UTC. `trades.list()` is
   final up to the finalization boundary and `trades.recent()` is the
   preliminary tier, as on mainnet.
 - `liquidations` on both Lighter clients (`LighterLiquidationsResource`), with
@@ -322,11 +378,25 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `data_types` holds only the data types.
 
 ### Documentation
-- The README's HIP-3 coverage row lists each dataset's first date, replacing
-  "February 2026+": trades and oracle prices from 2025-10-13, candles and
-  liquidations from 2025-12-22, order book, funding and open interest from
-  2026-02-16, L4 and order history from 2026-03-10. Hyperliquid liquidations
-  are listed from 2025-12-22 (was "May 2025+").
+- The README's coverage table gives each dataset's first available instant
+  on every venue, as `GET /v1/capabilities` returns it, in place of months
+  (such as "April 2023+" and "February 2026+") and fixed market counts. The
+  Robinhood Chain candle start is 2026-06-26 20:10 UTC.
+- README, rustdoc and example code read the most recent minutes, hours or
+  days instead of fixed dates, so every snippet works on a Free key's
+  rolling 30-day window, and uses markets that are trading (`xyz:XYZ100` on
+  HIP-3, the open daily BTC outcome on HIP-4). The README's Robinhood Chain
+  trades snippet sets `side`, and the HIP-3 instruments snippet prints
+  `namespace` and `ticker` with `{:?}`; both now compile. The WebSocket
+  replay examples use 10x, which every plan allows.
+- The README's WebSocket channel table matches `GET /v1/capabilities`:
+  `spot_twap` is not a WebSocket channel (Spot TWAP is REST only), and
+  `hip4_orderbook` and `hip4_open_interest` replay but do not stream live.
+  The Enterprise replay speed is 1000x.
+- Recent trades are documented for HIP-3, HIP-4, Spot, Lighter and Lighter
+  on Robinhood Chain.
+- `examples/levels_smoke.rs` describes each call, and
+  `examples/websocket.rs` no longer subscribes to a settled HIP-4 market.
 - Documentation links point at docs.0xarchive.io.
 - docs.rs builds the documentation with every feature, so the WebSocket
   client (`oxarchive::ws`, behind the `websocket` feature) is documented
@@ -457,7 +527,7 @@ TypeScript and Python SDKs on one version.
   cursor-paginated history with `summary` mode). History retained from
   2026-07-27.
 - **Trigger levels**: `orders.trigger_levels()` and
-  `trigger_levels_history()` — the pending stop-loss / take-profit map
+  `trigger_levels_history()`: the pending stop-loss / take-profit map
   (15-minute snapshot history). Typed models exported at the crate root.
 - **WebSocket L4 frames**: `ServerMsg::L4Snapshot` and `ServerMsg::L4Batch`.
   Previously these server messages failed to deserialize and were silently
@@ -474,7 +544,7 @@ TypeScript and Python SDKs on one version.
 
 ### Fixed
 - `liquidations.by_user()` hit `/liquidations/{address}` instead of
-  `/liquidations/user/{address}` — the server treated the wallet as a coin
+  `/liquidations/user/{address}`; the server treated the wallet as a coin
   symbol and returned an empty array, silently.
 - `Candle` OHLCV fields declared plain `String` but the wire serves JSON
   numbers, so every `candles.history()` call failed to deserialize on all

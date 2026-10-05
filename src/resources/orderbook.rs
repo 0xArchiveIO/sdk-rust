@@ -208,7 +208,9 @@ impl OrderBookResource {
     /// # use oxarchive::resources::orderbook::TickPageParams;
     /// # async fn example() -> oxarchive::Result<()> {
     /// # let client = OxArchive::new("key")?;
-    /// let mut params = TickPageParams::new(1790553600000_i64, 1790553660000_i64);
+    /// // The last minute, in Unix milliseconds
+    /// let end = chrono::Utc::now().timestamp_millis();
+    /// let mut params = TickPageParams::new(end - 60_000, end);
     /// loop {
     ///     let page = client.lighter.orderbook.history_tick_page("BTC", params.clone()).await?;
     ///     println!("{} deltas", page.deltas.len());

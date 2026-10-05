@@ -819,7 +819,7 @@ async fn capabilities_are_typed_rows() {
                  "page_limit": 1000, "intervals": [], "notes": null},
                 {"venue": "hyperliquid", "datatype": "candles", "rest_routes": ["/v1/hyperliquid/candles/{symbol}"],
                  "ws_channels": ["candles"], "live": false, "replay": true,
-                 "available_from": "2025-03-01T00:00:00.000Z", "cadence": "interval",
+                 "available_from": "2025-03-22T12:00:00.000Z", "cadence": "interval",
                  "page_limit": 10000, "intervals": ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"],
                  "notes": null, "a_future_field": 1},
                 {"venue": "hyperliquid", "datatype": "summary", "rest_routes": ["/v1/hyperliquid/summary/{symbol}"],

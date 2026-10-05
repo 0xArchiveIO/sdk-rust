@@ -540,14 +540,14 @@ fn lighter_replay_rows_decode_with_the_live_shapes() {
     assert!(msg.lighter_live_data().is_none());
 }
 
-/// Channel rows of `GET /v1/capabilities` as served on 2026-09-29.
+/// Channel rows of `GET /v1/capabilities` as served on 2026-10-04.
 const CAPABILITY_CHANNELS: &str = r#"[
 {"venue":"hyperliquid","datatype":"l2_orderbook","ws_channels":["orderbook"],"live":true,"replay":true,"available_from":"2023-04-15T00:00:00.000Z"},
 {"venue":"hyperliquid","datatype":"l2_full_depth","ws_channels":["orderbook_full"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
 {"venue":"hyperliquid","datatype":"l4_diffs","ws_channels":["l4_diffs"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
 {"venue":"hyperliquid","datatype":"l4_orders","ws_channels":["l4_orders"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
 {"venue":"hyperliquid","datatype":"trades","ws_channels":["trades"],"live":true,"replay":true,"available_from":"2023-04-15T03:31:00.000Z"},
-{"venue":"hyperliquid","datatype":"candles","ws_channels":["candles"],"live":false,"replay":true,"available_from":"2025-03-01T00:00:00.000Z"},
+{"venue":"hyperliquid","datatype":"candles","ws_channels":["candles"],"live":false,"replay":true,"available_from":"2025-03-22T12:00:00.000Z"},
 {"venue":"hyperliquid","datatype":"funding","ws_channels":["funding"],"live":true,"replay":true,"available_from":"2023-05-20T02:50:00.000Z"},
 {"venue":"hyperliquid","datatype":"oi","ws_channels":["open_interest"],"live":true,"replay":true,"available_from":"2023-05-20T02:50:00.000Z"},
 {"venue":"hyperliquid","datatype":"liquidations","ws_channels":["liquidations"],"live":true,"replay":true,"available_from":"2025-12-22T00:00:00.000Z"},
@@ -561,16 +561,15 @@ const CAPABILITY_CHANNELS: &str = r#"[
 {"venue":"hip3","datatype":"funding","ws_channels":["hip3_funding"],"live":true,"replay":true,"available_from":"2026-02-16T17:03:00.000Z"},
 {"venue":"hip3","datatype":"oi","ws_channels":["hip3_open_interest"],"live":true,"replay":true,"available_from":"2026-02-16T17:03:00.000Z"},
 {"venue":"hip3","datatype":"liquidations","ws_channels":["hip3_liquidations"],"live":true,"replay":true,"available_from":"2025-12-22T00:00:00.000Z"},
-{"venue":"hip4","datatype":"l2_orderbook","ws_channels":["hip4_orderbook"],"live":true,"replay":true,"available_from":"2026-05-02T16:51:00.000Z"},
+{"venue":"hip4","datatype":"l2_orderbook","ws_channels":["hip4_orderbook"],"live":false,"replay":true,"available_from":"2026-05-02T16:51:00.000Z"},
 {"venue":"hip4","datatype":"l4_diffs","ws_channels":["hip4_l4_diffs"],"live":true,"replay":true,"available_from":"2026-05-02T07:47:00.000Z"},
 {"venue":"hip4","datatype":"l4_orders","ws_channels":["hip4_l4_orders"],"live":true,"replay":true,"available_from":"2026-05-02T07:47:00.000Z"},
 {"venue":"hip4","datatype":"trades","ws_channels":["hip4_trades"],"live":true,"replay":true,"available_from":"2026-05-02T08:00:00.000Z"},
-{"venue":"hip4","datatype":"oi","ws_channels":["hip4_open_interest"],"live":true,"replay":true,"available_from":"2026-05-02T16:51:00.000Z"},
+{"venue":"hip4","datatype":"oi","ws_channels":["hip4_open_interest"],"live":false,"replay":true,"available_from":"2026-05-02T16:51:00.000Z"},
 {"venue":"spot","datatype":"l2_orderbook","ws_channels":["spot_orderbook"],"live":true,"replay":false,"available_from":"2026-05-05T19:56:00.000Z"},
-{"venue":"spot","datatype":"l4_diffs","ws_channels":["spot_l4_diffs"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
-{"venue":"spot","datatype":"l4_orders","ws_channels":["spot_l4_orders"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
+{"venue":"spot","datatype":"l4_diffs","ws_channels":["spot_l4_diffs"],"live":true,"replay":true,"available_from":"2026-05-05T22:57:00.000Z"},
+{"venue":"spot","datatype":"l4_orders","ws_channels":["spot_l4_orders"],"live":true,"replay":true,"available_from":"2026-05-05T22:57:00.000Z"},
 {"venue":"spot","datatype":"trades","ws_channels":["spot_trades"],"live":true,"replay":false,"available_from":"2025-03-22T10:50:22.000Z"},
-{"venue":"spot","datatype":"twap","ws_channels":["spot_twap"],"live":true,"replay":false,"available_from":null},
 {"venue":"lighter","datatype":"l2_orderbook","ws_channels":["lighter_orderbook"],"live":true,"replay":true,"available_from":"2026-01-29T02:13:00.000Z"},
 {"venue":"lighter","datatype":"l3_orderbook","ws_channels":["lighter_l3_orderbook"],"live":false,"replay":true,"available_from":"2026-03-05T03:33:00.000Z"},
 {"venue":"lighter","datatype":"trades","ws_channels":["lighter_trades"],"live":true,"replay":true,"available_from":"2025-01-17T08:43:00.000Z"},

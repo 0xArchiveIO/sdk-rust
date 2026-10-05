@@ -1435,9 +1435,9 @@ fn public_copy_describes_robinhood_chain_as_a_lighter_deployment() {
     assert!(normalized.contains(
         "Robinhood Chain history at the venue launch, 2026-06-26 20:10:26 UTC; a `start` before that returns an error"
     ));
-    assert!(
-        normalized.contains("Trades and liquidations from 2026-06-26 20:10:26 UTC (venue launch)")
-    );
+    assert!(normalized.contains("trades and liquidations from 2026-06-26 20:10:26 (venue launch)"));
+    assert!(normalized.contains("candles from 2026-06-26 20:10 UTC"));
+    assert!(!normalized.contains("once candle history is enabled"));
     let changelog = include_str!("../CHANGELOG.md")
         .split_whitespace()
         .collect::<Vec<_>>()

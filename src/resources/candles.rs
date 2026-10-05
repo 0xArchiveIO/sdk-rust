@@ -53,7 +53,7 @@ impl CandlesResource {
         // Allow 5 minutes of clock skew tolerance
         if start_ms > now_ms + 5 * 60 * 1000 {
             return Err(Error::InvalidParam(
-                "start timestamp is in the future — no candle data can exist yet".into(),
+                "start timestamp is in the future, so no candle data can exist yet".into(),
             ));
         }
 

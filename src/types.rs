@@ -215,11 +215,14 @@ pub(crate) struct MetaEnvelope<T> {
 /// # use oxarchive::resources::trades::GetTradesParams;
 /// # async fn example() -> oxarchive::Result<()> {
 /// # let client = OxArchive::new("key")?;
+/// // The last ten minutes
+/// let end = chrono::Utc::now();
+/// let start = end - chrono::Duration::minutes(10);
 /// let mut cursor = None;
 /// loop {
 ///     let page = client.hyperliquid.trades.history("BTC", GetTradesParams {
-///         start: 1790553600000_i64.into(),
-///         end: 1790640000000_i64.into(),
+///         start: start.into(),
+///         end: end.into(),
 ///         cursor,
 ///         limit: Some(1000),
 ///         side: None,
@@ -400,7 +403,7 @@ pub struct OrderBook {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trade {
     pub coin: String,
-    /// `"A"` (ask/sell) or `"B"` (bid/buy) — taker side.
+    /// `"A"` (ask/sell) or `"B"` (bid/buy): the side of this fill.
     pub side: String,
     pub price: String,
     pub size: String,
@@ -435,7 +438,7 @@ pub struct Trade {
     /// positive for the taker side. Present only on HIP-3 fills.
     pub deployer_fee: Option<String>,
     /// Priority fee burned in HYPE (not USDC) for write priority on the Hyperliquid validator queue.
-    /// Independent of `builder_fee` and `deployer_fee` — paid to the network, not to a builder or
+    /// Independent of `builder_fee` and `deployer_fee`: paid to the network, not to a builder or
     /// deployer. Present only when the order paid for priority.
     pub priority_gas: Option<f64>,
     /// Client order ID.

@@ -60,13 +60,16 @@
 //! # use oxarchive::resources::trades::GetTradesParams;
 //! # async fn example() -> oxarchive::Result<()> {
 //! # let client = OxArchive::new("key")?;
+//! // The last ten minutes
+//! let end = chrono::Utc::now();
+//! let start = end - chrono::Duration::minutes(10);
 //! let mut all_trades = vec![];
 //! let mut cursor = None;
 //!
 //! loop {
 //!     let page = client.hyperliquid.trades.history("BTC", GetTradesParams {
-//!         start: 1790553600000_i64.into(), // 2026-09-28 00:00 UTC
-//!         end: 1790557200000_i64.into(),   // 2026-09-28 01:00 UTC
+//!         start: start.into(),
+//!         end: end.into(),
 //!         cursor,
 //!         limit: Some(1000),
 //!         side: None,
