@@ -3,7 +3,7 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
-## [1.12.0] - 2026-09-28
+## [1.12.0] - 2026-10-05
 
 ### Upgrading from 1.8
 
