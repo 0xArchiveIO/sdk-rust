@@ -32,7 +32,7 @@ impl InstrumentsResource {
     }
 }
 
-/// Lighter.xyz instruments resource (extended metadata).
+/// Lighter instruments resource (extended metadata).
 #[derive(Debug, Clone)]
 pub struct LighterInstrumentsResource {
     http: HttpClient,

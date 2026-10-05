@@ -1,7 +1,7 @@
 //! L4 order book reconstructor with matching engine.
 //!
 //! Reconstructs Hyperliquid and HIP-3 L4 order books from checkpoints and diffs.
-//! The same struct works for both exchanges — the diff format is identical.
+//! The same struct works for both exchanges: the diff format is identical.
 //!
 //! When a new order crosses the spread, the matching engine filled opposite-side
 //! orders at crossing prices. Without removing them, the reconstructed book will

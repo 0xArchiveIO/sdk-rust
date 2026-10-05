@@ -1,8 +1,9 @@
 name: Package contents
 
 # Plants untracked files in the tree, then fails unless every file in the
-# crate is a tracked source file or metadata cargo generates while packaging.
-# The check is an allowlist on purpose: anything else is a failure.
+# crate is a tracked source file or metadata cargo generates while packaging,
+# and unless every tracked source file is in the crate. The check is an
+# allowlist on purpose: anything else is a failure.
 on:
   pull_request:
   push:
@@ -18,6 +19,8 @@ jobs:
           mkdir -p .scratch/probe && echo stray > .scratch/probe/stray.rs
           echo stray > examples/stray.rs
           echo stray > src/stray.txt
+          echo stray > src/stray.rs
+          echo stray > src/resources/stray.rs
       - name: The crate contains only tracked files and cargo metadata
         run: |
           set -euo pipefail
@@ -27,3 +30,9 @@ jobs:
           bad=$(comm -23 /tmp/crate.txt /tmp/allowed.txt)
           if [ -n "$bad" ]; then echo "::error::unexpected crate files: $bad"; exit 1; fi
           grep -q '^src/lib.rs$' /tmp/crate.txt || { echo "::error::crate has no src/lib.rs"; exit 1; }
+      - name: Every tracked source file is in the crate
+        run: |
+          set -euo pipefail
+          git ls-files 'src/*.rs' | sort > /tmp/sources.txt
+          missing=$(comm -23 /tmp/sources.txt /tmp/crate.txt)
+          if [ -n "$missing" ]; then echo "::error::tracked source files missing from the crate (add them to include in Cargo.toml): $missing"; exit 1; fi

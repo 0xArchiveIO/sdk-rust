@@ -1,11 +1,11 @@
 use oxarchive::ws::{OxArchiveWs, ServerMsg, WsOptions};
-use oxarchive::LighterLiveData;
+use oxarchive::{ErrorCode, LighterLiveData};
 
 #[tokio::main]
 async fn main() -> oxarchive::Result<()> {
     let api_key = std::env::var("OXARCHIVE_API_KEY").expect("Set OXARCHIVE_API_KEY");
 
-    // --- Real-time streaming (orderbook + trades + liquidations + HIP-4 trades) ---
+    // --- Real-time streaming (order book, trades and liquidations) ---
     let mut ws = OxArchiveWs::new(WsOptions::new(&api_key));
     ws.connect().await?;
 
@@ -14,10 +14,6 @@ async fn main() -> oxarchive::Result<()> {
     // Liquidations now stream live (same wire shape as trades, with
     // `is_liquidation: true` on each fill row).
     ws.subscribe("liquidations", Some("BTC")).await?;
-    // HIP-4 outcome markets use the bare `#<id>` symbol form. The orderbook
-    // and open-interest bridges are paused for live delivery; use replay for
-    // those stored channels.
-    ws.subscribe("hip4_trades", Some("#0")).await?;
 
     let mut rx = ws.rx.take().expect("receiver");
     let mut count = 0u32;
@@ -37,17 +33,11 @@ async fn main() -> oxarchive::Result<()> {
                     break;
                 }
             }
-            ServerMsg::OutcomeSettled {
-                coin,
-                settlement_value,
-                ..
+            ServerMsg::Error {
+                message,
+                error_code,
             } => {
-                println!("HIP-4 settled: {coin} -> {:?}", settlement_value);
-                // Server has already auto-unsubscribed our hip4_* subs for
-                // this coin. Treat as terminal for the coin.
-            }
-            ServerMsg::Error { message } => {
-                eprintln!("Error: {message}");
+                eprintln!("Error ({error_code:?}): {message}");
                 break;
             }
             ServerMsg::Pong => println!("pong"),
@@ -58,10 +48,9 @@ async fn main() -> oxarchive::Result<()> {
     ws.unsubscribe("orderbook", Some("BTC")).await?;
     ws.unsubscribe("trades", Some("ETH")).await?;
     ws.unsubscribe("liquidations", Some("BTC")).await?;
-    ws.unsubscribe("hip4_trades", Some("#0")).await?;
     ws.disconnect().await;
 
-    // --- Lighter.xyz live streaming (order book, trades, funding) ---
+    // --- Lighter live streaming (order book, trades, funding) ---
     // Served on the default wss://api.0xarchive.io/ws endpoint.
     // lighter_candles and lighter_l3_orderbook remain replay-only.
     let mut ws = OxArchiveWs::new(WsOptions::new(&api_key));
@@ -100,10 +89,19 @@ async fn main() -> oxarchive::Result<()> {
             }
             Some(Err(e)) => eprintln!("Unexpected Lighter payload: {e}"),
             None => {
-                if let ServerMsg::Error { message } = &msg {
-                    // Lag notices ("Dropped ...") keep the subscription open;
-                    // a "Stopped ..." notice ends it until you subscribe again.
-                    eprintln!("Notice: {message}");
+                if let ServerMsg::Error {
+                    message,
+                    error_code,
+                } = &msg
+                {
+                    // Lag notices carry `slow_consumer`. "Dropped ..." keeps
+                    // the subscription open; "Stopped ..." ends it until you
+                    // subscribe again.
+                    if error_code == &Some(ErrorCode::SlowConsumer) {
+                        eprintln!("Fell behind: {message}");
+                    } else {
+                        eprintln!("Notice: {message}");
+                    }
                 }
                 continue;
             }
@@ -123,14 +121,12 @@ async fn main() -> oxarchive::Result<()> {
     let mut ws = OxArchiveWs::new(WsOptions::new(&api_key));
     ws.connect().await?;
 
-    ws.replay(
-        "orderbook",
-        "BTC",
-        1704067200000,       // 2024-01-01 00:00 UTC
-        Some(1704070800000), // 2024-01-01 01:00 UTC
-        Some(100.0),         // 100x speed
-    )
-    .await?;
+    // Five minutes of order book snapshots that ended ten minutes ago, at 10x
+    // (the fastest speed on the Free plan; paid plans allow more).
+    let end = chrono::Utc::now().timestamp_millis() - 10 * 60 * 1000;
+    let start = end - 5 * 60 * 1000;
+    ws.replay("orderbook", "BTC", start, Some(end), Some(10.0))
+        .await?;
 
     let mut rx = ws.rx.take().expect("receiver");
     let mut snapshots = 0u32;
@@ -148,7 +144,7 @@ async fn main() -> oxarchive::Result<()> {
                 println!("Replay complete: {} snapshots", snapshots_sent.unwrap_or(0));
                 break;
             }
-            ServerMsg::Error { message } => {
+            ServerMsg::Error { message, .. } => {
                 eprintln!("Replay error: {message}");
                 break;
             }

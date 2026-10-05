@@ -1,4 +1,7 @@
-//! Quick live smoke test for the price-level, candle and coverage endpoints.
+//! Price levels and liquidations: hourly candles, projected liquidation
+//! levels and their history, HIP-3 trigger levels, and the liquidations of
+//! one wallet.
+//!
 //! Run: OXARCHIVE_API_KEY=... cargo run --example levels_smoke
 
 use oxarchive::resources::candles::CandleHistoryParams;
@@ -6,20 +9,23 @@ use oxarchive::resources::liquidations::LiquidationsByUserParams;
 use oxarchive::types::{CandleInterval, Timestamp};
 use oxarchive::{LevelsHistoryParams, LiquidationLevelsParams, OxArchive, TriggerLevelsParams};
 
+const HOUR_MS: i64 = 3_600_000;
+const DAY_MS: i64 = 24 * HOUR_MS;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = std::env::var("OXARCHIVE_API_KEY")?;
     let client = OxArchive::new(&key)?;
     let now = chrono::Utc::now().timestamp_millis();
 
-    // C13 regression: candles previously failed on every call (String vs number)
+    // Hourly BTC candles for the last six hours.
     let candles = client
         .hyperliquid
         .candles
         .history(
             "BTC",
             CandleHistoryParams {
-                start: Timestamp::Millis(now - 6 * 3_600_000),
+                start: Timestamp::Millis(now - 6 * HOUR_MS),
                 end: Timestamp::Millis(now),
                 cursor: None,
                 limit: Some(5),
@@ -27,22 +33,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         )
         .await?;
-    println!("candles: {} rows, first close {}", candles.data.len(), candles.data[0].close);
+    println!(
+        "candles: {} rows, first close {:?}",
+        candles.data.len(),
+        candles.data.first().map(|c| &c.close)
+    );
 
-    // New: liquidation levels
+    // Projected liquidation levels, grouped into 12 price buckets.
     let liq = client
         .hyperliquid
         .liquidations
         .levels("BTC", LiquidationLevelsParams { buckets: Some(12), ..Default::default() })
         .await?;
     println!(
-        "liq levels: snapshot {} buckets {} total_long {:.0}",
+        "liquidation levels: snapshot {}, {} buckets, total long {:.0}",
         liq.snapshot_ts,
         liq.levels.len(),
         liq.total_long
     );
 
-    // New: liquidation levels history (summary)
+    // Liquidation level history in summary form (bucket detail left out).
     let hist = client
         .hyperliquid
         .liquidations
@@ -52,29 +62,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
     println!(
-        "liq history: {} items, cursor {:?}, levels omitted: {}",
+        "liquidation level history: {} snapshots, next cursor {:?}, levels omitted: {}",
         hist.data.len(),
         hist.next_cursor,
-        hist.data[0].levels.is_none()
+        hist.data.iter().all(|item| item.levels.is_none())
     );
 
-    // New: hip3 trigger levels
+    // Pending HIP-3 trigger orders (stop-loss and take-profit), by price bucket.
     let trig = client
         .hyperliquid
         .hip3
         .orders
         .trigger_levels("xyz:TSLA", TriggerLevelsParams { buckets: Some(10), ..Default::default() })
         .await?;
-    println!("hip3 trigger: as_of {} buckets {}", trig.as_of, trig.levels.len());
+    println!("HIP-3 trigger levels: as of {}, {} buckets", trig.as_of, trig.levels.len());
 
-    // C12 regression: by_user previously hit the wrong path
+    // Liquidations of one wallet over the last seven days.
     let by_user = client
         .hyperliquid
         .liquidations
         .by_user(
             "0x32fe14732b5b54dc08c6eee46b9ba319ca38e9f4",
             LiquidationsByUserParams {
-                start: Timestamp::Millis(now - 200 * 86_400_000),
+                start: Timestamp::Millis(now - 7 * DAY_MS),
                 end: Timestamp::Millis(now),
                 coin: None,
                 cursor: None,
@@ -82,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         )
         .await?;
-    println!("by_user: {} rows", by_user.data.len());
+    println!("liquidations by user: {} rows", by_user.data.len());
 
     Ok(())
 }

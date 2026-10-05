@@ -89,10 +89,8 @@ impl BreadthResource {
         params: BreadthHistoryParams,
     ) -> Result<CursorResponse<Vec<Hip3BreadthSnapshot>>> {
         let query = params.to_query()?;
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(&format!("{}/breadth/above-vwap", self.prefix), &query)
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }

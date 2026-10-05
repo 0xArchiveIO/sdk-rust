@@ -1,8 +1,7 @@
-# Tests (internal only, not published)
-tests/*
-!tests/coverage_contract.rs
-!tests/rh_lighter_and_positions.rs
-!tests/surface_parity.rs
+# Local-only test programs, never committed. Every other file under tests/ is
+# tracked. Tests do not ship in the crate either way: Cargo.toml's include
+# lists what is published.
+tests/client_tests.rs
 examples/test_all.rs
 
 # Build output

@@ -93,9 +93,18 @@ async fn symbols_parse_the_unwrapped_response() {
 // Cumulative volume delta
 // ---------------------------------------------------------------------------
 
+/// A Unix-millisecond instant as the API writes it: RFC 3339 UTC with
+/// milliseconds.
+fn rfc3339(ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .unwrap()
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
 fn cvd_row(timestamp: i64, buy: f64, sell: f64, cumulative: f64) -> Value {
     json!({
-        "timestamp": timestamp,
+        "timestamp": rfc3339(timestamp),
+        "timestamp_ms": timestamp,
         "buy_volume": buy,
         "sell_volume": sell,
         "delta": buy - sell,
@@ -145,7 +154,8 @@ async fn cvd_sends_its_window_and_returns_the_cursor_and_notice() {
         .await
         .unwrap();
     assert_eq!(page.data.len(), 2);
-    assert_eq!(page.data[0].timestamp, 1790000600000);
+    assert_eq!(page.data[0].timestamp, "2026-09-21T14:23:20.000Z");
+    assert_eq!(page.data[0].timestamp_ms, 1790000600000);
     assert_eq!(page.data[0].delta, 6.5);
     assert_eq!(page.data[1].cumulative_delta, 4.5);
     assert_eq!(page.next_cursor.as_deref(), Some("1790000900000"));
@@ -253,7 +263,8 @@ async fn hip3_oracle_reads_decode() {
         .respond_with(ok(
             json!({
                 "symbol": "xyz:XYZ100", "external_price": 30198.0, "mark_price": 30203.0,
-                "block_number": 1164898902_i64, "timestamp": 1790649697779_i64
+                "block_number": 1164898902_i64, "timestamp": "2026-09-29T02:41:37.779Z",
+                "timestamp_ms": 1790649697779_i64
             }),
             meta(1),
         ))
@@ -265,7 +276,7 @@ async fn hip3_oracle_reads_decode() {
         .respond_with(ok(
             json!({
                 "symbol": "km:US500", "external_price": null, "mark_price": 749.64,
-                "block_number": 1, "timestamp": 2
+                "block_number": 1, "timestamp": "1970-01-01T00:00:00.002Z", "timestamp_ms": 2
             }),
             meta(1),
         ))
@@ -282,7 +293,7 @@ async fn hip3_oracle_reads_decode() {
                 "reference_source": "external", "max_leverage": 30,
                 "bound_fraction": 0.03333333333333333, "lower_bound": 29191.4,
                 "upper_bound": 31204.600000000002, "block_number": 1164898902_i64,
-                "timestamp": 1790649697779_i64
+                "timestamp": "2026-09-29T02:41:37.779Z", "timestamp_ms": 1790649697779_i64
             }),
             meta(1),
         ))
@@ -301,6 +312,8 @@ async fn hip3_oracle_reads_decode() {
     assert_eq!(price.external_price, Some(30198.0));
     assert_eq!(price.mark_price, Some(30203.0));
     assert_eq!(price.block_number, 1164898902);
+    assert_eq!(price.timestamp, "2026-09-29T02:41:37.779Z");
+    assert_eq!(price.timestamp_ms, 1790649697779);
 
     let no_external = client
         .hyperliquid
@@ -320,6 +333,7 @@ async fn hip3_oracle_reads_decode() {
         .unwrap();
     assert_eq!(bounds.reference_source, "external");
     assert_eq!(bounds.max_leverage, 30);
+    assert_eq!(bounds.timestamp_ms, 1790649697779);
     assert!(bounds.lower_bound < bounds.reference_price);
     assert!(bounds.upper_bound > bounds.reference_price);
 }
@@ -763,6 +777,7 @@ async fn webhook_refusals_surface_as_api_errors() {
             code,
             message,
             request_id,
+            ..
         } => {
             assert_eq!(code, 409);
             assert!(message.contains("budget"));
@@ -1515,7 +1530,7 @@ async fn hip3_liquidations_keep_history_volume_and_levels() {
 }
 
 #[tokio::test]
-async fn trades_and_history_reads_send_no_ignored_parameters() {
+async fn trades_and_history_reads_send_no_unset_filters() {
     let server = MockServer::start().await;
     for route in [
         "/v1/hyperliquid/trades/BTC",
@@ -1546,6 +1561,7 @@ async fn trades_and_history_reads_send_no_ignored_parameters() {
                 end: 2_i64.into(),
                 cursor: cursor(),
                 limit: None,
+                side: None,
             },
         )
         .await
@@ -1560,6 +1576,7 @@ async fn trades_and_history_reads_send_no_ignored_parameters() {
                 end: 2_i64.into(),
                 cursor: cursor(),
                 limit: None,
+                side: None,
             },
         )
         .await
@@ -1574,6 +1591,7 @@ async fn trades_and_history_reads_send_no_ignored_parameters() {
                 end: 2_i64.into(),
                 cursor: cursor(),
                 limit: None,
+                depth: None,
             },
         )
         .await

@@ -1,4 +1,4 @@
-//! Tick-level order book reconstructor for Lighter.xyz.
+//! Tick-level order book reconstructor for Lighter.
 //!
 //! Maintains an in-memory representation of the order book and applies
 //! incremental deltas to produce full L2 snapshots at each tick.
@@ -11,9 +11,10 @@
 //!
 //! # async fn example() -> oxarchive::Result<()> {
 //! let client = OxArchive::new("your-api-key")?;
-//! let tick_data = client.lighter.orderbook.history_tick(
-//!     "BTC", 1769904000000_i64, 1769907600000_i64, None,
-//! ).await?;
+//! // The last ten minutes, in Unix milliseconds
+//! let end = chrono::Utc::now().timestamp_millis();
+//! let start = end - 10 * 60 * 1000;
+//! let tick_data = client.lighter.orderbook.history_tick("BTC", start, end, None).await?;
 //!
 //! let mut reconstructor = OrderBookReconstructor::new();
 //! let snapshots = reconstructor.reconstruct_all(
@@ -258,7 +259,7 @@ impl OrderBookReconstructor {
     /// Reconstruct only the final state after applying all deltas.
     ///
     /// More efficient than [`reconstruct_all`](Self::reconstruct_all) when
-    /// intermediate snapshots are not needed — avoids sorting price levels
+    /// intermediate snapshots are not needed: it avoids sorting price levels
     /// for every delta.
     pub fn reconstruct_final(
         &mut self,

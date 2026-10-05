@@ -24,7 +24,7 @@ pub struct L3OrderBookParams {
     pub depth: Option<i64>,
 }
 
-/// Access to L3 (order-level) orderbook endpoints (Lighter.xyz only).
+/// Access to L3 (order-level) orderbook endpoints (Lighter only).
 #[derive(Debug, Clone)]
 pub struct L3OrderBookResource {
     http: HttpClient,
@@ -101,13 +101,11 @@ impl L3OrderBookResource {
         if let Some(a) = params.account {
             qp.push(("account", a.to_string()));
         }
-        let (data, next_cursor) = self
-            .http
+        self.http
             .get_with_cursor(
                 &format!("{}/l3orderbook/{}/history", self.prefix, symbol),
                 &qp,
             )
-            .await?;
-        Ok(CursorResponse { data, next_cursor })
+            .await
     }
 }

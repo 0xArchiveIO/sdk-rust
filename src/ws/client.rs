@@ -16,7 +16,8 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorCode, Result};
+use crate::http::API_VERSION;
 use crate::types::LighterLiveData;
 
 // ---------------------------------------------------------------------------
@@ -184,10 +185,45 @@ fn validate_subscribe_interval(channel: &str, interval_ms: u32) -> Result<()> {
     Ok(())
 }
 
-/// Hyperliquid core L4 channels with checkpoint-anchored replay support.
+/// Hyperliquid core L4 channels. Like every L4 channel they support
+/// checkpoint-anchored replay; see [`L4_REPLAY_CHANNELS`] for all eight.
 pub const CORE_L4_REPLAY_CHANNELS: [&str; 2] = ["l4_diffs", "l4_orders"];
 
-/// L4 channel families that are live-only and must not inherit core replay.
+/// Every L4 channel: Hyperliquid core, HIP-3, Spot and HIP-4 order book
+/// diffs and order lifecycle events. All of them stream live and replay.
+///
+/// Replay is checkpoint-anchored and bulk: the nearest L4 checkpoint at or
+/// before `start` arrives as an `l4_snapshot` frame, then the events follow
+/// as ordered `l4_batch` frames, as fast as the server can send them
+/// (`speed` is ignored). It is single-channel only and `replay.seek` is not
+/// supported.
+pub const L4_REPLAY_CHANNELS: [&str; 8] = [
+    "l4_diffs",
+    "l4_orders",
+    "hip3_l4_diffs",
+    "hip3_l4_orders",
+    "spot_l4_diffs",
+    "spot_l4_orders",
+    "hip4_l4_diffs",
+    "hip4_l4_orders",
+];
+
+/// Return whether a channel is a Hyperliquid core L4 channel.
+pub fn is_core_l4_replay_channel(channel: &str) -> bool {
+    CORE_L4_REPLAY_CHANNELS.contains(&channel)
+}
+
+/// Return whether a channel is one of the eight L4 channels.
+pub fn is_l4_channel(channel: &str) -> bool {
+    L4_REPLAY_CHANNELS.contains(&channel)
+}
+
+/// The HIP-3, HIP-4 and Spot L4 channels, which were live-only before
+/// replay was added for them. Every one of them now replays.
+#[deprecated(
+    since = "1.12.0",
+    note = "every L4 channel now supports replay; use L4_REPLAY_CHANNELS"
+)]
 pub const LIVE_ONLY_L4_CHANNELS: [&str; 6] = [
     "hip3_l4_diffs",
     "hip3_l4_orders",
@@ -197,39 +233,35 @@ pub const LIVE_ONLY_L4_CHANNELS: [&str; 6] = [
     "spot_l4_orders",
 ];
 
-/// Return whether a channel supports the core Hyperliquid L4 replay contract.
-pub fn is_core_l4_replay_channel(channel: &str) -> bool {
-    CORE_L4_REPLAY_CHANNELS.contains(&channel)
+/// Always `false`: no L4 channel is live-only any more.
+#[deprecated(
+    since = "1.12.0",
+    note = "every L4 channel now supports replay; this always returns false"
+)]
+pub fn is_live_only_l4_channel(_channel: &str) -> bool {
+    false
 }
 
-/// Return whether an L4 channel is explicitly live-only.
-pub fn is_live_only_l4_channel(channel: &str) -> bool {
-    LIVE_ONLY_L4_CHANNELS.contains(&channel)
+/// The full-depth L2 order book channels, aggregated from L4:
+/// `orderbook_full` (Hyperliquid core) and `hip3_orderbook_full` (HIP-3).
+///
+/// Both stream live and replay. Replay reads the L4 history: the book at the
+/// nearest L4 checkpoint at or before `start` arrives as an `l4_snapshot`
+/// frame, then price-level changes as `l4_batch` frames, one per 100 ms of
+/// event time, as on the live stream. Replay is bulk (`speed` is ignored)
+/// and single-channel only.
+pub const FULL_DEPTH_CHANNELS: [&str; 2] = ["orderbook_full", "hip3_orderbook_full"];
+
+/// Return whether a channel is a full-depth L2 order book channel.
+pub fn is_full_depth_channel(channel: &str) -> bool {
+    FULL_DEPTH_CHANNELS.contains(&channel)
 }
 
-const LIVE_ONLY_L4_REPLAY_ERROR: &str =
-    "HIP-3, HIP-4, and Spot L4 channels are live-only; replay is supported only for Hyperliquid core l4_diffs and l4_orders.";
-
-/// Full-depth L2 order book channels. Both are live-only.
-pub const LIVE_ONLY_FULL_DEPTH_CHANNELS: [&str; 2] = ["orderbook_full", "hip3_orderbook_full"];
-
-/// Return whether a channel is a live-only full-depth L2 order book channel.
-pub fn is_live_only_full_depth_channel(channel: &str) -> bool {
-    LIVE_ONLY_FULL_DEPTH_CHANNELS.contains(&channel)
-}
-
-/// Error returned when a replay names a full-depth order book channel.
-pub const FULL_DEPTH_REPLAY_ERROR: &str =
-    "orderbook_full and hip3_orderbook_full are live-only. For full-depth history, use the l2_orderbook REST resource.";
-
-fn validate_replay_channel(channel: &str) -> Result<()> {
-    if is_live_only_l4_channel(channel) {
-        return Err(Error::InvalidParam(LIVE_ONLY_L4_REPLAY_ERROR.to_string()));
-    }
-    if is_live_only_full_depth_channel(channel) {
-        return Err(Error::InvalidParam(FULL_DEPTH_REPLAY_ERROR.to_string()));
-    }
-    Ok(())
+/// Return whether a channel replays only on its own: the eight L4 channels
+/// and the two full-depth channels. [`OxArchiveWs::replay_multi`] rejects
+/// them before sending; use [`OxArchiveWs::replay`].
+pub fn is_single_channel_replay(channel: &str) -> bool {
+    is_l4_channel(channel) || is_full_depth_channel(channel)
 }
 
 // ---------------------------------------------------------------------------
@@ -254,20 +286,28 @@ pub enum ClientMsg {
     Unsubscribe { channel: String, symbol: Option<String> },
     #[serde(rename = "ping")]
     Ping,
+    /// A single-channel replay. `end` and `speed` are left out of the
+    /// request when `None`; the server then replays up to now at 1x.
     #[serde(rename = "replay")]
     Replay {
         channel: String,
         symbol: String,
         start: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         speed: Option<f64>,
     },
+    /// A multi-channel replay. `end` and `speed` are left out of the request
+    /// when `None`, as on [`ClientMsg::Replay`].
     #[serde(rename = "replay")]
     ReplayMulti {
         channels: Vec<String>,
         symbol: String,
         start: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         speed: Option<f64>,
     },
     #[serde(rename = "replay.pause")]
@@ -322,9 +362,21 @@ pub enum ServerMsg {
     /// `Stopped the lighter_trades stream for BTC: ...` means the server ended
     /// that subscription; subscribe again to resume. `lighter_orderbook` and
     /// `rh_lighter_orderbook` send the newest book at most once per interval
-    /// and never send an older book in place of a newer one.
+    /// and never send an older book in place of a newer one. Those lag
+    /// notices carry [`ErrorCode::SlowConsumer`].
+    ///
+    /// `error_code` is the stable reason to branch on, the same codes as REST
+    /// errors plus two for the WebSocket: `slow_consumer` (the connection fell
+    /// behind and messages were dropped; subscribe again or restart the
+    /// replay to resync) and `endpoint_unsupported` (this endpoint does not
+    /// serve the channel or operation; the message names the one that does).
+    /// A channel that does not offer a mode (live, replay, `replay.seek`)
+    /// answers `unsupported_for_venue`.
     Error {
         message: String,
+        /// Stable machine-readable reason, `None` when the server sent none.
+        #[serde(default)]
+        error_code: Option<ErrorCode>,
     },
     /// A live data message.
     ///
@@ -336,17 +388,18 @@ pub enum ServerMsg {
         symbol: Option<String>,
         data: serde_json::Value,
     },
-    /// Initial order-level L4 state for a live subscription or core replay.
+    /// Initial order-level L4 state for a live subscription or a replay.
     ///
-    /// For core Hyperliquid `l4_diffs` and `l4_orders` replay, this checkpoint
-    /// frame is emitted first and is followed by ordered [`ServerMsg::L4Batch`]
-    /// frames. `data` contains the full `bids`/`asks` book plus checkpoint
-    /// metadata; large symbols can be tens of MB of JSON. HIP-3, HIP-4, and
-    /// Spot L4 channels remain live-only and never use this replay sequence.
+    /// For an L4 replay (every channel in [`L4_REPLAY_CHANNELS`]), this
+    /// checkpoint frame is emitted first and is followed by ordered
+    /// [`ServerMsg::L4Batch`] frames. `data` contains the full `bids`/`asks`
+    /// book plus checkpoint metadata; large symbols can be tens of MB of
+    /// JSON.
     ///
-    /// The full-depth L2 channels, `orderbook_full` and `hip3_orderbook_full`
-    /// (live-only), also open with this frame: `data` holds the aggregated
-    /// `bids` and `asks` at every price level, without user attribution.
+    /// The full-depth L2 channels, `orderbook_full` and `hip3_orderbook_full`,
+    /// also open with this frame, live and in replay: `data` holds the
+    /// aggregated `bids` and `asks` at every price level, without user
+    /// attribution.
     L4Snapshot {
         channel: String,
         coin: String,
@@ -356,10 +409,10 @@ pub enum ServerMsg {
         timestamp: i64,
         data: serde_json::Value,
     },
-    /// Ordered L4 event batch for a live stream or core replay.
+    /// Ordered L4 event batch for a live stream or a replay.
     ///
-    /// In core Hyperliquid replay, apply every item in each batch in array
-    /// order after [`ServerMsg::L4Snapshot`]. Diff and order-lifecycle items
+    /// In an L4 replay, apply every item in each batch in array order after
+    /// [`ServerMsg::L4Snapshot`]. Diff and order-lifecycle items
     /// have channel-specific fields, so the payload remains JSON while the
     /// envelope and event ordering are typed by this enum.
     ///
@@ -464,16 +517,36 @@ pub enum ServerMsg {
 }
 
 impl ServerMsg {
-    /// Decode a live Lighter `data` message into a typed payload. Covers the
-    /// mainnet `lighter_*` and the Robinhood Chain `rh_lighter_*` channels.
+    /// Decode a Lighter order book, trades, open interest or funding payload
+    /// into a typed value. Covers the mainnet `lighter_*` and the Robinhood
+    /// Chain `rh_lighter_*` channels.
     ///
-    /// Returns `None` for every other message, including Lighter replay
-    /// messages (`historical_data`, `replay_snapshot`), whose rows keep their
-    /// existing replay shapes. Returns `Some(Err(..))` when a live Lighter
+    /// Live `data` messages and replay rows (`historical_data` and
+    /// `replay_snapshot`) decode alike: the connection asks for the current
+    /// API version, under which replay rows have the live shapes. A replayed
+    /// `lighter_trades` row is one fill leg, so it decodes to a one-element
+    /// `Trades` value.
+    ///
+    /// Returns `None` for every other message and channel, including
+    /// `lighter_candles`, `lighter_l3_orderbook` and `rh_lighter_candles`,
+    /// which have no live shape. Returns `Some(Err(..))` when a Lighter
     /// payload does not match the expected shape.
     pub fn lighter_live_data(&self) -> Option<Result<LighterLiveData>> {
         match self {
-            ServerMsg::Data { channel, data, .. } => LighterLiveData::decode(channel, data),
+            ServerMsg::Data { channel, data, .. }
+            | ServerMsg::HistoricalData { channel, data, .. }
+            | ServerMsg::ReplaySnapshot { channel, data, .. } => {
+                LighterLiveData::decode(channel, data)
+            }
+            _ => None,
+        }
+    }
+
+    /// The `error_code` of an [`ServerMsg::Error`], or `None` for other
+    /// messages and for errors the server sent without a code.
+    pub fn error_code(&self) -> Option<&ErrorCode> {
+        match self {
+            ServerMsg::Error { error_code, .. } => error_code.as_ref(),
             _ => None,
         }
     }
@@ -482,6 +555,16 @@ impl ServerMsg {
 // ---------------------------------------------------------------------------
 // WebSocket client
 // ---------------------------------------------------------------------------
+
+/// The connection URL: the endpoint with the API key and the API version on
+/// its query string.
+fn connect_url(ws_url: &str, api_key: &str) -> String {
+    let separator = if ws_url.contains('?') { '&' } else { '?' };
+    format!(
+        "{ws_url}{separator}apiKey={}&version={API_VERSION}",
+        urlencoding::encode(api_key)
+    )
+}
 
 type WsSink =
     futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, Message>;
@@ -515,8 +598,13 @@ impl OxArchiveWs {
     ///
     /// Returns a receiver for server messages. The connection is maintained
     /// in a background task that handles pings and reconnection.
+    ///
+    /// The connection asks for API version [`API_VERSION`] (`version` on the
+    /// query string), which selects the message shapes this SDK decodes:
+    /// `error_code` on error messages and, on Lighter replay, the live row
+    /// shapes.
     pub async fn connect(&mut self) -> Result<()> {
-        let url = format!("{}?apiKey={}", self.options.ws_url, self.options.api_key);
+        let url = connect_url(&self.options.ws_url, &self.options.api_key);
         let (ws_stream, _) = connect_async(&url)
             .await
             .map_err(|e| Error::WebSocket(e.to_string()))?;
@@ -647,13 +735,20 @@ impl OxArchiveWs {
     /// Start a bounded historical replay on a single channel.
     ///
     /// All six `lighter_*` channels and all five `rh_lighter_*` channels
-    /// support replay. Lighter replay rows keep their stored shapes, which
-    /// differ from the live Lighter payloads decoded by
-    /// [`ServerMsg::lighter_live_data`]. Hyperliquid
-    /// core `l4_diffs` and `l4_orders` replay as `l4_snapshot` followed by
-    /// ordered `l4_batch` frames, and ignore `speed`. HIP-3, HIP-4, and Spot L4
-    /// channels and the full-depth `orderbook_full` and `hip3_orderbook_full`
-    /// channels are live-only and are rejected before a request is sent. A
+    /// support replay. Lighter order book, trades, open interest and funding
+    /// rows arrive in the live shapes and decode with
+    /// [`ServerMsg::lighter_live_data`].
+    ///
+    /// Every L4 channel ([`L4_REPLAY_CHANNELS`]: Hyperliquid core, HIP-3,
+    /// Spot and HIP-4) and both full-depth channels
+    /// ([`FULL_DEPTH_CHANNELS`]) replay as an `l4_snapshot` followed by
+    /// ordered `l4_batch` frames. That replay is bulk: `speed` is ignored and
+    /// `replay.seek` is refused.
+    ///
+    /// Which channels replay, and from when, is listed by
+    /// `client.capabilities()`. A channel without replay (for example
+    /// `ticker` or `spot_trades`) is answered with a
+    /// [`ServerMsg::Error`] whose `error_code` is `unsupported_for_venue`. A
     /// successful replay terminates with a `replay_completed` server message.
     pub async fn replay(
         &self,
@@ -663,7 +758,6 @@ impl OxArchiveWs {
         end: Option<i64>,
         speed: Option<f64>,
     ) -> Result<()> {
-        validate_replay_channel(channel)?;
         self.send(ClientMsg::Replay {
             channel: channel.to_string(),
             symbol: symbol.to_string(),
@@ -679,11 +773,12 @@ impl OxArchiveWs {
     /// All channels are replayed together with data interleaved chronologically,
     /// including the Lighter replay channels. Every channel must belong to one
     /// venue family: the mainnet `lighter_*` and the Robinhood Chain
-    /// `rh_lighter_*` channels are separate families. Core L4 replay is single-
-    /// channel and cannot be included here. HIP-3, HIP-4, and Spot L4 channels
-    /// remain live-only. Initial `replay_snapshot` messages provide each
-    /// standard channel's state at `start`; the server terminates the bounded
-    /// replay with `replay_completed`.
+    /// `rh_lighter_*` channels are separate families. L4 and full-depth replay
+    /// is single-channel: a list that names one of those channels
+    /// ([`is_single_channel_replay`]) is rejected before a request is sent;
+    /// use [`replay`](Self::replay) for it. Initial `replay_snapshot` messages
+    /// provide each channel's state at `start`; the server terminates the
+    /// bounded replay with `replay_completed`.
     pub async fn replay_multi(
         &self,
         channels: &[&str],
@@ -692,14 +787,10 @@ impl OxArchiveWs {
         end: Option<i64>,
         speed: Option<f64>,
     ) -> Result<()> {
-        for channel in channels {
-            validate_replay_channel(channel)?;
-            if is_core_l4_replay_channel(channel) {
-                return Err(Error::InvalidParam(
-                    "Hyperliquid core L4 replay is single-channel; use replay() for l4_diffs or l4_orders."
-                        .to_string(),
-                ));
-            }
+        if let Some(channel) = channels.iter().find(|c| is_single_channel_replay(c)) {
+            return Err(Error::InvalidParam(format!(
+                "{channel} supports single-channel replay only; use replay() for it."
+            )));
         }
         self.send(ClientMsg::ReplayMulti {
             channels: channels.iter().map(|c| c.to_string()).collect(),
@@ -912,11 +1003,21 @@ mod lighter_live_tests {
     }
 
     #[test]
-    fn only_live_lighter_data_messages_decode() {
-        // Replay rows keep their stored shapes and are not decoded as live data.
-        let replay = r#"{"type":"historical_data","channel":"lighter_orderbook","coin":"BTC","symbol":"BTC","timestamp":1790294171459,"data":{"bids":[],"asks":[]}}"#;
+    fn only_lighter_book_trades_and_stats_messages_decode() {
+        // Replay rows arrive in the live shapes and decode like live data.
+        let replay = r#"{"type":"historical_data","channel":"lighter_orderbook","coin":"BTC","symbol":"BTC","timestamp":1790521300928,"data":{"coin":"BTC","levels":[[{"n":1,"px":"84465.1","sz":"1.3517"}],[{"n":1,"px":"84469.7","sz":"0.019"}]],"time":1790521300928}}"#;
         let msg: ServerMsg = serde_json::from_str(replay).unwrap();
-        assert!(msg.lighter_live_data().is_none());
+        let Some(Ok(LighterLiveData::OrderBook(book))) = msg.lighter_live_data() else {
+            panic!("expected a decoded replayed lighter_orderbook row, got {msg:?}");
+        };
+        assert_eq!(book.bids()[0].px, "84465.1");
+        assert_eq!(book.asks()[0].px, "84469.7");
+
+        // A replay row in the shape older API versions sent is reported, not
+        // silently dropped.
+        let legacy = r#"{"type":"historical_data","channel":"lighter_orderbook","coin":"BTC","symbol":"BTC","timestamp":1790294171459,"data":{"bids":[],"asks":[]}}"#;
+        let msg: ServerMsg = serde_json::from_str(legacy).unwrap();
+        assert!(matches!(msg.lighter_live_data(), Some(Err(_))));
 
         // Hyperliquid live data is not a Lighter payload.
         let hl = r#"{"type":"data","channel":"orderbook","coin":"BTC","symbol":"BTC","data":{"coin":"BTC","time":1,"levels":[[],[]]}}"#;
@@ -998,7 +1099,60 @@ mod lighter_live_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::ServerMsg;
+    use super::{connect_url, ClientMsg, ServerMsg};
+
+    #[test]
+    fn replay_requests_leave_out_unset_end_and_speed() {
+        // The server reads a missing `speed` as 1x but does not accept
+        // `"speed": null`, so an unset value must not be sent at all.
+        let single = serde_json::to_value(ClientMsg::Replay {
+            channel: "hip3_l4_diffs".into(),
+            symbol: "xyz:XYZ100".into(),
+            start: 1,
+            end: None,
+            speed: None,
+        })
+        .unwrap();
+        assert_eq!(
+            single,
+            serde_json::json!({"op": "replay", "channel": "hip3_l4_diffs", "symbol": "xyz:XYZ100", "start": 1})
+        );
+        let multi = serde_json::to_value(ClientMsg::ReplayMulti {
+            channels: vec!["orderbook".into(), "trades".into()],
+            symbol: "BTC".into(),
+            start: 1,
+            end: Some(2),
+            speed: None,
+        })
+        .unwrap();
+        assert_eq!(
+            multi,
+            serde_json::json!({"op": "replay", "channels": ["orderbook", "trades"], "symbol": "BTC", "start": 1, "end": 2})
+        );
+        let paced = serde_json::to_value(ClientMsg::Replay {
+            channel: "orderbook".into(),
+            symbol: "BTC".into(),
+            start: 1,
+            end: Some(2),
+            speed: Some(10.0),
+        })
+        .unwrap();
+        assert_eq!(paced["speed"], serde_json::json!(10.0));
+        assert_eq!(paced["end"], serde_json::json!(2));
+    }
+
+    #[test]
+    fn the_connection_asks_for_the_api_version() {
+        assert_eq!(
+            connect_url("wss://api.0xarchive.io/ws", "0xa_key"),
+            "wss://api.0xarchive.io/ws?apiKey=0xa_key&version=2026-10-01"
+        );
+        // An endpoint that already has a query keeps it.
+        assert_eq!(
+            connect_url("wss://example.test/ws?region=eu", "k+1"),
+            "wss://example.test/ws?region=eu&apiKey=k%2B1&version=2026-10-01"
+        );
+    }
 
     #[test]
     fn l4_snapshot_deserializes() {

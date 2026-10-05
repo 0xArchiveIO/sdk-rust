@@ -464,19 +464,24 @@ fn public_copy_keeps_family_specific_coverage() {
     assert!(readme.contains("2026-05-02"));
     assert!(readme.contains("~10s"));
     assert!(readme.contains("250 orders per side"));
-    assert!(readme.contains("March 5, 2026"));
+    assert!(readme.contains("2026-03-05 03:33 UTC"));
     assert!(!readme.contains("raw ~1 minute"));
     assert!(!readme.contains("no funding, no liquidations, and no candles"));
     assert!(readme.contains("exact starts vary by market"));
-    assert!(readme.contains("live HIP-4 order-book and OI bridges are paused"));
-    assert!(readme.contains("candles from exactly 2025-03-22T10:50:22Z"));
+    assert!(readme.contains(
+        "`hip4_orderbook` and `hip4_open_interest` replay stored history from 2026-05-02 16:51 UTC but have no live subscription"
+    ));
+    assert!(!readme.contains("bridges"));
+    assert!(readme.contains("Candles from 2025-03-22 10:50"));
     assert!(readme.contains("Spot candle history starts exactly at"));
     assert!(readme.contains("`1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`"));
     assert!(readme.contains("client.hyperliquid.spot.candles.history"));
     assert!(readme.contains("| `candles` | Yes | Yes | Yes | Yes |"));
     assert!(spot_example.contains(".spot\n        .candles"));
-    assert!(spot_example.contains("2025-03-22T10:50:22Z"));
-    assert!(readme.contains("Candles from 2025-08-01"));
+    assert!(spot_example.contains("2025-03-22T10:50:00Z"));
+    assert!(readme.contains("candles from 2025-08-01"));
+    // Spot TWAP is REST only; the channel table lists only WebSocket channels.
+    assert!(!readme.contains("| `spot_twap` |"));
     assert!(!readme.contains("SDK passes `symbol` straight through to the URL path"));
     assert!(readme.contains("use the bare numeric form (`\"0\"`"));
     assert!(readme.contains("Legacy `\"#0\"`"));
