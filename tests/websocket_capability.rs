@@ -540,7 +540,8 @@ fn lighter_replay_rows_decode_with_the_live_shapes() {
     assert!(msg.lighter_live_data().is_none());
 }
 
-/// Channel rows of `GET /v1/capabilities` as served on 2026-10-04.
+/// Channel rows of `GET /v1/capabilities` as served on 2026-10-04, plus the
+/// `mempool` row.
 const CAPABILITY_CHANNELS: &str = r#"[
 {"venue":"hyperliquid","datatype":"l2_orderbook","ws_channels":["orderbook"],"live":true,"replay":true,"available_from":"2023-04-15T00:00:00.000Z"},
 {"venue":"hyperliquid","datatype":"l2_full_depth","ws_channels":["orderbook_full"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
@@ -552,6 +553,7 @@ const CAPABILITY_CHANNELS: &str = r#"[
 {"venue":"hyperliquid","datatype":"oi","ws_channels":["open_interest"],"live":true,"replay":true,"available_from":"2023-05-20T02:50:00.000Z"},
 {"venue":"hyperliquid","datatype":"liquidations","ws_channels":["liquidations"],"live":true,"replay":true,"available_from":"2025-12-22T00:00:00.000Z"},
 {"venue":"hyperliquid","datatype":"ticker","ws_channels":["ticker","all_tickers"],"live":true,"replay":false,"available_from":null},
+{"venue":"hyperliquid","datatype":"mempool","ws_channels":["mempool"],"live":true,"replay":false,"available_from":null,"ws_endpoint":"wss://stream.0xarchive.io/ws","plans":["pro","scale","enterprise"]},
 {"venue":"hip3","datatype":"l2_orderbook","ws_channels":["hip3_orderbook"],"live":true,"replay":true,"available_from":"2026-02-16T16:57:00.000Z"},
 {"venue":"hip3","datatype":"l2_full_depth","ws_channels":["hip3_orderbook_full"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},
 {"venue":"hip3","datatype":"l4_diffs","ws_channels":["hip3_l4_diffs"],"live":true,"replay":true,"available_from":"2026-03-11T01:03:00.000Z"},

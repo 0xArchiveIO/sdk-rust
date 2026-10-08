@@ -4,7 +4,7 @@
 //!
 //! Requires the `websocket` feature:
 //! ```toml
-//! oxarchive = { version = "1.12", features = ["websocket"] }
+//! oxarchive = { version = "1.13", features = ["websocket"] }
 //! ```
 //!
 //! For large historical downloads, use the S3 Parquet bulk export at

@@ -3,6 +3,41 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.13.0] - 2026-10-08
+
+### Added
+- The `mempool` WebSocket channel (`ws::MEMPOOL_CHANNEL`): signed Hyperliquid
+  transactions as our Hyperliquid node receives them from its peers, before
+  they are included in a block, for every Hyperliquid product. It is live
+  only, served only at `wss://stream.0xarchive.io/ws`, and included with the
+  Pro, Scale and Enterprise plans. Every other channel stays on every plan.
+  `subscribe(MEMPOOL_CHANNEL, None)` streams every pending transaction our
+  Hyperliquid node receives; with a symbol, only the actions that reference
+  that market. `mempool` is
+  the only channel whose symbol is optional.
+- `ServerMsg::Mempool`, with one `MempoolItem` (and its `MempoolSignature`)
+  per signed action. `ServerMsg::from_text()`, which the client uses to read
+  every message, builds it straight from the frame text, so
+  `MempoolItem::action` (a `Box<serde_json::value::RawValue>`) keeps the
+  exact bytes the server sent, key order included, for signature recovery.
+  `MempoolItem::action_value()` parses the action into a `serde_json::Value`
+  for inspection, which may not keep the original key order. `ServerMsg::mempool_items()` returns
+  a message's items. Unknown item fields are ignored.
+- serde_json's `raw_value` feature is enabled.
+- `ws::STREAM_WS_URL` (`wss://stream.0xarchive.io/ws`) and
+  `ws::DEFAULT_WS_URL` (`wss://api.0xarchive.io/ws`, the default `ws_url`).
+  Pass `STREAM_WS_URL` to `WsOptions::ws_url()` for a connection that
+  subscribes to `mempool`.
+- `Capability::ws_endpoint` and `Capability::plans`, the fields
+  `/v1/capabilities` sets on the `mempool` row only. For `ws_endpoint`,
+  `None` means the default endpoint, `wss://api.0xarchive.io/ws`. For
+  `plans`, `None` means every plan. They are left out when serializing a row that
+  does not have them.
+
+### Changed
+- `ServerMsg` gained the `Mempool` variant; an exhaustive match on it needs
+  a new arm.
+
 ## [1.12.0] - 2026-10-05
 
 ### Upgrading from 1.8

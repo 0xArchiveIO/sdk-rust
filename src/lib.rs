@@ -151,7 +151,7 @@
 //! replay:
 //!
 //! ```toml
-//! oxarchive = { version = "1.12", features = ["websocket"] }
+//! oxarchive = { version = "1.13", features = ["websocket"] }
 //! ```
 //!
 //! Live subscriptions cover the supported Hyperliquid channels and four
@@ -166,6 +166,11 @@
 //! full-depth order book channels (`orderbook_full`, `hip3_orderbook_full`)
 //! replay as bulk, single-channel streams. `client.capabilities()` lists
 //! which channels stream live and which replay.
+//!
+//! The live-only `mempool` channel carries pending Hyperliquid transactions,
+//! before they are in a block; its items decode into [`MempoolItem`]. It is
+//! served only at `wss://stream.0xarchive.io/ws` (`ws::STREAM_WS_URL`) and
+//! included with the Pro, Scale and Enterprise plans.
 //!
 //! Bulk streaming over WebSocket has been discontinued, so
 //! `OxArchiveWs::stream` is deprecated. For large historical downloads, use
@@ -197,7 +202,7 @@ pub use types::{
     LiquidationLevelBucket, LiquidationLevels, LiquidationLevelsHistoryItem,
     TriggerLevelBucket, TriggerLevels, TriggerLevelsHistoryItem,
     LighterLiveAssetCtx, LighterLiveData, LighterLiveLevel, LighterLiveMarketStats,
-    LighterLiveOrderBook, LighterLiveTrade,
+    LighterLiveOrderBook, LighterLiveTrade, MempoolItem, MempoolSignature,
     AccountSummary, CumulativeFunding, LighterL1Account, LighterL1Accounts, LighterLiquidation,
     LighterLiquidationVolume, MarketPosition, MarketPositionsSummary, MetaResponse, Position,
     PositionChange, PositionLeverage, PositionsFreshness, ResponseMeta, WalletPositions,
