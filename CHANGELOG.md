@@ -3,6 +3,29 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.13.0] - 2026-10-08
+
+### Added
+- The `mempool` WebSocket channel (`ws::MEMPOOL_CHANNEL`): signed Hyperliquid
+  transactions as our Hyperliquid node receives them from its peers, before
+  they are included in a block, for every Hyperliquid product. It is live
+  only, served only at `wss://stream.0xarchive.io/ws`, and included with the
+  Pro, Scale and Enterprise plans. Every other channel stays on every plan.
+  `subscribe(MEMPOOL_CHANNEL, None)` streams every pending transaction;
+  with a symbol, only the actions that reference that market. `mempool` is
+  the only channel whose symbol is optional.
+- `MempoolItem` and `MempoolSignature`, decoded from a `mempool` message with
+  `ServerMsg::mempool_items()` or `MempoolItem::decode()`. `action` is a
+  `serde_json::Value` exactly as signed; unknown fields are ignored.
+- `ws::STREAM_WS_URL` (`wss://stream.0xarchive.io/ws`) and
+  `ws::DEFAULT_WS_URL` (`wss://api.0xarchive.io/ws`, the default `ws_url`).
+  Pass `STREAM_WS_URL` to `WsOptions::ws_url()` for a connection that
+  subscribes to `mempool`.
+- `Capability::ws_endpoint` and `Capability::plans`, the fields
+  `/v1/capabilities` sets on the `mempool` row only. `None` means every
+  endpoint and every plan. They are left out when serializing a row that
+  does not have them.
+
 ## [1.12.0] - 2026-10-05
 
 ### Upgrading from 1.8

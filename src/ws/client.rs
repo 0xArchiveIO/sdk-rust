@@ -6,7 +6,7 @@
 //!
 //! Requires the `websocket` feature:
 //! ```toml
-//! oxarchive = { version = "1.12", features = ["websocket"] }
+//! oxarchive = { version = "1.13", features = ["websocket"] }
 //! ```
 
 use futures_util::{SinkExt, StreamExt};
@@ -18,13 +18,62 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::error::{Error, ErrorCode, Result};
 use crate::http::API_VERSION;
-use crate::types::LighterLiveData;
+use crate::types::{LighterLiveData, MempoolItem};
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
+/// The default `ws_url` in [`WsOptions`]. It serves every channel except
+/// [`MEMPOOL_CHANNEL`], and every replay.
+pub const DEFAULT_WS_URL: &str = "wss://api.0xarchive.io/ws";
+
+/// The only endpoint that serves [`MEMPOOL_CHANNEL`], with the same API key
+/// and protocol as [`DEFAULT_WS_URL`].
+///
+/// It serves a subset of the live channels; a channel it does not serve, and
+/// every replay, is answered with a [`ServerMsg::Error`] that names
+/// [`DEFAULT_WS_URL`]. Use one connection per endpoint:
+///
+/// ```no_run
+/// # use oxarchive::ws::{OxArchiveWs, WsOptions, MEMPOOL_CHANNEL, STREAM_WS_URL};
+/// # async fn example() -> oxarchive::Result<()> {
+/// let mut ws = OxArchiveWs::new(WsOptions::new("your-api-key").ws_url(STREAM_WS_URL));
+/// ws.connect().await?;
+/// ws.subscribe(MEMPOOL_CHANNEL, Some("BTC")).await?;
+/// # Ok(())
+/// # }
+/// ```
+pub const STREAM_WS_URL: &str = "wss://stream.0xarchive.io/ws";
+
+/// The `mempool` channel: signed Hyperliquid transactions as our Hyperliquid
+/// node receives them from its peers, before they are included in a block,
+/// for every Hyperliquid product (perps, HIP-3, HIP-4 and spot).
+///
+/// - Live only: there is no replay, history or REST route.
+/// - Served only at [`STREAM_WS_URL`]. Elsewhere a subscribe is answered with
+///   [`ErrorCode::EndpointUnsupported`].
+/// - Included with the Pro, Scale and Enterprise plans. On other plans a
+///   subscribe is answered with [`ErrorCode::Forbidden`]. Every other channel
+///   is on every plan.
+///
+/// The symbol is optional on this channel only. `subscribe(MEMPOOL_CHANNEL,
+/// None)` streams every pending transaction; with a symbol (`BTC`,
+/// `xyz:TSLA`, `HYPE-USDC`, `#49720`) it streams every action that references
+/// that market, whole. The unfiltered stream is several megabytes a second
+/// before compression, and the server limits unfiltered subscriptions: when
+/// they are at capacity, a subscribe without a symbol is answered with
+/// [`ErrorCode::RateLimited`]. Subscribe with a symbol where you can.
+///
+/// Each message is a [`ServerMsg::Data`] whose `coin` and `symbol` are the
+/// subscription's symbol, or `None` on the unfiltered stream. Decode its
+/// items with [`ServerMsg::mempool_items`].
+pub const MEMPOOL_CHANNEL: &str = "mempool";
+
 /// Options for the WebSocket connection.
+///
+/// `ws_url` defaults to [`DEFAULT_WS_URL`]. Set it to [`STREAM_WS_URL`] for
+/// [`MEMPOOL_CHANNEL`].
 pub struct WsOptions {
     pub api_key: String,
     pub ws_url: String,
@@ -37,7 +86,7 @@ impl WsOptions {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
-            ws_url: "wss://api.0xarchive.io/ws".to_string(),
+            ws_url: DEFAULT_WS_URL.to_string(),
             auto_reconnect: true,
             reconnect_delay: Duration::from_secs(1),
             max_reconnect_attempts: 10,
@@ -371,7 +420,8 @@ pub enum ServerMsg {
     /// replay to resync) and `endpoint_unsupported` (this endpoint does not
     /// serve the channel or operation; the message names the one that does).
     /// A channel that does not offer a mode (live, replay, `replay.seek`)
-    /// answers `unsupported_for_venue`.
+    /// answers `unsupported_for_venue`, and a channel your plan does not
+    /// include ([`MEMPOOL_CHANNEL`] below Pro) answers `forbidden`.
     Error {
         message: String,
         /// Stable machine-readable reason, `None` when the server sent none.
@@ -382,6 +432,9 @@ pub enum ServerMsg {
     ///
     /// For the live Lighter channels of both deployments,
     /// [`ServerMsg::lighter_live_data`] decodes `data` into [`LighterLiveData`].
+    /// For [`MEMPOOL_CHANNEL`], [`ServerMsg::mempool_items`] decodes it into
+    /// [`MempoolItem`]s; `coin` and `symbol` are `None` on the unfiltered
+    /// stream.
     Data {
         channel: String,
         coin: Option<String>,
@@ -542,6 +595,32 @@ impl ServerMsg {
         }
     }
 
+    /// Decode the items of a [`MEMPOOL_CHANNEL`] data message: one
+    /// [`MempoolItem`] per signed action, in the order received.
+    ///
+    /// Returns `None` for every other message and channel, and
+    /// `Some(Err(..))` when the payload does not match the item shape.
+    ///
+    /// ```
+    /// use oxarchive::ws::ServerMsg;
+    ///
+    /// let frame = r#"{"type":"data","channel":"mempool","coin":null,"symbol":null,"data":[
+    ///     {"received_at":"2026-10-08T01:57:23.548737209Z","received_at_ms":1791424643548,
+    ///      "symbols":["BTC"],"action":{"type":"cancel","cancels":[{"a":0,"o":1}]},
+    ///      "nonce":1791424643400,"vault_address":null,"expires_after_ms":null,
+    ///      "signature":{"r":"0x1","s":"0x2","v":27}}]}"#;
+    /// let msg: ServerMsg = serde_json::from_str(frame).unwrap();
+    /// let items = msg.mempool_items().unwrap().unwrap();
+    /// assert_eq!(items[0].symbols, ["BTC"]);
+    /// assert_eq!(items[0].action["type"], "cancel");
+    /// ```
+    pub fn mempool_items(&self) -> Option<Result<Vec<MempoolItem>>> {
+        match self {
+            ServerMsg::Data { channel, data, .. } => MempoolItem::decode(channel, data),
+            _ => None,
+        }
+    }
+
     /// The `error_code` of an [`ServerMsg::Error`], or `None` for other
     /// messages and for errors the server sent without a code.
     pub fn error_code(&self) -> Option<&ErrorCode> {
@@ -671,6 +750,10 @@ impl OxArchiveWs {
     /// support replay, not live subscriptions, and are rejected before a
     /// request is sent. Use REST for their current data or a bounded replay
     /// request for stored history.
+    ///
+    /// On [`MEMPOOL_CHANNEL`] the symbol is optional: `None` subscribes to
+    /// every pending transaction. That channel is served only at
+    /// [`STREAM_WS_URL`].
     pub async fn subscribe(&self, channel: &str, symbol: Option<&str>) -> Result<()> {
         if is_lighter_replay_only_channel(channel) {
             return Err(Error::InvalidParam(LIGHTER_SUBSCRIPTION_ERROR.to_string()));
@@ -723,7 +806,8 @@ impl OxArchiveWs {
         .await
     }
 
-    /// Unsubscribe from a real-time channel.
+    /// Unsubscribe from a real-time channel. On [`MEMPOOL_CHANNEL`], `None`
+    /// ends the unfiltered subscription and a symbol ends that symbol's.
     pub async fn unsubscribe(&self, channel: &str, symbol: Option<&str>) -> Result<()> {
         self.send(ClientMsg::Unsubscribe {
             channel: channel.to_string(),
@@ -748,8 +832,9 @@ impl OxArchiveWs {
     /// Which channels replay, and from when, is listed by
     /// `client.capabilities()`. A channel without replay (for example
     /// `ticker` or `spot_trades`) is answered with a
-    /// [`ServerMsg::Error`] whose `error_code` is `unsupported_for_venue`. A
-    /// successful replay terminates with a `replay_completed` server message.
+    /// [`ServerMsg::Error`] whose `error_code` is `unsupported_for_venue`;
+    /// [`MEMPOOL_CHANNEL`], which is live only, is answered with an error too.
+    /// A successful replay terminates with a `replay_completed` server message.
     pub async fn replay(
         &self,
         channel: &str,
@@ -885,7 +970,7 @@ impl OxArchiveWs {
 
 #[cfg(test)]
 mod lighter_live_tests {
-    use super::{ClientMsg, ServerMsg};
+    use super::{ClientMsg, ServerMsg, MEMPOOL_CHANNEL};
     use crate::types::LighterLiveData;
 
     const ORDERBOOK_FRAME: &str = r#"{"type":"data","channel":"lighter_orderbook","coin":"BTC","symbol":"BTC","data":{"coin":"BTC","time":1790294171459,"levels":[[{"px":"84368.7","sz":"0.00020","n":1},{"px":"84368.6","sz":"0.00020","n":1},{"px":"84368.3","sz":"0.00010","n":1}],[{"px":"84368.8","sz":"0.05720","n":1},{"px":"84368.9","sz":"0.14223","n":1},{"px":"84369.1","sz":"0.01198","n":1}]]}}"#;
@@ -1069,6 +1154,16 @@ mod lighter_live_tests {
         assert_eq!(
             serde_json::to_value(&unsubscribe).unwrap(),
             serde_json::json!({"op": "unsubscribe", "channel": "lighter_trades", "symbol": "BTC"})
+        );
+
+        // `mempool` is the one channel whose symbol is optional.
+        let unfiltered = ClientMsg::Subscribe {
+            channel: MEMPOOL_CHANNEL.to_string(),
+            symbol: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&unfiltered).unwrap(),
+            serde_json::json!({"op": "subscribe", "channel": "mempool", "symbol": null})
         );
     }
 

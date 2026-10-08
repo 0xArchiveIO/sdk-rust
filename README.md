@@ -18,7 +18,7 @@ Or add directly to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.12"
+oxarchive = "1.13"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 chrono = "0.4" # the examples below use it for time windows
 ```
@@ -26,7 +26,7 @@ chrono = "0.4" # the examples below use it for time windows
 For WebSocket support (real-time streaming and replay):
 
 ```toml
-oxarchive = { version = "1.12", features = ["websocket"] }
+oxarchive = { version = "1.13", features = ["websocket"] }
 ```
 
 ## Quick Start
@@ -196,8 +196,10 @@ println!("{} symbols, {} on HIP-3", symbols.len(), hip3.len());
 one `Capability` row per venue and datatype: its REST routes, its WebSocket
 channels, whether those stream live (`live`) and replay history (`replay`),
 the first instant served (`available_from`), the cadence, the largest page
-(`page_limit`), and the accepted `interval` values. The route is public and
-uses no credits. Read replay availability from it rather than from a fixed
+(`page_limit`), and the accepted `interval` values. A row whose channels are
+served at one endpoint only, or included with some plans only, names them in
+`ws_endpoint` and `plans`; only the `mempool` row has them, and elsewhere both
+are `None`. The route is public and uses no credits. Read replay availability from it rather than from a fixed
 list:
 
 ```rust
@@ -1850,6 +1852,8 @@ For large historical downloads, use the S3 Parquet bulk export in the [Data Cata
 
 > Lighter live subscriptions are available for `lighter_orderbook`, `lighter_trades`, `lighter_open_interest`, and `lighter_funding` on mainnet, and for `rh_lighter_orderbook`, `rh_lighter_trades`, `rh_lighter_open_interest`, and `rh_lighter_funding` on Robinhood Chain. `lighter_candles`, `lighter_l3_orderbook`, and `rh_lighter_candles` remain replay-only. Every Lighter channel on both deployments supports historical replay.
 
+> The `mempool` channel (pending Hyperliquid transactions) is served only at `wss://stream.0xarchive.io/ws` and is included with the Pro, Scale and Enterprise plans. See [Pending Transactions (Mempool)](#pending-transactions-mempool).
+
 The client connects with `version=2026-10-01`. Under that version, error messages carry an `error_code` (see [Error Handling](#error-handling)), and Lighter replay rows have the same shapes as the live payloads. `client.capabilities()` lists which channels stream live and which replay.
 
 ### Real-time Streaming
@@ -1957,6 +1961,94 @@ If the lag persists, a notice such as `Stopped the lighter_trades stream for BTC
 ends that subscription; subscribe again to resume. `lighter_orderbook` never sends an
 older book in place of a newer one.
 
+### Pending Transactions (Mempool)
+
+The `mempool` channel streams signed Hyperliquid transactions (orders, cancels,
+modifies, TWAPs, leverage changes, transfers and every other action type) as our
+Hyperliquid node receives them from its peers, before they are included in a block.
+It covers every Hyperliquid product: perps, HIP-3, HIP-4 and spot.
+
+- **Live only.** There is no replay, history, REST route or export.
+- **One endpoint.** It is served only at `wss://stream.0xarchive.io/ws`
+  (`oxarchive::ws::STREAM_WS_URL`), with the same API key and protocol. At
+  `wss://api.0xarchive.io/ws`, the default `ws_url`, a subscribe is answered with
+  `ErrorCode::EndpointUnsupported`. Use a separate connection for the channels served
+  at the default endpoint.
+- **Plans.** It is included with the Pro, Scale and Enterprise plans; on other plans a
+  subscribe is answered with `ErrorCode::Forbidden`. Every other channel stays on every
+  plan, Free included. Each data message is metered like any other WebSocket message.
+
+```rust
+use oxarchive::ws::{OxArchiveWs, ServerMsg, WsOptions, MEMPOOL_CHANNEL, STREAM_WS_URL};
+
+let mut ws = OxArchiveWs::new(WsOptions::new("your-api-key").ws_url(STREAM_WS_URL));
+ws.connect().await?;
+let mut rx = ws.rx.take().expect("receiver");
+
+ws.subscribe(MEMPOOL_CHANNEL, Some("BTC")).await?;      // actions that reference BTC
+ws.subscribe(MEMPOOL_CHANNEL, Some("xyz:TSLA")).await?; // HIP-3; spot "HYPE-USDC", HIP-4 "#49720"
+// ws.subscribe(MEMPOOL_CHANNEL, None).await?;          // every pending transaction (unfiltered)
+
+while let Some(msg) = rx.recv().await {
+    match msg.mempool_items() {
+        Some(Ok(items)) => {
+            for item in items {
+                println!("{:?} {} {:?}", item.received_at, item.action["type"], item.symbols);
+            }
+        }
+        Some(Err(e)) => eprintln!("Unexpected mempool payload: {e}"),
+        None => {
+            if let ServerMsg::Error { message, error_code } = msg {
+                eprintln!("{error_code:?}: {message}");
+            }
+        }
+    }
+}
+```
+
+The symbol is optional on this channel only. Without it you receive every pending
+transaction; with it, every action whose asset ids include that market, whole (an
+order batch that touches `BTC` and `ETH` reaches both subscriptions). Symbols are
+spelled as everywhere else: perps `BTC`, HIP-3 `xyz:TSLA`, spot `HYPE-USDC`
+(`HYPE/USDC` is also accepted) and HIP-4 `#49720`. An unknown symbol is answered with
+`ErrorCode::InvalidSymbol`. The `subscribed` acknowledgement carries the canonical
+symbol, or `None` for the unfiltered stream.
+
+The server sends one `ServerMsg::Data` per batch of transactions as it arrives, with
+`coin` and `symbol` set to the subscription's symbol (`None` when unfiltered).
+`msg.mempool_items()` decodes its `data` into one `MempoolItem` per signed action:
+
+| Field | Description |
+|-------|-------------|
+| `received_at` | When our node received the transaction: an RFC 3339 UTC string with nanosecond precision. Not a block time. |
+| `received_at_ms` | The same time in Unix milliseconds. |
+| `symbols` | Markets the action's asset ids reference, in first-seen order without repeats. Empty for actions with no market, such as transfers, `noop`, `scheduleCancel` and validator actions. |
+| `action` | The action exactly as signed (`serde_json::Value`), in Hyperliquid's exchange-action format: asset ids (`a` or `asset`) rather than symbols, prices and sizes as strings. `serde_json::Value` sorts object keys unless serde_json's `preserve_order` feature is enabled; enable it in your crate if you need the signed key order. |
+| `nonce` | The action's nonce. |
+| `vault_address` | The vault or subaccount the action acts for, or `None`. |
+| `expires_after_ms` | The action's `expiresAfter` in Unix milliseconds, or `None`. |
+| `signature` | `MempoolSignature` with `r`, `s` and `v`. The signer's address is not included. |
+
+`action["type"]` names the action, for example `order`, `cancel`, `cancelByCloid`,
+`modify`, `batchModify`, `scheduleCancel`, `twapOrder`, `twapCancel`,
+`updateLeverage`, `updateIsolatedMargin`, `noop`, `evmRawTx`, or a transfer such as
+`usdSend`, `spotSend`, `usdClassTransfer` or `sendAsset`. Hyperliquid adds action
+types, so handle types you do not recognise.
+
+A pending transaction is not an executed one: it can still be rejected, expire or
+never land in a block. The same signed action can occasionally arrive twice;
+deduplicate on `signature` if that matters to you.
+
+**Volume and limits.** The unfiltered stream is several megabytes per second before
+compression, and this client does not negotiate permessage-deflate compression, so
+subscribe with a symbol where you can. Unfiltered subscriptions are limited
+server-wide, and when they are at capacity a subscribe without a symbol is answered
+with `ErrorCode::RateLimited`; symbol subscriptions are not capped this way. A
+connection that reads too slowly is disconnected, as on any channel, and the usual
+per-connection limits apply (subscriptions per plan, 10 subscribe operations per
+second). If the feed is temporarily unavailable, a subscribe is answered with
+`ErrorCode::UpstreamUnavailable`.
+
 ### Historical Replay
 
 Replay a bounded historical window with original timing preserved. Every replay
@@ -2037,6 +2129,7 @@ ws.replay_stop().await?;
 | `funding` | Funding rate snapshots | Yes | Yes |
 | `ticker` | Price and 24h volume | Yes | No |
 | `all_tickers` | All market tickers | Yes | No |
+| `mempool` | Pending transactions on every Hyperliquid product, before they are in a block. Symbol optional. Pro, Scale and Enterprise plans; served only at `wss://stream.0xarchive.io/ws`. | Yes | No |
 | `orderbook_full` | Hyperliquid core full-depth L2 order book, aggregated from order-level data (every price level, no user attribution): an `l4_snapshot` frame (`ServerMsg::L4Snapshot`) with the whole book, then `l4_batch` frames (`ServerMsg::L4Batch`) of price-level changes (`side`, `px`, `sz`, `n`, `bn`; `sz` and `n` are `0` when a level is removed). | Yes | Yes, bulk and single-channel, from 2026-03-11 01:03 UTC |
 | `lighter_orderbook` | Lighter L2 order book | Yes | Yes |
 | `lighter_trades` | Lighter trades | Yes | Yes |
@@ -2095,7 +2188,7 @@ while let Some(msg) = rx.recv().await {
 
 ### Tier Limits
 
-All self-serve tiers reach the published route families; Free covers the most recent rolling 30 days of history (30-day span per request or replay), and Build and above keep the retained archive. Schema availability remains family-specific; plans gate capacity and Free's 30-day history window, not route families, schemas, or served depth.
+All self-serve tiers reach the published route families; Free covers the most recent rolling 30 days of history (30-day span per request or replay), and Build and above keep the retained archive. Schema availability remains family-specific; plans gate capacity and Free's 30-day history window, not route families, schemas, or served depth. The one exception is the live `mempool` channel, included with the Pro, Scale and Enterprise plans.
 
 | Tier | Max Subscriptions | Max Connections | Max Replay Speed |
 |------|------------------|-----------------|------------------|

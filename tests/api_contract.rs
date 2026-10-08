@@ -858,6 +858,46 @@ async fn capabilities_are_typed_rows() {
     assert!(Capability::for_channel(&rows, "nope").is_none());
 }
 
+#[test]
+fn only_the_mempool_row_names_an_endpoint_and_plans() {
+    let rows: Vec<Capability> = serde_json::from_value(json!([
+        {"venue": "hyperliquid", "datatype": "mempool", "rest_routes": [],
+         "ws_channels": ["mempool"], "live": true, "replay": false,
+         "available_from": null, "cadence": "event", "page_limit": null, "intervals": [],
+         "notes": "Live only, on wss://stream.0xarchive.io/ws.",
+         "ws_endpoint": "wss://stream.0xarchive.io/ws",
+         "plans": ["pro", "scale", "enterprise"]},
+        {"venue": "hyperliquid", "datatype": "trades",
+         "rest_routes": ["/v1/hyperliquid/trades/{symbol}"], "ws_channels": ["trades"],
+         "live": true, "replay": true, "available_from": "2023-04-15T03:31:00.000Z",
+         "cadence": "event", "page_limit": 1000, "intervals": [], "notes": null}
+    ]))
+    .unwrap();
+
+    let mempool = Capability::for_channel(&rows, "mempool").unwrap();
+    assert!(mempool.live && !mempool.replay);
+    assert_eq!(
+        mempool.ws_endpoint.as_deref(),
+        Some("wss://stream.0xarchive.io/ws")
+    );
+    assert_eq!(
+        mempool.plans.as_deref(),
+        Some(
+            &[
+                "pro".to_string(),
+                "scale".to_string(),
+                "enterprise".to_string()
+            ][..]
+        )
+    );
+
+    let trades = Capability::for_channel(&rows, "trades").unwrap();
+    assert_eq!((&trades.ws_endpoint, &trades.plans), (&None, &None));
+    // Rows without them serialize as before: the fields are left out.
+    let value = serde_json::to_value(trades).unwrap();
+    assert!(value.get("ws_endpoint").is_none() && value.get("plans").is_none());
+}
+
 // ---------------------------------------------------------------------------
 // Filters the API honours
 // ---------------------------------------------------------------------------

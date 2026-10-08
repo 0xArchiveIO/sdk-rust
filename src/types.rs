@@ -1267,6 +1267,91 @@ impl LighterLiveData {
 }
 
 // ---------------------------------------------------------------------------
+// Mempool (pending Hyperliquid transactions, live only)
+// ---------------------------------------------------------------------------
+
+/// One signed action from a live `mempool` message.
+///
+/// The `mempool` channel streams signed Hyperliquid transactions as our
+/// Hyperliquid node receives them from its peers, before they are included in
+/// a block, for every Hyperliquid product (perps, HIP-3, HIP-4 and spot). It is
+/// live only, served only at `wss://stream.0xarchive.io/ws`, and included
+/// with the Pro, Scale and Enterprise plans.
+///
+/// A pending transaction is not an executed one: it can still be rejected,
+/// expire or never land in a block. The same signed action can occasionally
+/// arrive twice; deduplicate on [`signature`](Self::signature) if that matters
+/// to you.
+///
+/// Decode a message's items with [`MempoolItem::decode`], or with
+/// `ServerMsg::mempool_items` when the `websocket` feature is enabled. Fields
+/// this version does not know are ignored, and new ones may be added in minor
+/// releases, so the struct cannot be built with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct MempoolItem {
+    /// When our node received the transaction, as an RFC 3339 UTC string with
+    /// the node's nanosecond precision, for example
+    /// `2026-10-08T01:57:23.548737209Z`. Not a block time.
+    pub received_at: Option<String>,
+    /// When our node received the transaction, in Unix milliseconds.
+    pub received_at_ms: Option<i64>,
+    /// The markets the action's asset ids reference, spelled as everywhere
+    /// else (`BTC`, `xyz:TSLA`, `HYPE-USDC`, `#49720`), in first-seen order
+    /// without repeats. Empty for actions with no market, such as transfers,
+    /// `noop`, `scheduleCancel` and validator actions.
+    #[serde(default)]
+    pub symbols: Vec<String>,
+    /// The action exactly as signed, in Hyperliquid's exchange-action format:
+    /// asset ids (`a` or `asset`) rather than symbols, and prices and sizes as
+    /// strings. `action["type"]` names it, for example `order`, `cancel`,
+    /// `cancelByCloid`, `modify`, `batchModify`, `scheduleCancel`,
+    /// `twapOrder`, `twapCancel`, `updateLeverage`, `updateIsolatedMargin`,
+    /// `noop`, `evmRawTx`, or a transfer such as `usdSend`, `spotSend`,
+    /// `usdClassTransfer` or `sendAsset`. Hyperliquid adds action types, so
+    /// handle types you do not recognise.
+    ///
+    /// `serde_json::Value` sorts object keys unless serde_json's
+    /// `preserve_order` feature is enabled. Enable it in your own crate if you
+    /// need the keys in the order they were signed.
+    pub action: serde_json::Value,
+    /// The action's nonce.
+    pub nonce: Option<u64>,
+    /// The vault or subaccount the action acts for, or `None`.
+    pub vault_address: Option<String>,
+    /// The action's `expiresAfter` in Unix milliseconds, or `None`.
+    pub expires_after_ms: Option<i64>,
+    /// The signature over the action. The signer's address is not included;
+    /// it can be recovered from the signature and the action.
+    pub signature: Option<MempoolSignature>,
+}
+
+/// The `{r, s, v}` signature of a pending action, as signed.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MempoolSignature {
+    /// `r` as a hex string.
+    pub r: String,
+    /// `s` as a hex string.
+    pub s: String,
+    /// Recovery id.
+    pub v: u64,
+}
+
+impl MempoolItem {
+    /// Decode the `data` field of a `mempool` message: one item per signed
+    /// action, in the order received.
+    ///
+    /// Returns `None` when `channel` is not `mempool`, and `Some(Err(..))`
+    /// when the payload does not match the item shape.
+    pub fn decode(channel: &str, data: &serde_json::Value) -> Option<crate::Result<Vec<Self>>> {
+        if channel != "mempool" {
+            return None;
+        }
+        Some(Vec::<Self>::deserialize(data).map_err(|e| crate::Error::Deserialize(e.to_string())))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Convenience / summary types
 // ---------------------------------------------------------------------------
 
@@ -2366,6 +2451,15 @@ pub struct Capability {
     /// Further detail, such as how replay behaves.
     #[serde(default)]
     pub notes: Option<String>,
+    /// The only WebSocket endpoint that serves this row's channels, when that
+    /// is not every endpoint: `wss://stream.0xarchive.io/ws` for `mempool`.
+    /// `None` means every endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ws_endpoint: Option<String>,
+    /// The plans that include it, when that is not every plan: `pro`, `scale`
+    /// and `enterprise` for `mempool`. `None` means every plan, Free included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plans: Option<Vec<String>>,
 }
 
 impl Capability {

@@ -52,7 +52,8 @@ pub enum ErrorCode {
     NotFound,
     /// Missing or invalid credentials.
     Unauthorized,
-    /// The credentials do not grant access to this resource.
+    /// The credentials do not grant access to this resource, or the plan does
+    /// not include it (the `mempool` WebSocket channel below Pro).
     Forbidden,
     /// The monthly credits are spent.
     InsufficientCredits,
