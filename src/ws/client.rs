@@ -33,7 +33,8 @@ pub const DEFAULT_WS_URL: &str = "wss://api.0xarchive.io/ws";
 ///
 /// It serves a subset of the live channels; a channel it does not serve, and
 /// every replay, is answered with a [`ServerMsg::Error`] that names
-/// [`DEFAULT_WS_URL`]. Use one connection per endpoint:
+/// [`DEFAULT_WS_URL`]. [`MEMPOOL_CHANNEL`] has no replay on any endpoint.
+/// Use one connection per endpoint:
 ///
 /// ```no_run
 /// # use oxarchive::ws::{OxArchiveWs, WsOptions, MEMPOOL_CHANNEL, STREAM_WS_URL};
@@ -58,9 +59,9 @@ pub const STREAM_WS_URL: &str = "wss://stream.0xarchive.io/ws";
 ///   is on every plan.
 ///
 /// The symbol is optional on this channel only. `subscribe(MEMPOOL_CHANNEL,
-/// None)` streams every pending transaction; with a symbol (`BTC`,
-/// `xyz:TSLA`, `HYPE-USDC`, `#49720`) it streams every action that references
-/// that market, whole. The unfiltered stream is several megabytes a second
+/// None)` streams every pending transaction our Hyperliquid node receives;
+/// with a symbol (`BTC`, `xyz:TSLA`, `HYPE-USDC`, `#49720`) it streams every
+/// action that references that market, whole. The unfiltered stream is several megabytes a second
 /// before compression, and the server limits unfiltered subscriptions: when
 /// they are at capacity, a subscribe without a symbol is answered with
 /// [`ErrorCode::RateLimited`]. Subscribe with a symbol where you can.
@@ -421,7 +422,8 @@ pub enum ServerMsg {
     /// serve the channel or operation; the message names the one that does).
     /// A channel that does not offer a mode (live, replay, `replay.seek`)
     /// answers `unsupported_for_venue`, and a channel your plan does not
-    /// include ([`MEMPOOL_CHANNEL`] below Pro) answers `forbidden`.
+    /// include ([`MEMPOOL_CHANNEL`] on plans other than Pro, Scale and
+    /// Enterprise) answers `forbidden`.
     Error {
         message: String,
         /// Stable machine-readable reason, `None` when the server sent none.
@@ -442,7 +444,7 @@ pub enum ServerMsg {
         data: serde_json::Value,
     },
     /// A [`MEMPOOL_CHANNEL`] data message: one batch of pending transactions,
-    /// with one [`MempoolItem`] per signed action, in the order received.
+    /// with one [`MempoolItem`] per signed action in the batch.
     /// `coin` and `symbol` are the subscription's symbol, or `None` on the
     /// unfiltered stream.
     ///
@@ -802,8 +804,8 @@ impl OxArchiveWs {
     /// request for stored history.
     ///
     /// On [`MEMPOOL_CHANNEL`] the symbol is optional: `None` subscribes to
-    /// every pending transaction. That channel is served only at
-    /// [`STREAM_WS_URL`].
+    /// every pending transaction our Hyperliquid node receives. That channel
+    /// is served only at [`STREAM_WS_URL`].
     pub async fn subscribe(&self, channel: &str, symbol: Option<&str>) -> Result<()> {
         if is_lighter_replay_only_channel(channel) {
             return Err(Error::InvalidParam(LIGHTER_SUBSCRIPTION_ERROR.to_string()));

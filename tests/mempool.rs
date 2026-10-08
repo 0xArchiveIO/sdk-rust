@@ -140,12 +140,9 @@ fn the_action_keeps_its_exact_bytes_and_key_order() {
         "{item}"
     );
 
-    // The parsed form is for inspection: it sorts the keys.
-    let parsed = serde_json::to_string(&items[0].action_value().unwrap()).unwrap();
-    assert!(
-        parsed.starts_with(r#"{"grouping":"na","orders":"#),
-        "{parsed}"
-    );
+    // The parsed form is for inspection and holds the same content.
+    let parsed: serde_json::Value = serde_json::from_str(ORDER_ACTION).unwrap();
+    assert_eq!(items[0].action_value().unwrap(), parsed);
 }
 
 #[test]

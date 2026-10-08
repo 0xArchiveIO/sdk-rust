@@ -11,8 +11,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   they are included in a block, for every Hyperliquid product. It is live
   only, served only at `wss://stream.0xarchive.io/ws`, and included with the
   Pro, Scale and Enterprise plans. Every other channel stays on every plan.
-  `subscribe(MEMPOOL_CHANNEL, None)` streams every pending transaction;
-  with a symbol, only the actions that reference that market. `mempool` is
+  `subscribe(MEMPOOL_CHANNEL, None)` streams every pending transaction our
+  Hyperliquid node receives; with a symbol, only the actions that reference
+  that market. `mempool` is
   the only channel whose symbol is optional.
 - `ServerMsg::Mempool`, with one `MempoolItem` (and its `MempoolSignature`)
   per signed action. `ServerMsg::from_text()`, which the client uses to read
@@ -20,7 +21,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   `MempoolItem::action` (a `Box<serde_json::value::RawValue>`) keeps the
   exact bytes the server sent, key order included, for signature recovery.
   `MempoolItem::action_value()` parses the action into a `serde_json::Value`
-  for inspection, which sorts the keys. `ServerMsg::mempool_items()` returns
+  for inspection, which may not keep the original key order. `ServerMsg::mempool_items()` returns
   a message's items. Unknown item fields are ignored.
 - serde_json's `raw_value` feature is enabled.
 - `ws::STREAM_WS_URL` (`wss://stream.0xarchive.io/ws`) and
@@ -28,8 +29,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
   Pass `STREAM_WS_URL` to `WsOptions::ws_url()` for a connection that
   subscribes to `mempool`.
 - `Capability::ws_endpoint` and `Capability::plans`, the fields
-  `/v1/capabilities` sets on the `mempool` row only. `None` means every
-  endpoint and every plan. They are left out when serializing a row that
+  `/v1/capabilities` sets on the `mempool` row only. For `ws_endpoint`,
+  `None` means the default endpoint, `wss://api.0xarchive.io/ws`. For
+  `plans`, `None` means every plan. They are left out when serializing a row that
   does not have them.
 
 ### Changed

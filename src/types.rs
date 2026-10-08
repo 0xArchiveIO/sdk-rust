@@ -1317,7 +1317,7 @@ pub struct MempoolItem {
     /// included, as signature recovery needs them; `action.get()` returns
     /// them as a `&str`. To inspect the action,
     /// [`action_value`](Self::action_value) parses it into a
-    /// `serde_json::Value`, which sorts the keys.
+    /// `serde_json::Value`, which may not keep the original key order.
     pub action: Box<serde_json::value::RawValue>,
     /// The action's nonce.
     pub nonce: Option<u64>,
@@ -1345,8 +1345,8 @@ impl MempoolItem {
     /// The action parsed into a `serde_json::Value`, for inspection, for
     /// example `item.action_value()?["type"]`.
     ///
-    /// The parsed form sorts object keys, so it no longer has the signed key
-    /// order. Use the raw [`action`](Self::action) for signature recovery.
+    /// The parsed form may not keep the original key order. Use the raw
+    /// [`action`](Self::action) for signature recovery.
     pub fn action_value(&self) -> crate::Result<serde_json::Value> {
         serde_json::from_str(self.action.get())
             .map_err(|e| crate::Error::Deserialize(e.to_string()))
@@ -2453,9 +2453,9 @@ pub struct Capability {
     /// Further detail, such as how replay behaves.
     #[serde(default)]
     pub notes: Option<String>,
-    /// The only WebSocket endpoint that serves this row's channels, when that
-    /// is not every endpoint: `wss://stream.0xarchive.io/ws` for `mempool`.
-    /// `None` means every endpoint.
+    /// The WebSocket endpoint that serves this row's channels, when it is not
+    /// the default endpoint: `wss://stream.0xarchive.io/ws` for `mempool`.
+    /// `None` means the default endpoint, `wss://api.0xarchive.io/ws`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ws_endpoint: Option<String>,
     /// The plans that include it, when that is not every plan: `pro`, `scale`

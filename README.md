@@ -196,10 +196,10 @@ println!("{} symbols, {} on HIP-3", symbols.len(), hip3.len());
 one `Capability` row per venue and datatype: its REST routes, its WebSocket
 channels, whether those stream live (`live`) and replay history (`replay`),
 the first instant served (`available_from`), the cadence, the largest page
-(`page_limit`), and the accepted `interval` values. A row whose channels are
-served at one endpoint only, or included with some plans only, names them in
-`ws_endpoint` and `plans`; only the `mempool` row has them, and elsewhere both
-are `None`. The route is public and uses no credits. Read replay availability from it rather than from a fixed
+(`page_limit`), and the accepted `interval` values. The `mempool` row is the one
+that sets `ws_endpoint` (the endpoint that serves it) and `plans` (the plans that
+include it); rows without them use the default endpoint, `wss://api.0xarchive.io/ws`,
+and are on every plan. The route is public and uses no credits. Read replay availability from it rather than from a fixed
 list:
 
 ```rust
@@ -1968,7 +1968,8 @@ modifies, TWAPs, leverage changes, transfers and every other action type) as our
 Hyperliquid node receives them from its peers, before they are included in a block.
 It covers every Hyperliquid product: perps, HIP-3, HIP-4 and spot.
 
-- **Live only.** There is no replay, history, REST route or export.
+- **Live only.** Pending transactions are never stored. There is no replay, history,
+  REST route or export.
 - **One endpoint.** It is served only at `wss://stream.0xarchive.io/ws`
   (`oxarchive::ws::STREAM_WS_URL`), with the same API key and protocol. At
   `wss://api.0xarchive.io/ws`, the default `ws_url`, a subscribe is answered with
@@ -1987,14 +1988,14 @@ let mut rx = ws.rx.take().expect("receiver");
 
 ws.subscribe(MEMPOOL_CHANNEL, Some("BTC")).await?;      // actions that reference BTC
 ws.subscribe(MEMPOOL_CHANNEL, Some("xyz:TSLA")).await?; // HIP-3; spot "HYPE-USDC", HIP-4 "#49720"
-// ws.subscribe(MEMPOOL_CHANNEL, None).await?;          // every pending transaction (unfiltered)
+// ws.subscribe(MEMPOOL_CHANNEL, None).await?;          // pending transactions our node receives (unfiltered)
 
 while let Some(msg) = rx.recv().await {
     match msg {
         ServerMsg::Mempool { symbol, items, .. } => {
             for item in items {
                 // item.action.get() is the action's exact bytes, for signature recovery.
-                let action = item.action_value()?; // parsed for inspection (sorted keys)
+                let action = item.action_value()?; // parsed, for inspection only
                 println!("{symbol:?} {:?} {} {:?}", item.received_at, action["type"], item.symbols);
             }
         }
@@ -2005,7 +2006,7 @@ while let Some(msg) = rx.recv().await {
 ```
 
 The symbol is optional on this channel only. Without it you receive every pending
-transaction; with it, every action whose asset ids include that market, whole (an
+transaction our Hyperliquid node receives; with it, every action whose asset ids include that market, whole (an
 order batch that touches `BTC` and `ETH` reaches both subscriptions). Symbols are
 spelled as everywhere else: perps `BTC`, HIP-3 `xyz:TSLA`, spot `HYPE-USDC`
 (`HYPE/USDC` is also accepted) and HIP-4 `#49720`. An unknown symbol is answered with
@@ -2022,7 +2023,7 @@ action in `items`:
 | `received_at` | When our node received the transaction: an RFC 3339 UTC string with nanosecond precision. Not a block time. |
 | `received_at_ms` | The same time in Unix milliseconds. |
 | `symbols` | Markets the action's asset ids reference, in first-seen order without repeats. Empty for actions with no market, such as transfers, `noop`, `scheduleCancel` and validator actions. |
-| `action` | The action exactly as signed, in Hyperliquid's exchange-action format: asset ids (`a` or `asset`) rather than symbols, prices and sizes as strings. It is a `Box<RawValue>` that keeps the exact bytes the server sent, key order included, for signature recovery (`item.action.get()`). `item.action_value()` parses it into a `serde_json::Value` for inspection, which sorts the keys. |
+| `action` | The action exactly as signed, in Hyperliquid's exchange-action format: asset ids (`a` or `asset`) rather than symbols, prices and sizes as strings. It is a `Box<RawValue>` that keeps the exact bytes the server sent, key order included, for signature recovery (`item.action.get()`). `item.action_value()` parses it into a `serde_json::Value` for inspection, which may not keep the original key order. |
 | `nonce` | The action's nonce. |
 | `vault_address` | The vault or subaccount the action acts for, or `None`. |
 | `expires_after_ms` | The action's `expiresAfter` in Unix milliseconds, or `None`. |
