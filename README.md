@@ -1990,18 +1990,16 @@ ws.subscribe(MEMPOOL_CHANNEL, Some("xyz:TSLA")).await?; // HIP-3; spot "HYPE-USD
 // ws.subscribe(MEMPOOL_CHANNEL, None).await?;          // every pending transaction (unfiltered)
 
 while let Some(msg) = rx.recv().await {
-    match msg.mempool_items() {
-        Some(Ok(items)) => {
+    match msg {
+        ServerMsg::Mempool { symbol, items, .. } => {
             for item in items {
-                println!("{:?} {} {:?}", item.received_at, item.action["type"], item.symbols);
+                // item.action.get() is the action's exact bytes, for signature recovery.
+                let action = item.action_value()?; // parsed for inspection (sorted keys)
+                println!("{symbol:?} {:?} {} {:?}", item.received_at, action["type"], item.symbols);
             }
         }
-        Some(Err(e)) => eprintln!("Unexpected mempool payload: {e}"),
-        None => {
-            if let ServerMsg::Error { message, error_code } = msg {
-                eprintln!("{error_code:?}: {message}");
-            }
-        }
+        ServerMsg::Error { message, error_code } => eprintln!("{error_code:?}: {message}"),
+        _ => {}
     }
 }
 ```
@@ -2014,22 +2012,23 @@ spelled as everywhere else: perps `BTC`, HIP-3 `xyz:TSLA`, spot `HYPE-USDC`
 `ErrorCode::InvalidSymbol`. The `subscribed` acknowledgement carries the canonical
 symbol, or `None` for the unfiltered stream.
 
-The server sends one `ServerMsg::Data` per batch of transactions as it arrives, with
-`coin` and `symbol` set to the subscription's symbol (`None` when unfiltered).
-`msg.mempool_items()` decodes its `data` into one `MempoolItem` per signed action:
+The server sends one message per batch of transactions as it arrives. The client
+delivers it as `ServerMsg::Mempool`, with `coin` and `symbol` set to the
+subscription's symbol (`None` when unfiltered) and one `MempoolItem` per signed
+action in `items`:
 
 | Field | Description |
 |-------|-------------|
 | `received_at` | When our node received the transaction: an RFC 3339 UTC string with nanosecond precision. Not a block time. |
 | `received_at_ms` | The same time in Unix milliseconds. |
 | `symbols` | Markets the action's asset ids reference, in first-seen order without repeats. Empty for actions with no market, such as transfers, `noop`, `scheduleCancel` and validator actions. |
-| `action` | The action exactly as signed (`serde_json::Value`), in Hyperliquid's exchange-action format: asset ids (`a` or `asset`) rather than symbols, prices and sizes as strings. `serde_json::Value` sorts object keys unless serde_json's `preserve_order` feature is enabled; enable it in your crate if you need the signed key order. |
+| `action` | The action exactly as signed, in Hyperliquid's exchange-action format: asset ids (`a` or `asset`) rather than symbols, prices and sizes as strings. It is a `Box<RawValue>` that keeps the exact bytes the server sent, key order included, for signature recovery (`item.action.get()`). `item.action_value()` parses it into a `serde_json::Value` for inspection, which sorts the keys. |
 | `nonce` | The action's nonce. |
 | `vault_address` | The vault or subaccount the action acts for, or `None`. |
 | `expires_after_ms` | The action's `expiresAfter` in Unix milliseconds, or `None`. |
 | `signature` | `MempoolSignature` with `r`, `s` and `v`. The signer's address is not included. |
 
-`action["type"]` names the action, for example `order`, `cancel`, `cancelByCloid`,
+The action's `type` names it, for example `order`, `cancel`, `cancelByCloid`,
 `modify`, `batchModify`, `scheduleCancel`, `twapOrder`, `twapCancel`,
 `updateLeverage`, `updateIsolatedMargin`, `noop`, `evmRawTx`, or a transfer such as
 `usdSend`, `spotSend`, `usdClassTransfer` or `sendAsset`. Hyperliquid adds action

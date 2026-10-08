@@ -65,9 +65,9 @@ pub const STREAM_WS_URL: &str = "wss://stream.0xarchive.io/ws";
 /// they are at capacity, a subscribe without a symbol is answered with
 /// [`ErrorCode::RateLimited`]. Subscribe with a symbol where you can.
 ///
-/// Each message is a [`ServerMsg::Data`] whose `coin` and `symbol` are the
-/// subscription's symbol, or `None` on the unfiltered stream. Decode its
-/// items with [`ServerMsg::mempool_items`].
+/// [`OxArchiveWs`] delivers each message as a [`ServerMsg::Mempool`], whose
+/// `coin` and `symbol` are the subscription's symbol, or `None` on the
+/// unfiltered stream, and whose items keep each action's exact bytes.
 pub const MEMPOOL_CHANNEL: &str = "mempool";
 
 /// Options for the WebSocket connection.
@@ -432,14 +432,30 @@ pub enum ServerMsg {
     ///
     /// For the live Lighter channels of both deployments,
     /// [`ServerMsg::lighter_live_data`] decodes `data` into [`LighterLiveData`].
-    /// For [`MEMPOOL_CHANNEL`], [`ServerMsg::mempool_items`] decodes it into
-    /// [`MempoolItem`]s; `coin` and `symbol` are `None` on the unfiltered
-    /// stream.
+    /// A [`MEMPOOL_CHANNEL`] message read with [`ServerMsg::from_text`], as
+    /// [`OxArchiveWs`] reads every message, arrives as [`ServerMsg::Mempool`]
+    /// instead.
     Data {
         channel: String,
         coin: Option<String>,
         symbol: Option<String>,
         data: serde_json::Value,
+    },
+    /// A [`MEMPOOL_CHANNEL`] data message: one batch of pending transactions,
+    /// with one [`MempoolItem`] per signed action, in the order received.
+    /// `coin` and `symbol` are the subscription's symbol, or `None` on the
+    /// unfiltered stream.
+    ///
+    /// [`ServerMsg::from_text`] (which [`OxArchiveWs`] uses) builds it
+    /// straight from the frame text, so each item's `action` keeps the exact
+    /// bytes the server sent. Deserializing a `ServerMsg` with serde gives a
+    /// [`ServerMsg::Data`] instead, and so does a mempool frame whose items do
+    /// not match [`MempoolItem`].
+    #[serde(skip)]
+    Mempool {
+        coin: Option<String>,
+        symbol: Option<String>,
+        items: Vec<MempoolItem>,
     },
     /// Initial order-level L4 state for a live subscription or a replay.
     ///
@@ -595,11 +611,11 @@ impl ServerMsg {
         }
     }
 
-    /// Decode the items of a [`MEMPOOL_CHANNEL`] data message: one
-    /// [`MempoolItem`] per signed action, in the order received.
+    /// Parse one text frame from the server, as [`OxArchiveWs`] does.
     ///
-    /// Returns `None` for every other message and channel, and
-    /// `Some(Err(..))` when the payload does not match the item shape.
+    /// The same as `serde_json::from_str::<ServerMsg>`, except that a
+    /// [`MEMPOOL_CHANNEL`] data message becomes a [`ServerMsg::Mempool`],
+    /// read from the text so that each action keeps its exact bytes.
     ///
     /// ```
     /// use oxarchive::ws::ServerMsg;
@@ -609,14 +625,34 @@ impl ServerMsg {
     ///      "symbols":["BTC"],"action":{"type":"cancel","cancels":[{"a":0,"o":1}]},
     ///      "nonce":1791424643400,"vault_address":null,"expires_after_ms":null,
     ///      "signature":{"r":"0x1","s":"0x2","v":27}}]}"#;
-    /// let msg: ServerMsg = serde_json::from_str(frame).unwrap();
-    /// let items = msg.mempool_items().unwrap().unwrap();
+    /// let msg = ServerMsg::from_text(frame).unwrap();
+    /// let items = msg.mempool_items().unwrap();
     /// assert_eq!(items[0].symbols, ["BTC"]);
-    /// assert_eq!(items[0].action["type"], "cancel");
+    /// assert_eq!(items[0].action.get(), r#"{"type":"cancel","cancels":[{"a":0,"o":1}]}"#);
+    /// assert_eq!(items[0].action_value().unwrap()["type"], "cancel");
     /// ```
-    pub fn mempool_items(&self) -> Option<Result<Vec<MempoolItem>>> {
+    pub fn from_text(text: &str) -> Result<Self> {
+        // Only a frame that names the channel can be one; skip the extra
+        // parse for every other frame.
+        if text.contains("\"mempool\"") {
+            if let Ok(frame) = serde_json::from_str::<MempoolFrame>(text) {
+                if frame.kind == "data" && frame.channel == MEMPOOL_CHANNEL {
+                    return Ok(ServerMsg::Mempool {
+                        coin: frame.coin,
+                        symbol: frame.symbol,
+                        items: frame.data,
+                    });
+                }
+            }
+        }
+        serde_json::from_str(text).map_err(|e| Error::Deserialize(e.to_string()))
+    }
+
+    /// The items of a [`ServerMsg::Mempool`], or `None` for every other
+    /// message.
+    pub fn mempool_items(&self) -> Option<&[MempoolItem]> {
         match self {
-            ServerMsg::Data { channel, data, .. } => MempoolItem::decode(channel, data),
+            ServerMsg::Mempool { items, .. } => Some(items),
             _ => None,
         }
     }
@@ -629,6 +665,20 @@ impl ServerMsg {
             _ => None,
         }
     }
+}
+
+/// A [`MEMPOOL_CHANNEL`] data frame, read directly from its text so that each
+/// action keeps its exact bytes (see [`ServerMsg::from_text`]).
+#[derive(Deserialize)]
+struct MempoolFrame {
+    #[serde(rename = "type")]
+    kind: String,
+    channel: String,
+    #[serde(default)]
+    coin: Option<String>,
+    #[serde(default)]
+    symbol: Option<String>,
+    data: Vec<MempoolItem>,
 }
 
 // ---------------------------------------------------------------------------
@@ -701,7 +751,7 @@ impl OxArchiveWs {
             while let Some(msg) = read.next().await {
                 match msg {
                     Ok(Message::Text(text)) => {
-                        if let Ok(server_msg) = serde_json::from_str::<ServerMsg>(&text) {
+                        if let Ok(server_msg) = ServerMsg::from_text(&text) {
                             let _ = tx.send(server_msg);
                         }
                     }

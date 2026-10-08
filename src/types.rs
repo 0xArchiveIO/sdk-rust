@@ -1283,11 +1283,13 @@ impl LighterLiveData {
 /// arrive twice; deduplicate on [`signature`](Self::signature) if that matters
 /// to you.
 ///
-/// Decode a message's items with [`MempoolItem::decode`], or with
-/// `ServerMsg::mempool_items` when the `websocket` feature is enabled. Fields
-/// this version does not know are ignored, and new ones may be added in minor
-/// releases, so the struct cannot be built with a literal outside this crate.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// With the `websocket` feature, `OxArchiveWs` delivers each message's items
+/// in `ServerMsg::Mempool`. Elsewhere, deserialize them with serde_json from
+/// the message text, not from a `serde_json::Value`, which has already sorted
+/// the action's keys. Fields this version does not know are ignored, and new
+/// ones may be added in minor releases, so the struct cannot be built with a
+/// literal outside this crate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct MempoolItem {
     /// When our node received the transaction, as an RFC 3339 UTC string with
@@ -1304,17 +1306,19 @@ pub struct MempoolItem {
     pub symbols: Vec<String>,
     /// The action exactly as signed, in Hyperliquid's exchange-action format:
     /// asset ids (`a` or `asset`) rather than symbols, and prices and sizes as
-    /// strings. `action["type"]` names it, for example `order`, `cancel`,
+    /// strings. Its `type` names it, for example `order`, `cancel`,
     /// `cancelByCloid`, `modify`, `batchModify`, `scheduleCancel`,
     /// `twapOrder`, `twapCancel`, `updateLeverage`, `updateIsolatedMargin`,
     /// `noop`, `evmRawTx`, or a transfer such as `usdSend`, `spotSend`,
     /// `usdClassTransfer` or `sendAsset`. Hyperliquid adds action types, so
     /// handle types you do not recognise.
     ///
-    /// `serde_json::Value` sorts object keys unless serde_json's
-    /// `preserve_order` feature is enabled. Enable it in your own crate if you
-    /// need the keys in the order they were signed.
-    pub action: serde_json::Value,
+    /// This raw form keeps the exact bytes the server sent, key order
+    /// included, as signature recovery needs them; `action.get()` returns
+    /// them as a `&str`. To inspect the action,
+    /// [`action_value`](Self::action_value) parses it into a
+    /// `serde_json::Value`, which sorts the keys.
+    pub action: Box<serde_json::value::RawValue>,
     /// The action's nonce.
     pub nonce: Option<u64>,
     /// The vault or subaccount the action acts for, or `None`.
@@ -1338,16 +1342,14 @@ pub struct MempoolSignature {
 }
 
 impl MempoolItem {
-    /// Decode the `data` field of a `mempool` message: one item per signed
-    /// action, in the order received.
+    /// The action parsed into a `serde_json::Value`, for inspection, for
+    /// example `item.action_value()?["type"]`.
     ///
-    /// Returns `None` when `channel` is not `mempool`, and `Some(Err(..))`
-    /// when the payload does not match the item shape.
-    pub fn decode(channel: &str, data: &serde_json::Value) -> Option<crate::Result<Vec<Self>>> {
-        if channel != "mempool" {
-            return None;
-        }
-        Some(Vec::<Self>::deserialize(data).map_err(|e| crate::Error::Deserialize(e.to_string())))
+    /// The parsed form sorts object keys, so it no longer has the signed key
+    /// order. Use the raw [`action`](Self::action) for signature recovery.
+    pub fn action_value(&self) -> crate::Result<serde_json::Value> {
+        serde_json::from_str(self.action.get())
+            .map_err(|e| crate::Error::Deserialize(e.to_string()))
     }
 }
 
