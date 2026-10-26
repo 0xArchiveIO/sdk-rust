@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/0xArchiveIO/sdk-rust/HEAD/assets/readme/hero-dark.png">
-  <img alt="oxarchive, the 0xArchive Rust SDK: Hyperliquid and Lighter, typed and async. The BTC order book near the mid, drawn one resting order at a time, out of 62,980 orders." src="https://raw.githubusercontent.com/0xArchiveIO/sdk-rust/HEAD/assets/readme/hero-light.png" width="800">
+  <img alt="oxarchive, the 0xArchive Rust SDK: Hyperliquid and Lighter, typed and async. The BTC order book near the mid, drawn one resting order at a time." src="https://raw.githubusercontent.com/0xArchiveIO/sdk-rust/HEAD/assets/readme/hero-light.png" width="800">
 </picture>
 
 <a href="https://crates.io/crates/oxarchive"><img alt="crates.io: oxarchive" src="https://img.shields.io/crates/v/oxarchive?style=flat-square&label=crates.io&labelColor=3a3a37&color=21C55E"></a> <a href="https://docs.rs/oxarchive"><img alt="docs.rs" src="https://img.shields.io/docsrs/oxarchive?style=flat-square&label=docs.rs&labelColor=3a3a37&color=21C55E"></a> <img alt="rust: 1.85+" src="https://img.shields.io/badge/rust-1.85+-21C55E?style=flat-square&labelColor=3a3a37"> <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-21C55E?style=flat-square&labelColor=3a3a37"> <img alt="data: Hyperliquid · Lighter" src="https://img.shields.io/badge/data-Hyperliquid_·_Lighter-21C55E?style=flat-square&labelColor=3a3a37">
