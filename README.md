@@ -1,12 +1,27 @@
-# oxarchive
+<div align="center">
 
-[![Crates.io](https://img.shields.io/crates/v/oxarchive.svg)](https://crates.io/crates/oxarchive) [![Docs.rs](https://docs.rs/oxarchive/badge.svg)](https://docs.rs/oxarchive) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/0xArchiveIO/sdk-rust/HEAD/assets/readme/hero-dark.png">
+  <img alt="oxarchive, the 0xArchive Rust SDK: Hyperliquid and Lighter, typed and async. The BTC order book near the mid, drawn one resting order at a time, out of 62,980 orders." src="https://raw.githubusercontent.com/0xArchiveIO/sdk-rust/HEAD/assets/readme/hero-light.png" width="800">
+</picture>
 
-Rust client for async services that need typed 0xArchive market data.
+<a href="https://crates.io/crates/oxarchive"><img alt="crates.io: oxarchive" src="https://img.shields.io/crates/v/oxarchive?style=flat-square&label=crates.io&labelColor=3a3a37&color=21C55E"></a> <a href="https://docs.rs/oxarchive"><img alt="docs.rs" src="https://img.shields.io/docsrs/oxarchive?style=flat-square&label=docs.rs&labelColor=3a3a37&color=21C55E"></a> <img alt="rust: 1.85+" src="https://img.shields.io/badge/rust-1.85+-21C55E?style=flat-square&labelColor=3a3a37"> <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-21C55E?style=flat-square&labelColor=3a3a37"> <img alt="data: Hyperliquid · Lighter" src="https://img.shields.io/badge/data-Hyperliquid_·_Lighter-21C55E?style=flat-square&labelColor=3a3a37">
 
-0xArchive is granular market data infrastructure for two venues: Hyperliquid and Lighter. Hyperliquid includes core perps (`/v1/hyperliquid`), HIP-3 builder perps (`/v1/hyperliquid/hip3`), HIP-4 outcome markets (`/v1/hyperliquid/hip4`), and Hyperliquid Spot (`/v1/hyperliquid/spot`). Lighter has two deployments: mainnet (`/v1/lighter`, `client.lighter`) and Robinhood Chain (`/v1/rh-lighter`, `client.rh_lighter`).
+[Install](#installation) · [Quick start](#quick-start) · [Reference](#rest-api-reference) · [WebSocket](#websocket-client) · [Webhooks](#webhooks) · [Docs](https://docs.rs/oxarchive)
 
-Use this SDK when the integration belongs in an async Rust service, data system, backtest runner, or strongly typed market-data pipeline.
+</div>
+
+Build async Rust services on Hyperliquid and Lighter market data: typed responses, cursor pagination, order book reconstruction, live streams and replay.
+
+<sub>The chart: an L4 snapshot of the Hyperliquid BTC book at 2026-10-26 19:44 UTC, every resting order within $200 of the mid as one brick. The full book held 62,980 orders from 6,975 wallets.</sub>
+
+## Highlights
+
+- **Two venues, one client.** Hyperliquid core perps, HIP-3, HIP-4 and Spot, and Lighter on mainnet and Robinhood Chain, as `client.hyperliquid`, `client.hyperliquid.hip3`, `client.hyperliquid.hip4`, `client.spot`, `client.lighter` and `client.rh_lighter`.
+- **Every order, with its owner.** L4 books and diffs on Hyperliquid, L3 order-level books on Lighter, and reconstruction from checkpoints and deltas.
+- **Every wallet's positions.** Current, as of any instant, hourly history and a fill-by-fill change log.
+- **Live, replay and mempool.** Behind the `websocket` feature: live channels, historical replay, and pending Hyperliquid transactions on Pro and above.
+- **Webhooks.** Size a rule before you create it, manage endpoints and subscriptions, and verify every delivery.
 
 ## Installation
 
@@ -104,7 +119,7 @@ available instant is listed in [Data Coverage](#data-coverage) and returned by
 
 ## Use From Coding Agents
 
-When prototyping Rust services from Claude Code, ChatGPT Codex, or another coding agent, also install the [0xArchive skill](https://github.com/0xArchiveIO/0xarchive-skill) so the agent has typed API context and example patterns for every endpoint. The skill installs into `.claude/skills/0xarchive` (Claude Code) or `.agents/skills/0xarchive` (ChatGPT Codex). For shell-driven exploration alongside the SDK, the [CLI](https://npmjs.com/package/@0xarchive/cli) and the [hosted MCP](https://docs.0xarchive.io/mcp-server) share the same API key.
+When prototyping Rust services from Claude Code, ChatGPT Codex, or another coding agent, also install the [0xArchive skill](https://github.com/0xArchiveIO/0xarchive-quant) so the agent has typed API context and example patterns for every endpoint. The skill installs into `.claude/skills/0xarchive` (Claude Code) or `.agents/skills/0xarchive` (ChatGPT Codex). For shell-driven exploration alongside the SDK, the [CLI](https://npmjs.com/package/@0xarchive/cli) and the [hosted MCP](https://docs.0xarchive.io/mcp-server) share the same API key.
 
 ## Data Coverage
 
@@ -2305,7 +2320,7 @@ For large-scale data exports (route-specific order books, fill-level trade histo
 - [TypeScript SDK](https://npmjs.com/package/@0xarchive/sdk)
 - [CLI](https://npmjs.com/package/@0xarchive/cli)
 - [MCP Server](https://docs.0xarchive.io/mcp-server)
-- [0xArchive Skill](https://github.com/0xArchiveIO/0xarchive-skill)
+- [0xArchive skills](https://github.com/0xArchiveIO/0xarchive-quant)
 - [Examples](https://github.com/0xArchiveIO/examples)
 
 ## Requirements
