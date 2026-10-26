@@ -13,9 +13,10 @@
 
 Build async Rust services on Hyperliquid and Lighter market data: typed responses, cursor pagination, order book reconstruction, live streams and replay.
 
+0xArchive is granular market data infrastructure for two venues: Hyperliquid and Lighter. Hyperliquid includes core perps (`/v1/hyperliquid`), HIP-3 builder perps (`/v1/hyperliquid/hip3`), HIP-4 outcome markets (`/v1/hyperliquid/hip4`), and Hyperliquid Spot (`/v1/hyperliquid/spot`). Lighter has two deployments: mainnet (`/v1/lighter`, `client.lighter`) and Robinhood Chain (`/v1/rh-lighter`, `client.rh_lighter`).
+
 ## Highlights
 
-- **Two venues, one client.** Hyperliquid core perps, HIP-3, HIP-4 and Spot, and Lighter on mainnet and Robinhood Chain, as `client.hyperliquid`, `client.hyperliquid.hip3`, `client.hyperliquid.hip4`, `client.spot`, `client.lighter` and `client.rh_lighter`.
 - **Every order, with its owner.** L4 books and diffs on Hyperliquid, L3 order-level books on Lighter, and reconstruction from checkpoints and deltas.
 - **Every wallet's positions.** Current, as of any instant, hourly history and a fill-by-fill change log.
 - **Live, replay and mempool.** Behind the `websocket` feature: live channels, historical replay, and pending Hyperliquid transactions on Pro and above.
