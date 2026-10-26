@@ -13,8 +13,6 @@
 
 Build async Rust services on Hyperliquid and Lighter market data: typed responses, cursor pagination, order book reconstruction, live streams and replay.
 
-<sub>The chart: an L4 snapshot of the Hyperliquid BTC book at 2026-10-26 19:44 UTC, every resting order within $200 of the mid as one brick. The full book held 62,980 orders from 6,975 wallets.</sub>
-
 ## Highlights
 
 - **Two venues, one client.** Hyperliquid core perps, HIP-3, HIP-4 and Spot, and Lighter on mainnet and Robinhood Chain, as `client.hyperliquid`, `client.hyperliquid.hip3`, `client.hyperliquid.hip4`, `client.spot`, `client.lighter` and `client.rh_lighter`.
