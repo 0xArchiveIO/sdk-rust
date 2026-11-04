@@ -3,7 +3,7 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
-## [1.14.0] - Unreleased
+## [1.14.0] - 2026-11-04
 
 Four datasets included with the Build, Pro, Scale and Enterprise plans, on
 Hyperliquid core (`client.hyperliquid`) and HIP-3
