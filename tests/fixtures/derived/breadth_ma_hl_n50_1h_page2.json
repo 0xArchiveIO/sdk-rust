@@ -1,0 +1,77 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/breadth/above-ma",
+    "query": {
+      "n": 50,
+      "start": 1793577600000,
+      "end": 1793592000000,
+      "interval": "1h",
+      "limit": 3,
+      "cursor": "1793588400000"
+    },
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "timestamp": "2026-11-02T03:00:00.000Z",
+        "timestamp_ms": 1793588400000,
+        "calculated_at": "2026-11-02T04:00:00.000Z",
+        "calculated_at_ms": 1793592000000,
+        "n": 50,
+        "method": "ma-breadth/1",
+        "value_pct": 6.1798,
+        "coverage_ratio": 0.8018,
+        "counts": {
+          "candidates": 222,
+          "eligible": 178,
+          "above": 11,
+          "at": 0,
+          "below": 167,
+          "excluded_stale_price": 43,
+          "excluded_short_history": 1
+        },
+        "distance": {
+          "p25": -0.1793,
+          "median": -0.14268,
+          "p75": -0.100549
+        },
+        "is_final": true
+      },
+      {
+        "timestamp": "2026-11-02T04:00:00.000Z",
+        "timestamp_ms": 1793592000000,
+        "calculated_at": "2026-11-02T05:00:00.000Z",
+        "calculated_at_ms": 1793595600000,
+        "n": 50,
+        "method": "ma-breadth/1",
+        "value_pct": 5.618,
+        "coverage_ratio": 0.8018,
+        "counts": {
+          "candidates": 222,
+          "eligible": 178,
+          "above": 10,
+          "at": 0,
+          "below": 168,
+          "excluded_stale_price": 43,
+          "excluded_short_history": 1
+        },
+        "distance": {
+          "p25": -0.184389,
+          "median": -0.147893,
+          "p75": -0.105242
+        },
+        "is_final": true
+      }
+    ],
+    "meta": {
+      "count": 2,
+      "request_id": "d462456e-7709-41ab-95f0-de034967ecbc",
+      "has_more": false
+    }
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

@@ -1,0 +1,66 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/usdc-flows/volume",
+    "query": {
+      "start": 1793577600000,
+      "end": 1793599200000,
+      "interval": "1h",
+      "limit": 3,
+      "cursor": "1793584800000"
+    },
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "timestamp": "2026-11-02T03:00:00.000Z",
+        "timestamp_ms": 1793588400000,
+        "deposit_usd": 335770.92,
+        "deposit_count": 53,
+        "withdraw_usd": 4848870.35,
+        "withdraw_count": 129,
+        "evm_in_usd": 3611517.43,
+        "evm_in_count": 3343,
+        "evm_out_usd": 193794.34,
+        "evm_out_count": 68,
+        "net_usd": -1095376.34
+      },
+      {
+        "timestamp": "2026-11-02T04:00:00.000Z",
+        "timestamp_ms": 1793592000000,
+        "deposit_usd": 7732139.27,
+        "deposit_count": 60,
+        "withdraw_usd": 1948029.49,
+        "withdraw_count": 114,
+        "evm_in_usd": 27456895.74,
+        "evm_in_count": 2558,
+        "evm_out_usd": 6894728.64,
+        "evm_out_count": 102,
+        "net_usd": 26346276.87
+      },
+      {
+        "timestamp": "2026-11-02T05:00:00.000Z",
+        "timestamp_ms": 1793595600000,
+        "deposit_usd": 2273956.05,
+        "deposit_count": 43,
+        "withdraw_usd": 1491612.57,
+        "withdraw_count": 88,
+        "evm_in_usd": 2482606.36,
+        "evm_in_count": 2109,
+        "evm_out_usd": 392708.58,
+        "evm_out_count": 114,
+        "net_usd": 2872241.26
+      }
+    ],
+    "meta": {
+      "count": 3,
+      "next_cursor": "1793595600000",
+      "request_id": "af7e1797-0562-4be6-bf7e-50c6589a02ea",
+      "has_more": true
+    }
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

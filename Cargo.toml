@@ -1,6 +1,6 @@
 [package]
 name = "oxarchive"
-version = "1.13.0"
+version = "1.14.0"
 edition = "2021"
 rust-version = "1.85"
 description = "Rust SDK for async 0xArchive market data clients"
@@ -25,6 +25,7 @@ include = [
     "/src/lib.rs",
     "/src/orderbook_reconstructor.rs",
     "/src/resources/breadth.rs",
+    "/src/resources/breadth_ma.rs",
     "/src/resources/candles.rs",
     "/src/resources/cvd.rs",
     "/src/resources/data_quality.rs",
@@ -39,9 +40,13 @@ include = [
     "/src/resources/oracle.rs",
     "/src/resources/orderbook.rs",
     "/src/resources/orders.rs",
+    "/src/resources/pages.rs",
+    "/src/resources/positioning.rs",
     "/src/resources/positions.rs",
     "/src/resources/spot.rs",
+    "/src/resources/trade_intent.rs",
     "/src/resources/trades.rs",
+    "/src/resources/usdc_flows.rs",
     "/src/resources/wallets.rs",
     "/src/resources/web3.rs",
     "/src/resources/webhooks.rs",

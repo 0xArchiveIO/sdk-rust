@@ -1,0 +1,100 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/hip3/breadth/above-ma",
+    "query": {
+      "n": 20,
+      "start": 1793404800000,
+      "end": 1793577600000,
+      "interval": "1d"
+    },
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "timestamp": "2026-10-31T00:00:00.000Z",
+        "timestamp_ms": 1793404800000,
+        "calculated_at": "2026-11-01T00:00:00.000Z",
+        "calculated_at_ms": 1793491200000,
+        "n": 20,
+        "method": "ma-breadth/1",
+        "value_pct": 18.543,
+        "coverage_ratio": 0.583,
+        "counts": {
+          "candidates": 259,
+          "eligible": 151,
+          "above": 28,
+          "at": 0,
+          "below": 123,
+          "excluded_stale_price": 96,
+          "excluded_short_history": 12
+        },
+        "distance": {
+          "p25": -0.108974,
+          "median": -0.05548,
+          "p75": -0.013348
+        },
+        "is_final": true
+      },
+      {
+        "timestamp": "2026-11-01T00:00:00.000Z",
+        "timestamp_ms": 1793491200000,
+        "calculated_at": "2026-11-02T00:00:00.000Z",
+        "calculated_at_ms": 1793577600000,
+        "n": 20,
+        "method": "ma-breadth/1",
+        "value_pct": 23.2258,
+        "coverage_ratio": 0.5985,
+        "counts": {
+          "candidates": 259,
+          "eligible": 155,
+          "above": 36,
+          "at": 0,
+          "below": 119,
+          "excluded_stale_price": 93,
+          "excluded_short_history": 11
+        },
+        "distance": {
+          "p25": -0.085918,
+          "median": -0.041594,
+          "p75": -0.001083
+        },
+        "is_final": true
+      },
+      {
+        "timestamp": "2026-11-02T00:00:00.000Z",
+        "timestamp_ms": 1793577600000,
+        "calculated_at": "2026-11-03T00:00:00.000Z",
+        "calculated_at_ms": 1793664000000,
+        "n": 20,
+        "method": "ma-breadth/1",
+        "value_pct": 15.3846,
+        "coverage_ratio": 0.6,
+        "counts": {
+          "candidates": 260,
+          "eligible": 156,
+          "above": 24,
+          "at": 0,
+          "below": 132,
+          "excluded_stale_price": 93,
+          "excluded_short_history": 11
+        },
+        "distance": {
+          "p25": -0.114869,
+          "median": -0.056688,
+          "p75": -0.017533
+        },
+        "is_final": true
+      }
+    ],
+    "meta": {
+      "count": 3,
+      "request_id": "c9189d91-aa2e-4bcc-acf2-b1284f5d256e",
+      "has_more": false
+    }
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

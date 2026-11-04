@@ -6,7 +6,8 @@ use crate::http::HttpClient;
 use crate::resources::cvd::fetch_cvd;
 use crate::resources::trades::RecentTradesParams;
 use crate::resources::{
-    BreadthResource, CandlesResource, CvdParams, FundingResource, Hip3InstrumentsResource,
+    BreadthMaResource, BreadthResource, CandlesResource, PositioningResource, TradeIntentResource,
+    UsdcFlowsResource, CvdParams, FundingResource, Hip3InstrumentsResource,
     Hip4InstrumentsResource, InstrumentsResource, L2OrderBookResource, L3OrderBookResource,
     Hip3LiquidationsResource, L4OrderBookResource, LighterAccountsResource,
     LighterInstrumentsResource, LighterLiquidationsResource, LighterPositionsResource,
@@ -46,6 +47,18 @@ pub struct HyperliquidClient {
     /// Percent of eligible core perps above their current UTC-session VWAP
     /// (aggregate only; `namespaces` is always empty).
     pub breadth: BreadthResource,
+    /// Share of core perps above their n-day moving average (Build, Pro,
+    /// Scale and Enterprise plans).
+    pub breadth_ma: BreadthMaResource,
+    /// Trade intent per bucket: why a market traded (Build, Pro, Scale and
+    /// Enterprise plans).
+    pub trade_intent: TradeIntentResource,
+    /// USDC flows into and out of HyperCore: events and totals per bucket
+    /// (Build, Pro, Scale and Enterprise plans).
+    pub usdc_flows: UsdcFlowsResource,
+    /// Every listed core perp over a trailing window (Build, Pro, Scale and
+    /// Enterprise plans).
+    pub positioning: PositioningResource,
     pub hip3: Hip3Client,
     /// HIP-4 outcome markets (binary outcome perps, `#`-prefixed coins).
     pub hip4: Hip4,
@@ -75,6 +88,10 @@ impl HyperliquidClient {
             positions: PositionsResource::new(http.clone(), prefix),
             wallets: WalletsResource::new(http.clone(), prefix),
             breadth: BreadthResource::new(http.clone(), prefix),
+            breadth_ma: BreadthMaResource::new(http.clone(), prefix),
+            trade_intent: TradeIntentResource::new(http.clone(), prefix),
+            usdc_flows: UsdcFlowsResource::new(http.clone()),
+            positioning: PositioningResource::new(http.clone(), prefix),
             hip3: Hip3Client::new(http.clone()),
             hip4: Hip4::new(http.clone()),
             spot: SpotClient::new(http.clone()),
@@ -163,6 +180,15 @@ pub struct Hip3Client {
     pub orders: OrdersResource,
     /// Percent of eligible instruments above their current UTC-session VWAP.
     pub breadth: BreadthResource,
+    /// Share of HIP-3 perps above their n-day moving average (Build, Pro,
+    /// Scale and Enterprise plans).
+    pub breadth_ma: BreadthMaResource,
+    /// Trade intent per bucket: why a market traded (Build, Pro, Scale and
+    /// Enterprise plans).
+    pub trade_intent: TradeIntentResource,
+    /// Every listed HIP-3 perp over a trailing window (Build, Pro, Scale and
+    /// Enterprise plans).
+    pub positioning: PositioningResource,
     pub l4_orderbook: L4OrderBookResource,
     pub l2_orderbook: L2OrderBookResource,
     /// Account positions by wallet address (optional `dex` filter), market
@@ -193,6 +219,9 @@ impl Hip3Client {
             liquidations: Hip3LiquidationsResource::new(http.clone(), prefix),
             orders: OrdersResource::new(http.clone(), prefix),
             breadth: BreadthResource::new(http.clone(), prefix),
+            breadth_ma: BreadthMaResource::new(http.clone(), prefix),
+            trade_intent: TradeIntentResource::new(http.clone(), prefix),
+            positioning: PositioningResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
             positions: PositionsResource::new(http.clone(), prefix),

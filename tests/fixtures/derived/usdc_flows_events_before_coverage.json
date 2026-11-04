@@ -1,0 +1,24 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/usdc-flows",
+    "query": {
+      "start": 1735689600000,
+      "end": 1735776000000
+    },
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [],
+    "meta": {
+      "count": 0,
+      "request_id": "1624c6bf-e8de-45ae-a009-b0ce44dbee07",
+      "coverage_from": "2025-09-27T09:33:00Z",
+      "notice": "No data in the requested range. Hyperliquid USDC flow coverage begins 2025-09-27 09:33 UTC; the requested window ends before coverage starts.",
+      "has_more": false
+    }
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

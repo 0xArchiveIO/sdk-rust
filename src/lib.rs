@@ -106,6 +106,43 @@
 //! # }
 //! ```
 //!
+//! ## Build-and-above datasets
+//!
+//! Four datasets are included with the Build, Pro, Scale and Enterprise
+//! plans: trade intent (`trade_intent`), USDC flows (`usdc_flows`,
+//! Hyperliquid only), breadth above the n-day moving average (`breadth_ma`)
+//! and the positioning cross-section (`positioning`), on
+//! `client.hyperliquid` and `client.hyperliquid.hip3`. On Free the API
+//! answers 403 `forbidden`, and [`Error::plan_required`] returns the plans
+//! that include the dataset. Their `iterate*` methods return a
+//! [`CursorPages`] that follows `next_cursor` until the API stops returning
+//! one, through short and empty pages.
+//!
+//! ```no_run
+//! # use oxarchive::{BreadthMaLength, OxArchive, PositioningWindow, TradeIntentParams};
+//! # async fn example() -> oxarchive::Result<()> {
+//! # let client = OxArchive::new("key")?;
+//! let reading = client.hyperliquid.breadth_ma.current(BreadthMaLength::Fifty).await?;
+//! println!("{:?}% of perps above their 50-day average", reading.value_pct);
+//!
+//! let cross_section = client.hyperliquid.positioning.current(PositioningWindow::FourHours).await?;
+//! println!("{} perps as of {:?}", cross_section.data.len(), cross_section.meta.as_of);
+//!
+//! let buckets = client
+//!     .hyperliquid
+//!     .trade_intent
+//!     .iterate("BTC", TradeIntentParams {
+//!         start: Some("2026-11-02T00:00:00Z".into()),
+//!         end: Some("2026-11-03T00:00:00Z".into()),
+//!         ..Default::default()
+//!     })?
+//!     .collect_all()
+//!     .await?;
+//! println!("{} hourly buckets", buckets.len());
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! ## Webhooks
 //!
 //! `client.webhooks` manages webhook delivery: the event catalog, plan
@@ -151,7 +188,7 @@
 //! replay:
 //!
 //! ```toml
-//! oxarchive = { version = "1.13", features = ["websocket"] }
+//! oxarchive = { version = "1.14", features = ["websocket"] }
 //! ```
 //!
 //! Live subscriptions cover the supported Hyperliquid channels and four
@@ -189,7 +226,7 @@ pub mod ws;
 
 // Re-export the main entry points at the crate root.
 pub use client::{ClientBuilder, OxArchive, API_VERSION, API_VERSION_HEADER};
-pub use error::{Error, ErrorCode, Result};
+pub use error::{Error, ErrorCode, PlanRequired, Result};
 pub use exchanges::{Hip4, Hip4ListQuestionsParams, RhLighterClient};
 pub use l4_reconstructor::{L4OrderBookReconstructor, L4Order, L4Diff, L2Level};
 pub use orderbook_reconstructor::{
@@ -220,6 +257,15 @@ pub use resources::webhooks::{
     UpdateSubscriptionParams, WebhooksResource,
 };
 pub use resources::trades::RecentTradesParams;
+pub use resources::pages::CursorPages;
+pub use resources::trade_intent::TradeIntentParams;
+pub use resources::usdc_flows::{UsdcFlowVolumeParams, UsdcFlowsParams};
+pub use resources::breadth_ma::BreadthMaHistoryParams;
+pub use types::{
+    BreadthMaCounts, BreadthMaDistance, BreadthMaLength, BreadthMaReading, PositioningReading,
+    PositioningWindow, TradeIntentBucket, TradeIntentInterval, UsdcFlowEvent, UsdcFlowKind,
+    UsdcFlowVolumeBucket,
+};
 pub use types::{Capability, TradeSide};
 pub use types::{
     BreadthSnapshot, ClassifiedWallet, CvdBucket, Hip3OracleDiscoveryBounds,

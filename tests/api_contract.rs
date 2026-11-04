@@ -382,16 +382,18 @@ async fn api_errors_expose_the_contract_fields() {
             error_code,
             param,
             valid_values,
+            plan,
         } => {
             assert_eq!(code, 400);
             assert_eq!(error_code, Some(ErrorCode::InvalidParameter));
             assert_eq!(request_id.as_deref(), Some("req-400"));
             assert_eq!(param.as_deref(), Some("side"));
             assert_eq!(
-                valid_values.as_deref(),
+                valid_values.as_deref().map(Vec::as_slice),
                 Some(&["buy".to_string(), "sell".to_string()][..])
             );
             assert!(message.contains("buy or sell"));
+            assert!(plan.is_none());
         }
         other => panic!("expected an API error, got {other:?}"),
     }

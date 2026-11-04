@@ -1,0 +1,21 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/breadth/above-ma/current",
+    "query": {
+      "n": 5,
+      "interval": "1h"
+    },
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 400,
+  "body": {
+    "code": 400,
+    "error": "/current takes only n and returns the newest reading; for a window use breadth/above-ma without /current (it does not take interval).",
+    "error_code": "invalid_parameter",
+    "param": "interval",
+    "request_id": "23456a3a-2fed-4bd5-8714-9895c897ae72",
+    "success": false
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

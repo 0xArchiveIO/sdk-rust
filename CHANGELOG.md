@@ -3,6 +3,71 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.14.0] - Unreleased
+
+Four datasets included with the Build, Pro, Scale and Enterprise plans, on
+Hyperliquid core (`client.hyperliquid`) and HIP-3
+(`client.hyperliquid.hip3`), and a typed plan refusal.
+
+### Upgrading from 1.13
+
+- **A new field on `Error::Api`.** It gains `plan`, and its `valid_values`
+  field is now `Option<Box<Vec<String>>>` (it was `Option<Box<[String]>>`),
+  which keeps `Error` under 128 bytes. A pattern that names every
+  `Error::Api` field needs `plan` or `..`, and code that read
+  `valid_values` from the field directly reads `.as_deref().map(Vec::as_slice)`
+  or calls `Error::valid_values()`, which still returns `Option<&[String]>`.
+  Code that builds `Error::Api` with a struct literal needs `plan: None`.
+
+### Added
+- Trade intent: `client.hyperliquid.trade_intent` and
+  `client.hyperliquid.hip3.trade_intent` (`TradeIntentResource`), with
+  `history(symbol, TradeIntentParams)` and `iterate(symbol, TradeIntentParams)`.
+  Each `TradeIntentBucket` holds the USD volume of new longs and shorts,
+  profit taken, positions stopped out and flips through zero, market makers'
+  volume apart (`mm_usd`), and the market's trailing-72h winners and losers
+  as aggregates, with `quality`, `is_final`, `preliminary` and `method`.
+  Intervals `1s` to `1d` (`TradeIntentInterval`), up to 2,000 buckets per
+  page. Hourly intervals from 2025-05-25 15:00 UTC (HIP-3 from 2025-10-13
+  12:00 UTC), minute intervals from 2026-07-14 00:00 UTC, second intervals
+  for the last 3 days.
+- USDC flows into and out of HyperCore: `client.hyperliquid.usdc_flows`
+  (`UsdcFlowsResource`, Hyperliquid only, from 2025-09-27 09:33 UTC).
+  `history(UsdcFlowsParams)` and `iterate()` return `UsdcFlowEvent`s
+  (Arbitrum bridge deposits and withdrawals, transfers to and from HyperEVM,
+  with the HyperCore account), filtered by `min_usd` and `kind`
+  (`UsdcFlowKind`); `volume(UsdcFlowVolumeParams)` and `iterate_volume()`
+  return `UsdcFlowVolumeBucket` totals per interval, zeros included.
+- Breadth above the n-day moving average: `client.hyperliquid.breadth_ma`
+  and `client.hyperliquid.hip3.breadth_ma` (`BreadthMaResource`), with
+  `current(n)`, `history(n, BreadthMaHistoryParams)` and `iterate(n, ...)`.
+  `n` is a required `BreadthMaLength` (5, 20, 50 or 200 days); each length
+  starts on its own date, listed in the README. `BreadthMaReading` carries
+  `value_pct`, `coverage_ratio`, `counts` (`BreadthMaCounts`, including
+  `excluded_stale_price` and `excluded_short_history`), the `distance`
+  quartiles (`BreadthMaDistance`) and `is_final`.
+- Positioning: `client.hyperliquid.positioning` and
+  `client.hyperliquid.hip3.positioning` (`PositioningResource`), with
+  `current(PositioningWindow)`: every listed perp over the trailing 1h, 4h or
+  24h window ending at the newest 5-minute close (`meta.as_of`), with open
+  interest and marks at the start and end, taker buy and sell notional,
+  liquidations and typical moves (`PositioningReading`). The current window
+  only.
+- `CursorPages`, the pager the `iterate*` methods return. It sends the same
+  parameters on every page and follows `next_cursor` until a page comes
+  back without one, through short and empty pages. `start` is required, and
+  an unset `end` is fixed to the current time once, before the first request.
+  `next_page()` returns each page with its `meta`, and `collect_all()` every
+  row. If the API returns the cursor it was just sent, the next call fails
+  instead of requesting the same page again.
+- `PlanRequired` and `Error::plan_required()`: a 403 `forbidden` from a
+  dataset the plan does not include carries the `datatype`, the
+  `required_plans` that include it and the `upgrade_url`.
+
+### Changed
+- `Capability::plans` documents the four new datasets' rows, which carry it
+  as `mempool`'s does.
+
 ## [1.13.0] - 2026-10-08
 
 ### Added

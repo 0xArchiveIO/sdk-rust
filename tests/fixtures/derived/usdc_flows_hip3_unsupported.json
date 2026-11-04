@@ -1,0 +1,25 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/hip3/usdc-flows",
+    "query": {},
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 404,
+  "body": {
+    "available_on": [
+      {
+        "route": "/v1/hyperliquid/usdc-flows",
+        "venue": "hyperliquid"
+      }
+    ],
+    "code": 404,
+    "datatype": "usdc_flows",
+    "error": "USDC flow data is not offered on HIP-3. It is available on Hyperliquid (/v1/hyperliquid/usdc-flows).",
+    "error_code": "unsupported_for_venue",
+    "request_id": "e1062545-9f4b-46e5-ba6e-674a7677dff0",
+    "success": false,
+    "venue": "hip3"
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

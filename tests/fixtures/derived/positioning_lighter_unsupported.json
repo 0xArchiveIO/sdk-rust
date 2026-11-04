@@ -1,0 +1,31 @@
+{
+  "request": {
+    "path": "/v1/lighter/positioning",
+    "query": {
+      "window": "1h"
+    },
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 404,
+  "body": {
+    "available_on": [
+      {
+        "route": "/v1/hyperliquid/positioning",
+        "venue": "hyperliquid"
+      },
+      {
+        "route": "/v1/hyperliquid/hip3/positioning",
+        "venue": "hip3"
+      }
+    ],
+    "code": 404,
+    "datatype": "positioning",
+    "error": "Positioning is not offered on Lighter. It is available on Hyperliquid (/v1/hyperliquid/positioning) and HIP-3 (/v1/hyperliquid/hip3/positioning).",
+    "error_code": "unsupported_for_venue",
+    "request_id": "d5838b8c-1871-43cc-84ef-9c593a3ff751",
+    "success": false,
+    "venue": "lighter"
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

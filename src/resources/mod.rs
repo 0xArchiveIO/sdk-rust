@@ -18,6 +18,11 @@ pub mod cvd;
 pub mod oracle;
 pub mod wallets;
 pub mod webhooks;
+pub mod pages;
+pub mod trade_intent;
+pub mod usdc_flows;
+pub mod breadth_ma;
+pub mod positioning;
 
 pub use orderbook::OrderBookResource;
 pub use trades::TradesResource;
@@ -51,3 +56,8 @@ pub use webhooks::{
     CreateEndpointParams, CreateSubscriptionParams, DryRunParams, EstimateParams,
     UpdateSubscriptionParams, WebhooksResource,
 };
+pub use pages::CursorPages;
+pub use trade_intent::{TradeIntentParams, TradeIntentResource};
+pub use usdc_flows::{UsdcFlowVolumeParams, UsdcFlowsParams, UsdcFlowsResource};
+pub use breadth_ma::{BreadthMaHistoryParams, BreadthMaResource};
+pub use positioning::PositioningResource;
