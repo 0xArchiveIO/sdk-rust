@@ -2459,7 +2459,9 @@ pub struct Capability {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ws_endpoint: Option<String>,
     /// The plans that include it, when that is not every plan: `pro`, `scale`
-    /// and `enterprise` for `mempool`. `None` means every plan, Free included.
+    /// and `enterprise` for `mempool`; `build`, `pro`, `scale` and
+    /// `enterprise` for `trade_intent`, `usdc_flows`, `breadth_ma` and
+    /// `positioning`. `None` means every plan, Free included.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plans: Option<Vec<String>>,
 }
@@ -2511,6 +2513,471 @@ pub struct CvdBucket {
     /// Running total of `delta` from the first bucket of this response. It
     /// restarts on every page, so rebuild it from `delta` when joining pages.
     pub cumulative_delta: f64,
+}
+
+// ---------------------------------------------------------------------------
+// Build-and-above datasets: trade intent, USDC flows, moving-average breadth
+// and positioning (Hyperliquid core and HIP-3)
+// ---------------------------------------------------------------------------
+
+/// Bucket width for trade intent (`client.hyperliquid.trade_intent`).
+///
+/// Hourly widths (`1h`, `4h`, `1d`) reach back to the dataset's start
+/// (Hyperliquid 2025-05-25 15:00 UTC, HIP-3 2025-10-13 12:00 UTC), minute
+/// widths to 2026-07-14 00:00 UTC, and second widths cover the last 3 days.
+/// Buckets open on UTC epoch boundaries, so `1d` is the UTC day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TradeIntentInterval {
+    OneSecond,
+    FiveSeconds,
+    FifteenSeconds,
+    OneMinute,
+    FiveMinutes,
+    FifteenMinutes,
+    OneHour,
+    FourHours,
+    OneDay,
+}
+
+impl TradeIntentInterval {
+    /// The wire value, for example `"1h"`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TradeIntentInterval::OneSecond => "1s",
+            TradeIntentInterval::FiveSeconds => "5s",
+            TradeIntentInterval::FifteenSeconds => "15s",
+            TradeIntentInterval::OneMinute => "1m",
+            TradeIntentInterval::FiveMinutes => "5m",
+            TradeIntentInterval::FifteenMinutes => "15m",
+            TradeIntentInterval::OneHour => "1h",
+            TradeIntentInterval::FourHours => "4h",
+            TradeIntentInterval::OneDay => "1d",
+        }
+    }
+}
+
+/// One trade intent bucket: why a Hyperliquid or HIP-3 market traded, from
+/// `client.hyperliquid.trade_intent` or `client.hyperliquid.hip3.trade_intent`.
+///
+/// The intent fields are USD volume. Both sides of every trade count, so the
+/// buyers and the sellers each sum to the bucket's volume; market makers'
+/// legs are in `mm_usd` and in no intent field. The `winners_*` and
+/// `losers_*` fields describe the market's winners and losers over the
+/// trailing 72 hours as aggregates: no wallet is named.
+///
+/// Buckets at second widths carry no `close`, `price_source` or cohort
+/// position (`*_net`, `*_gross`, `*_count` are `None`). A second without a
+/// record had no trades, as far as `meta.built_through` reaches. A market
+/// idle for more than 7 days has no buckets: a gap, not zero.
+///
+/// More fields may be added in minor releases, so the struct cannot be
+/// built with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct TradeIntentBucket {
+    /// Bucket open time, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
+    /// Bucket open time, in Unix milliseconds.
+    pub timestamp_ms: i64,
+    /// The price the bucket's end is marked at. `None` at second widths.
+    #[serde(default)]
+    pub close: Option<f64>,
+    /// Where `close` comes from: `mark`, `oracle` (HIP-3 without a stored
+    /// mark), `carried` (the last of those when none is recent) or `trade`.
+    /// `None` at second widths.
+    #[serde(default)]
+    pub price_source: Option<String>,
+    /// USD volume opening new long positions.
+    pub open_long: f64,
+    /// USD volume opening new short positions.
+    pub open_short: f64,
+    /// USD volume closing longs with closed profit above zero.
+    pub tp_long: f64,
+    /// USD volume closing shorts with closed profit above zero.
+    pub tp_short: f64,
+    /// USD volume closing longs at a loss, including liquidations and
+    /// auto-deleveraging.
+    pub stop_long: f64,
+    /// USD volume closing shorts at a loss, including liquidations and
+    /// auto-deleveraging.
+    pub stop_short: f64,
+    /// USD volume flipping from long to short through zero.
+    pub flip_ls: f64,
+    /// USD volume flipping from short to long through zero.
+    pub flip_sl: f64,
+    /// USD volume of market makers' legs, counted in no intent field.
+    pub mm_usd: f64,
+    /// What the trailing-72h winners bought less what they sold, in USD.
+    #[serde(default)]
+    pub winners_flow: Option<f64>,
+    /// What the trailing-72h losers bought less what they sold, in USD.
+    #[serde(default)]
+    pub losers_flow: Option<f64>,
+    /// The winners' net position in USD at the bucket's end.
+    #[serde(default)]
+    pub winners_net: Option<f64>,
+    /// The winners' gross position in USD at the bucket's end.
+    #[serde(default)]
+    pub winners_gross: Option<f64>,
+    /// The losers' net position in USD at the bucket's end.
+    #[serde(default)]
+    pub losers_net: Option<f64>,
+    /// The losers' gross position in USD at the bucket's end.
+    #[serde(default)]
+    pub losers_gross: Option<f64>,
+    /// How many wallets are in the winners cohort.
+    #[serde(default)]
+    pub winners_count: Option<i64>,
+    /// How many wallets are in the losers cohort.
+    #[serde(default)]
+    pub losers_count: Option<i64>,
+    /// `ok`, `partial` (the method's lookbacks were not yet full) or
+    /// `quarantined` (the cohort figures are `None`; the intent fields never
+    /// are).
+    pub quality: String,
+    /// `true` when the bucket is final and will not change.
+    pub is_final: bool,
+    /// `true` when the bucket holds preliminary data from the hour still in
+    /// progress. Preliminary buckets are replaced as the final data lands.
+    pub preliminary: bool,
+    /// Where the preliminary data begins inside the bucket (its open when the
+    /// whole bucket is preliminary), as RFC 3339. `None` on final data.
+    #[serde(default)]
+    pub preliminary_from: Option<String>,
+    /// `preliminary_from` in Unix milliseconds.
+    #[serde(default)]
+    pub preliminary_from_ms: Option<i64>,
+    /// The method version the bucket was computed with, for example `who/3`.
+    pub method: String,
+}
+
+/// The kind of a USDC flow (`client.hyperliquid.usdc_flows`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UsdcFlowKind {
+    /// A deposit through the Arbitrum bridge.
+    Deposit,
+    /// A withdrawal through the Arbitrum bridge.
+    Withdraw,
+    /// USDC moved from HyperEVM into HyperCore (CCTP transfers in arrive
+    /// this way).
+    EvmIn,
+    /// USDC moved from HyperCore to HyperEVM (CCTP transfers out leave this
+    /// way).
+    EvmOut,
+}
+
+impl UsdcFlowKind {
+    /// The wire value, for example `"evm_in"`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UsdcFlowKind::Deposit => "deposit",
+            UsdcFlowKind::Withdraw => "withdraw",
+            UsdcFlowKind::EvmIn => "evm_in",
+            UsdcFlowKind::EvmOut => "evm_out",
+        }
+    }
+
+    /// The kind for a wire value, or `None` for a value this SDK version
+    /// does not know.
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "deposit" => Some(UsdcFlowKind::Deposit),
+            "withdraw" => Some(UsdcFlowKind::Withdraw),
+            "evm_in" => Some(UsdcFlowKind::EvmIn),
+            "evm_out" => Some(UsdcFlowKind::EvmOut),
+            _ => None,
+        }
+    }
+}
+
+/// One USDC flow into or out of HyperCore, from
+/// `client.hyperliquid.usdc_flows`.
+///
+/// `id` (`block:index`) is the event's identity: join pages and deduplicate
+/// on it. `(timestamp, tx_hash)` is not unique, because one bridge batch can
+/// finalize up to 10 withdrawals under one hash and one time.
+///
+/// More fields may be added in minor releases, so the struct cannot be
+/// built with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct UsdcFlowEvent {
+    /// The event's identity, `block:index`.
+    pub id: String,
+    /// Event time, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
+    /// Event time, in Unix milliseconds.
+    pub timestamp_ms: i64,
+    /// `deposit`, `withdraw`, `evm_in` or `evm_out`; see
+    /// [`UsdcFlowEvent::flow_kind`].
+    pub kind: String,
+    /// USDC moved, zero or more; `kind` gives the direction.
+    pub amount_usd: f64,
+    /// The withdrawal fee (1 USDC), or a transfer's fee charged in USDC, else 0.
+    pub fee_usd: f64,
+    /// The HyperCore account.
+    #[serde(default)]
+    pub user: Option<String>,
+    /// The transaction hash, when recorded.
+    #[serde(default)]
+    pub tx_hash: Option<String>,
+    /// The HyperCore block.
+    pub block_number: i64,
+    /// The event's position in its block.
+    pub event_index: i64,
+}
+
+impl UsdcFlowEvent {
+    /// `kind` as a [`UsdcFlowKind`], or `None` for a kind this SDK version
+    /// does not know.
+    pub fn flow_kind(&self) -> Option<UsdcFlowKind> {
+        UsdcFlowKind::from_wire(&self.kind)
+    }
+}
+
+/// USDC flow totals for one bucket, from
+/// `client.hyperliquid.usdc_flows.volume()`.
+///
+/// Every bucket of the window is returned, zeros included. Totals count every
+/// flow, whatever its size.
+///
+/// More fields may be added in minor releases, so the struct cannot be
+/// built with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct UsdcFlowVolumeBucket {
+    /// Bucket open time, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
+    /// Bucket open time, in Unix milliseconds.
+    pub timestamp_ms: i64,
+    /// USD deposited through the Arbitrum bridge.
+    pub deposit_usd: f64,
+    /// Number of bridge deposits.
+    pub deposit_count: i64,
+    /// USD withdrawn through the Arbitrum bridge.
+    pub withdraw_usd: f64,
+    /// Number of bridge withdrawals.
+    pub withdraw_count: i64,
+    /// USD moved from HyperEVM into HyperCore.
+    pub evm_in_usd: f64,
+    /// Number of HyperEVM to HyperCore transfers.
+    pub evm_in_count: i64,
+    /// USD moved from HyperCore to HyperEVM.
+    pub evm_out_usd: f64,
+    /// Number of HyperCore to HyperEVM transfers.
+    pub evm_out_count: i64,
+    /// Deposits and HyperEVM inflows less withdrawals and HyperEVM outflows.
+    pub net_usd: f64,
+}
+
+/// Moving-average length, in days, for breadth above the n-day moving average
+/// (`client.hyperliquid.breadth_ma`). Each length starts on its own date.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BreadthMaLength {
+    /// The 5-day average.
+    Five,
+    /// The 20-day average.
+    Twenty,
+    /// The 50-day average.
+    Fifty,
+    /// The 200-day average.
+    TwoHundred,
+}
+
+impl BreadthMaLength {
+    /// Every length, shortest first.
+    pub const ALL: [BreadthMaLength; 4] = [
+        BreadthMaLength::Five,
+        BreadthMaLength::Twenty,
+        BreadthMaLength::Fifty,
+        BreadthMaLength::TwoHundred,
+    ];
+
+    /// The length in days: 5, 20, 50 or 200.
+    pub fn days(&self) -> u32 {
+        match self {
+            BreadthMaLength::Five => 5,
+            BreadthMaLength::Twenty => 20,
+            BreadthMaLength::Fifty => 50,
+            BreadthMaLength::TwoHundred => 200,
+        }
+    }
+
+    /// The length for a number of days, or `None` unless it is 5, 20, 50 or
+    /// 200.
+    pub fn from_days(days: u32) -> Option<Self> {
+        Self::ALL.into_iter().find(|n| n.days() == days)
+    }
+}
+
+/// Instrument counts of one moving-average breadth reading.
+///
+/// `candidates` is `eligible + excluded_stale_price + excluded_short_history`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct BreadthMaCounts {
+    /// Every perp the venue listed by the reading, from its first 1-minute bar.
+    pub candidates: i64,
+    /// Candidates with a recent price and enough history.
+    pub eligible: i64,
+    /// Eligible perps above their average.
+    pub above: i64,
+    /// Eligible perps at their average.
+    pub at: i64,
+    /// Eligible perps below their average.
+    pub below: i64,
+    /// Candidates with no 1-minute close in the 24 hours before the reading,
+    /// delisted perps among them (from 24 hours after their last trade).
+    pub excluded_stale_price: i64,
+    /// Candidates younger than n days before the reading's day.
+    pub excluded_short_history: i64,
+}
+
+/// Quartiles of `price / average - 1` over the eligible perps, 6 decimals,
+/// by linear interpolation. Each is `None` when nothing is eligible.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct BreadthMaDistance {
+    /// First quartile.
+    #[serde(default)]
+    pub p25: Option<f64>,
+    /// Median.
+    #[serde(default)]
+    pub median: Option<f64>,
+    /// Third quartile.
+    #[serde(default)]
+    pub p75: Option<f64>,
+}
+
+/// One reading of breadth above the n-day moving average, from
+/// `client.hyperliquid.breadth_ma` or `client.hyperliquid.hip3.breadth_ma`.
+///
+/// A bucket carries its last reading, as of its end (`calculated_at`); the
+/// bucket still forming is as of about 4 minutes before now, on the minute.
+/// Never average `value_pct` across buckets: the eligible count changes.
+/// `coverage_ratio` depends on n (delisted and young perps are excluded from
+/// `eligible`), so it is not a data-quality ratio and is not comparable with
+/// above-VWAP breadth.
+///
+/// More fields may be added in minor releases, so the struct cannot be
+/// built with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct BreadthMaReading {
+    /// Bucket open time, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
+    /// Bucket open time, in Unix milliseconds.
+    pub timestamp_ms: i64,
+    /// The reading's instant: the bucket's end, or the newest settled minute
+    /// for the bucket still forming.
+    pub calculated_at: String,
+    /// `calculated_at` in Unix milliseconds.
+    pub calculated_at_ms: i64,
+    /// The average's length in days: 5, 20, 50 or 200.
+    pub n: u32,
+    /// The method version, for example `ma-breadth/1`.
+    pub method: String,
+    /// `100 * above / eligible`, 4 decimals; `None` when nothing is eligible.
+    #[serde(default)]
+    pub value_pct: Option<f64>,
+    /// `eligible / candidates`, 4 decimals.
+    pub coverage_ratio: f64,
+    /// Instrument counts.
+    pub counts: BreadthMaCounts,
+    /// Quartiles of how far above or below their average the eligible perps
+    /// are.
+    pub distance: BreadthMaDistance,
+    /// `true` when every bar the reading is made from is final. A final
+    /// reading changes only if the underlying candles are rebuilt.
+    pub is_final: bool,
+}
+
+/// Trailing window for the positioning cross-section
+/// (`client.hyperliquid.positioning`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PositioningWindow {
+    OneHour,
+    FourHours,
+    OneDay,
+}
+
+impl PositioningWindow {
+    /// The wire value: `1h`, `4h` or `24h`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PositioningWindow::OneHour => "1h",
+            PositioningWindow::FourHours => "4h",
+            PositioningWindow::OneDay => "24h",
+        }
+    }
+}
+
+/// One listed perp over a trailing window, from
+/// `client.hyperliquid.positioning` or `client.hyperliquid.hip3.positioning`.
+///
+/// The window is `[window_start, window_end)`; `window_end` is the newest
+/// 5-minute close, about 4 minutes behind now, and equals `meta.as_of`.
+///
+/// More fields may be added in minor releases, so the struct cannot be
+/// built with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PositioningReading {
+    /// The market (`BTC`; HIP-3 with its builder prefix, `xyz:XYZ100`).
+    pub symbol: String,
+    /// The window: `1h`, `4h` or `24h`.
+    pub window: String,
+    /// Window start, as an RFC 3339 UTC string with milliseconds.
+    pub window_start: String,
+    /// Window start, in Unix milliseconds.
+    pub window_start_ms: i64,
+    /// Window end (exclusive), as an RFC 3339 UTC string with milliseconds.
+    pub window_end: String,
+    /// Window end, in Unix milliseconds.
+    pub window_end_ms: i64,
+    /// Open interest in contracts at the start: the 5-minute reading of the
+    /// bucket before the window. `None` when that bucket has no reading,
+    /// never 0.
+    #[serde(default)]
+    pub oi_start: Option<f64>,
+    /// Open interest in contracts at the window's last 5-minute bucket.
+    #[serde(default)]
+    pub oi_end: Option<f64>,
+    /// Mark price at the start, from the same bucket as `oi_start`.
+    #[serde(default)]
+    pub mark_start: Option<f64>,
+    /// Mark price at the window's last 5-minute bucket.
+    #[serde(default)]
+    pub mark_end: Option<f64>,
+    /// Number of 5-minute open interest readings inside the window.
+    pub oi_buckets: i64,
+    /// Taker buy notional in the window, USD.
+    pub buy_usd: f64,
+    /// Taker sell notional in the window, USD.
+    pub sell_usd: f64,
+    /// Long liquidations in the window, USD.
+    pub liq_long_usd: f64,
+    /// Short liquidations in the window, USD.
+    pub liq_short_usd: f64,
+    /// Number of long liquidations in the window.
+    pub liq_long_count: i64,
+    /// Number of short liquidations in the window.
+    pub liq_short_count: i64,
+    /// Typical move of the mark price over windows of this length: the
+    /// median absolute relative change. `None` under 288 counted windows.
+    #[serde(default)]
+    pub typical_price: Option<f64>,
+    /// Typical relative change in open interest over windows of this length.
+    /// `None` under 288 counted windows.
+    #[serde(default)]
+    pub typical_oi: Option<f64>,
+    /// Typical taker imbalance, `(buy - sell) / (buy + sell)`, over windows
+    /// of this length. `None` under 288 counted windows.
+    #[serde(default)]
+    pub typical_flow: Option<f64>,
+    /// Windows the typical moves are measured over: windows of this length
+    /// sliding by 5 minutes over about the last 6.9 days.
+    pub typical_windows: i64,
 }
 
 // ---------------------------------------------------------------------------

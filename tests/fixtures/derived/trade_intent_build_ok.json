@@ -1,0 +1,85 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/trade-intent/ETH",
+    "query": {
+      "start": 1793577600000,
+      "end": 1793581200000,
+      "interval": "1h"
+    },
+    "plan": "build",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "timestamp": "2026-11-02T00:00:00.000Z",
+        "timestamp_ms": 1793577600000,
+        "close": 2270.4,
+        "price_source": "mark",
+        "open_long": 6441670.04,
+        "open_short": 11288599.22,
+        "tp_long": 3055912.99,
+        "tp_short": 3265271.36,
+        "stop_long": 4835626.52,
+        "stop_short": 10639704.52,
+        "flip_ls": 120989.94,
+        "flip_sl": 188729.94,
+        "mm_usd": 9804838.73,
+        "winners_flow": -639385.63,
+        "losers_flow": -1943354.72,
+        "winners_net": 348908308.3,
+        "winners_gross": 361271442.63,
+        "losers_net": -364479493.1,
+        "losers_gross": 364879571.61,
+        "winners_count": 3,
+        "losers_count": 5,
+        "quality": "ok",
+        "is_final": true,
+        "preliminary": false,
+        "preliminary_from": null,
+        "preliminary_from_ms": null,
+        "method": "who/3"
+      },
+      {
+        "timestamp": "2026-11-02T01:00:00.000Z",
+        "timestamp_ms": 1793581200000,
+        "close": 2288.9,
+        "price_source": "mark",
+        "open_long": 7930893.52,
+        "open_short": 24686419.99,
+        "tp_long": 4947606.65,
+        "tp_short": 1952341.88,
+        "stop_long": 1352806.94,
+        "stop_short": 23828721.3,
+        "flip_ls": 250175.6,
+        "flip_sl": 319262.92,
+        "mm_usd": 22843656.01,
+        "winners_flow": -1299652.44,
+        "losers_flow": 651657.43,
+        "winners_net": 631068039.17,
+        "winners_gross": 644965602.29,
+        "losers_net": -662159099.89,
+        "losers_gross": 662743570.79,
+        "winners_count": 1,
+        "losers_count": 7,
+        "quality": "ok",
+        "is_final": true,
+        "preliminary": false,
+        "preliminary_from": null,
+        "preliminary_from_ms": null,
+        "method": "who/3"
+      }
+    ],
+    "meta": {
+      "count": 2,
+      "request_id": "013face0-ab9a-4d13-8765-82da5869c4b8",
+      "built_through": "2026-11-04T19:00:00.000Z",
+      "has_more": false,
+      "symbol": "ETH",
+      "venue": "hyperliquid"
+    }
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

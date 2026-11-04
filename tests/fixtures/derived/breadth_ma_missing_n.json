@@ -1,0 +1,24 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/breadth/above-ma",
+    "query": {},
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 400,
+  "body": {
+    "code": 400,
+    "error": "n is required: the moving average's length in days, 5, 20, 50 or 200.",
+    "error_code": "invalid_parameter",
+    "param": "n",
+    "request_id": "c5a8b0c2-deb4-4129-a8e0-6a0744d8b30f",
+    "success": false,
+    "valid_values": [
+      "5",
+      "20",
+      "50",
+      "200"
+    ]
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

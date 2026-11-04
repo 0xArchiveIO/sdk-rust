@@ -1,0 +1,23 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/positioning",
+    "query": {},
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 400,
+  "body": {
+    "code": 400,
+    "error": "window is required: the trailing window, 1h, 4h or 24h.",
+    "error_code": "invalid_parameter",
+    "param": "window",
+    "request_id": "b61569ab-ad66-4fc0-b827-ca9cecbaebfa",
+    "success": false,
+    "valid_values": [
+      "1h",
+      "4h",
+      "24h"
+    ]
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

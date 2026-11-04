@@ -53,8 +53,11 @@ pub enum ErrorCode {
     /// Missing or invalid credentials.
     Unauthorized,
     /// The credentials do not grant access to this resource, or the plan does
-    /// not include it (the `mempool` WebSocket channel on plans other than
-    /// Pro, Scale and Enterprise).
+    /// not include it: the `mempool` WebSocket channel on plans other than
+    /// Pro, Scale and Enterprise, and the trade intent, USDC flow,
+    /// moving-average breadth and positioning routes on plans other than
+    /// Build, Pro, Scale and Enterprise. A plan refusal from a REST route
+    /// carries [`PlanRequired`] ([`Error::plan_required`]).
     Forbidden,
     /// The monthly credits are spent.
     InsufficientCredits,
@@ -184,6 +187,42 @@ impl<'de> serde::Deserialize<'de> for ErrorCode {
     }
 }
 
+/// A refusal because the caller's plan does not include the dataset (HTTP
+/// 403, [`ErrorCode::Forbidden`]), read from the error body's `datatype`,
+/// `required_plans` and `upgrade_url`. Returned by [`Error::plan_required`].
+///
+/// ```
+/// # async fn example(client: oxarchive::OxArchive) {
+/// use oxarchive::types::PositioningWindow;
+///
+/// match client.hyperliquid.positioning.current(PositioningWindow::FourHours).await {
+///     Ok(page) => println!("{} perps as of {:?}", page.data.len(), page.meta.as_of),
+///     Err(e) => match e.plan_required() {
+///         Some(plan) => eprintln!(
+///             "{:?} needs one of {:?}: {:?}",
+///             plan.datatype, plan.required_plans, plan.upgrade_url
+///         ),
+///         None => eprintln!("{e}"),
+///     },
+/// }
+/// # }
+/// ```
+///
+/// More fields may be added in minor releases, so the struct cannot be built
+/// with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct PlanRequired {
+    /// The datatype refused, for example `usdc_flows`, `trade_intent`,
+    /// `breadth_ma` or `positioning`.
+    pub datatype: Option<String>,
+    /// The plans that include it, for example `["build", "pro", "scale",
+    /// "enterprise"]`.
+    pub required_plans: Vec<String>,
+    /// Where to change plans.
+    pub upgrade_url: Option<String>,
+}
+
 /// An error returned by the 0xArchive API or the SDK itself.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -209,8 +248,11 @@ pub enum Error {
         /// The request parameter the error is about, when there is one.
         param: Option<String>,
         /// The values `param` accepts, when the API lists them. Boxed to keep
-        /// `Error` small; it reads as a slice.
-        valid_values: Option<Box<[String]>>,
+        /// `Error` small; [`Error::valid_values`] reads it as a slice.
+        valid_values: Option<Box<Vec<String>>>,
+        /// Set when the plan does not include the dataset (HTTP 403,
+        /// `forbidden`, with the plans that do).
+        plan: Option<Box<PlanRequired>>,
     },
 
     /// The request timed out.
@@ -273,7 +315,16 @@ impl Error {
     /// The values the parameter accepts, when the API listed them.
     pub fn valid_values(&self) -> Option<&[String]> {
         match self {
-            Error::Api { valid_values, .. } => valid_values.as_deref(),
+            Error::Api { valid_values, .. } => valid_values.as_deref().map(Vec::as_slice),
+            _ => None,
+        }
+    }
+
+    /// The plan refusal of an [`Error::Api`]: set on a 403 `forbidden` whose
+    /// body names the plans that include the dataset, `None` otherwise.
+    pub fn plan_required(&self) -> Option<&PlanRequired> {
+        match self {
+            Error::Api { plan, .. } => plan.as_deref(),
             _ => None,
         }
     }

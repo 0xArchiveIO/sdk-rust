@@ -6,7 +6,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 pub(crate) use std::time::Duration;
 
-use crate::error::{Error, ErrorCode};
+use crate::error::{Error, ErrorCode, PlanRequired};
 use crate::types::{ApiEnvelope, MetaEnvelope, MetaResponse, ResponseMeta};
 
 /// The API version this SDK is built for, sent on every request as the
@@ -264,7 +264,8 @@ impl HttpClient {
 
 /// Map a non-2xx response to [`Error::Api`], keeping the contract fields
 /// (`error_code`, `request_id`, `param`, `valid_values`) when the body is the
-/// JSON error envelope.
+/// JSON error envelope, and the plan refusal (`datatype`, `required_plans`,
+/// `upgrade_url`) of a 403 `forbidden` that names the plans.
 pub(crate) fn parse_error(code: u16, body: &str) -> Error {
     #[derive(Deserialize, Default)]
     struct ErrBody {
@@ -280,6 +281,12 @@ pub(crate) fn parse_error(code: u16, body: &str) -> Error {
         param: Option<String>,
         #[serde(default)]
         valid_values: Option<Vec<String>>,
+        #[serde(default)]
+        datatype: Option<String>,
+        #[serde(default)]
+        required_plans: Option<Vec<String>>,
+        #[serde(default)]
+        upgrade_url: Option<String>,
     }
 
     let parsed: ErrBody = serde_json::from_str(body).unwrap_or_default();
@@ -289,13 +296,23 @@ pub(crate) fn parse_error(code: u16, body: &str) -> Error {
         .or(parsed.message)
         .unwrap_or_else(|| format!("Request failed with status {code}"));
 
+    let plan = match (code, &parsed.error_code, parsed.required_plans) {
+        (403, Some(ErrorCode::Forbidden), Some(required_plans)) => Some(Box::new(PlanRequired {
+            datatype: parsed.datatype,
+            required_plans,
+            upgrade_url: parsed.upgrade_url,
+        })),
+        _ => None,
+    };
+
     Error::Api {
         message,
         code,
         request_id: parsed.request_id,
         error_code: parsed.error_code,
         param: parsed.param,
-        valid_values: parsed.valid_values.map(Vec::into_boxed_slice),
+        valid_values: parsed.valid_values.map(Box::new),
+        plan,
     }
 }
 
@@ -335,6 +352,7 @@ mod tests {
                 error_code,
                 param,
                 valid_values,
+                plan,
             } => {
                 assert_eq!(message, "Request failed with status 502");
                 assert_eq!(code, 502);
@@ -342,9 +360,29 @@ mod tests {
                 assert!(error_code.is_none());
                 assert!(param.is_none());
                 assert!(valid_values.is_none());
+                assert!(plan.is_none());
             }
             other => panic!("expected an API error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_plan_refusal_keeps_the_plans() {
+        let body = r#"{"code":403,"datatype":"positioning","error":"Positioning is included with the Build, Pro, Scale and Enterprise plans. Upgrade at https://0xarchive.io/pricing.","error_code":"forbidden","request_id":"r","required_plans":["build","pro","scale","enterprise"],"success":false,"upgrade_url":"https://0xarchive.io/pricing"}"#;
+        let err = parse_error(403, body);
+        let plan = err.plan_required().expect("a plan refusal");
+        assert_eq!(plan.datatype.as_deref(), Some("positioning"));
+        assert_eq!(plan.required_plans, ["build", "pro", "scale", "enterprise"]);
+        assert_eq!(plan.upgrade_url.as_deref(), Some("https://0xarchive.io/pricing"));
+        assert_eq!(err.error_code(), Some(&ErrorCode::Forbidden));
+
+        // A 403 that names no plans is not a plan refusal.
+        let other = parse_error(
+            403,
+            r#"{"code":403,"error":"Forbidden","error_code":"forbidden","request_id":"r"}"#,
+        );
+        assert_eq!(other.error_code(), Some(&ErrorCode::Forbidden));
+        assert!(other.plan_required().is_none());
     }
 
     #[test]

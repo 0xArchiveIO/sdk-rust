@@ -1,0 +1,214 @@
+{
+  "request": {
+    "path": "/v1/capabilities",
+    "query": {},
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "venue": "hyperliquid",
+        "datatype": "usdc_flows",
+        "rest_routes": [
+          "/v1/hyperliquid/usdc-flows",
+          "/v1/hyperliquid/usdc-flows/volume"
+        ],
+        "ws_channels": [],
+        "live": false,
+        "replay": false,
+        "available_from": "2025-09-27T09:33:00.000Z",
+        "cadence": "event",
+        "page_limit": 1000,
+        "intervals": [
+          "1m",
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "4h",
+          "1d"
+        ],
+        "notes": "USDC entering and leaving HyperCore: Arbitrum bridge deposits and withdrawals, and transfers to and from HyperEVM (which also carries CCTP), with the HyperCore account. Events page through the whole history by cursor and join on id; /volume totals every flow per interval.",
+        "plans": [
+          "build",
+          "pro",
+          "scale",
+          "enterprise"
+        ]
+      },
+      {
+        "venue": "hyperliquid",
+        "datatype": "trade_intent",
+        "rest_routes": [
+          "/v1/hyperliquid/trade-intent/{symbol}"
+        ],
+        "ws_channels": [],
+        "live": false,
+        "replay": false,
+        "available_from": "2025-05-25T15:00:00.000Z",
+        "cadence": "interval",
+        "page_limit": 2000,
+        "intervals": [
+          "1s",
+          "5s",
+          "15s",
+          "1m",
+          "5m",
+          "15m",
+          "1h",
+          "4h",
+          "1d"
+        ],
+        "notes": "Why volume traded, per interval: USD of new longs and shorts, profit taken, stopped out and flips (both sides of every trade; market makers apart, in mm_usd), and the aggregate position and flow of the market's trailing-72h winners and losers. Hourly intervals from available_from, minute intervals from 2026-07-14 00:00 UTC, second intervals for the last 3 days. A market idle for more than 7 days has no buckets there: a gap, not zero.",
+        "plans": [
+          "build",
+          "pro",
+          "scale",
+          "enterprise"
+        ]
+      },
+      {
+        "venue": "hyperliquid",
+        "datatype": "breadth_ma",
+        "rest_routes": [
+          "/v1/hyperliquid/breadth/above-ma",
+          "/v1/hyperliquid/breadth/above-ma/current"
+        ],
+        "ws_channels": [],
+        "live": false,
+        "replay": false,
+        "available_from": "2025-03-27T00:00:00.000Z",
+        "cadence": "interval",
+        "page_limit": 1000,
+        "intervals": [
+          "1m",
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "4h",
+          "1d"
+        ],
+        "notes": "Share of perps above their n-day moving average (n required: 5, 20, 50 or 200), with the quartiles of how far above or below. Method ma-breadth/1: a delisted perp stays a candidate, counted in excluded_stale_price from 24 hours after its last trade, and a perp younger than n days in excluded_short_history, so coverage_ratio is not a data-quality ratio and is not comparable with above-VWAP's; the average is of the daily closes over the n UTC days before the reading's day. available_from is n = 5; n = 20 from 2025-04-11, 50 from 2025-05-11, 200 from 2025-10-08. A bucket carries its last reading; percentages are never averaged.",
+        "plans": [
+          "build",
+          "pro",
+          "scale",
+          "enterprise"
+        ]
+      },
+      {
+        "venue": "hyperliquid",
+        "datatype": "positioning",
+        "rest_routes": [
+          "/v1/hyperliquid/positioning"
+        ],
+        "ws_channels": [],
+        "live": false,
+        "replay": false,
+        "available_from": null,
+        "cadence": "snapshot",
+        "page_limit": null,
+        "intervals": [],
+        "notes": "Every listed perp's open interest change, taker buy and sell volume and liquidations over a trailing window (window required: 1h, 4h or 24h), with each market's typical move over windows of that length: the median absolute move over the last 2,000 five-minute steps, null under 288 counted windows. The window ends at the newest 5-minute close; open interest and marks are null when a bucket has no reading, never 0. Current window only: history is not served. One record per perp, unpaged.",
+        "plans": [
+          "build",
+          "pro",
+          "scale",
+          "enterprise"
+        ]
+      },
+      {
+        "venue": "hip3",
+        "datatype": "trade_intent",
+        "rest_routes": [
+          "/v1/hyperliquid/hip3/trade-intent/{symbol}"
+        ],
+        "ws_channels": [],
+        "live": false,
+        "replay": false,
+        "available_from": "2025-10-13T12:00:00.000Z",
+        "cadence": "interval",
+        "page_limit": 2000,
+        "intervals": [
+          "1s",
+          "5s",
+          "15s",
+          "1m",
+          "5m",
+          "15m",
+          "1h",
+          "4h",
+          "1d"
+        ],
+        "notes": "Why volume traded, per interval: USD of new longs and shorts, profit taken, stopped out and flips (both sides of every trade; market makers apart, in mm_usd), and the aggregate position and flow of the market's trailing-72h winners and losers. Hourly intervals from available_from, minute intervals from 2026-07-14 00:00 UTC, second intervals for the last 3 days. A market idle for more than 7 days has no buckets there: a gap, not zero.",
+        "plans": [
+          "build",
+          "pro",
+          "scale",
+          "enterprise"
+        ]
+      },
+      {
+        "venue": "hip3",
+        "datatype": "breadth_ma",
+        "rest_routes": [
+          "/v1/hyperliquid/hip3/breadth/above-ma",
+          "/v1/hyperliquid/hip3/breadth/above-ma/current"
+        ],
+        "ws_channels": [],
+        "live": false,
+        "replay": false,
+        "available_from": "2025-12-27T00:00:00.000Z",
+        "cadence": "interval",
+        "page_limit": 1000,
+        "intervals": [
+          "1m",
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "4h",
+          "1d"
+        ],
+        "notes": "Share of HIP-3 perps above their n-day moving average (n required: 5, 20, 50 or 200), with the quartiles of how far above or below. Method ma-breadth/1: a delisted perp stays a candidate, counted in excluded_stale_price from 24 hours after its last trade, and a perp younger than n days in excluded_short_history, so coverage_ratio is not a data-quality ratio and is not comparable with above-VWAP's; the average is of the daily closes over the n UTC days before the reading's day. available_from is n = 5; n = 20 from 2026-01-11, 50 from 2026-02-10, 200 from 2026-07-10. A bucket carries its last reading; percentages are never averaged.",
+        "plans": [
+          "build",
+          "pro",
+          "scale",
+          "enterprise"
+        ]
+      },
+      {
+        "venue": "hip3",
+        "datatype": "positioning",
+        "rest_routes": [
+          "/v1/hyperliquid/hip3/positioning"
+        ],
+        "ws_channels": [],
+        "live": false,
+        "replay": false,
+        "available_from": null,
+        "cadence": "snapshot",
+        "page_limit": null,
+        "intervals": [],
+        "notes": "Every listed perp's open interest change, taker buy and sell volume and liquidations over a trailing window (window required: 1h, 4h or 24h), with each market's typical move over windows of that length: the median absolute move over the last 2,000 five-minute steps, null under 288 counted windows. The window ends at the newest 5-minute close; open interest and marks are null when a bucket has no reading, never 0. Current window only: history is not served. One record per perp, unpaged.",
+        "plans": [
+          "build",
+          "pro",
+          "scale",
+          "enterprise"
+        ]
+      }
+    ],
+    "meta": {
+      "count": 109,
+      "request_id": "95cf7f29-f317-4825-ac09-1b2cf46d783e"
+    }
+  },
+  "note": "data trimmed to the 7 rows of the four Build-and-above datasets, of 109 recorded; meta exactly as recorded",
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}

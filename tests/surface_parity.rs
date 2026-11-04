@@ -1344,11 +1344,11 @@ fn sign(secret: &str, t: i64, raw_body: &[u8]) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(format!("{t}.").as_bytes());
     mac.update(raw_body);
-    mac.finalize()
-        .into_bytes()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    let mut hex = String::new();
+    for b in mac.finalize().into_bytes() {
+        hex.push_str(&format!("{b:02x}"));
+    }
+    hex
 }
 
 fn now() -> i64 {

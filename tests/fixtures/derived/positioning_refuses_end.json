@@ -1,0 +1,21 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/positioning",
+    "query": {
+      "window": "1h",
+      "end": 1793822645059
+    },
+    "plan": "pro",
+    "version": "2026-10-01"
+  },
+  "status": 400,
+  "body": {
+    "code": 400,
+    "error": "Positioning does not take end: it serves the current window only (history is not served).",
+    "error_code": "invalid_parameter",
+    "param": "end",
+    "request_id": "79785fea-d2c1-407c-bb0f-9fb3b538b9ef",
+    "success": false
+  },
+  "recorded": "2026-11-04, from the 0xArchive API with version 2026-10-01"
+}
