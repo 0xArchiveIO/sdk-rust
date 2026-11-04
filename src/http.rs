@@ -22,11 +22,22 @@ pub const API_VERSION: &str = "2026-10-01";
 pub const API_VERSION_HEADER: &str = "0xArchive-Version";
 
 /// Configuration for [`HttpClient`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct HttpConfig {
     pub base_url: String,
     pub api_key: String,
     pub timeout: Duration,
+}
+
+/// Redacts the API key so `{:?}` of a client never prints it.
+impl std::fmt::Debug for HttpConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpConfig")
+            .field("base_url", &self.base_url)
+            .field("api_key", &"<redacted>")
+            .field("timeout", &self.timeout)
+            .finish()
+    }
 }
 
 /// A thin wrapper around `reqwest::Client` that handles authentication,
@@ -44,9 +55,11 @@ impl HttpClient {
         }
 
         let mut headers = HeaderMap::new();
-        headers.insert("X-API-Key", HeaderValue::from_str(&config.api_key).map_err(|_| {
+        let mut api_key = HeaderValue::from_str(&config.api_key).map_err(|_| {
             Error::InvalidParam("API key contains invalid characters".into())
-        })?);
+        })?;
+        api_key.set_sensitive(true);
+        headers.insert("X-API-Key", api_key);
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             reqwest::header::HeaderName::from_static("0xarchive-version"),
@@ -319,6 +332,23 @@ pub(crate) fn parse_error(code: u16, body: &str) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_output_never_contains_the_api_key() {
+        let key = "dummy-secret-key-123";
+        let config = HttpConfig {
+            base_url: "https://api.example.test".into(),
+            api_key: key.into(),
+            timeout: Duration::from_secs(5),
+        };
+        assert!(!format!("{config:?}").contains(key));
+        let http = HttpClient::new(config).unwrap();
+        assert!(!format!("{http:?}").contains(key));
+        let client = crate::OxArchive::new(key).unwrap();
+        let shown = format!("{client:?}");
+        assert!(!shown.contains(key));
+        assert!(shown.contains("<redacted>"));
+    }
 
     #[test]
     fn the_error_stays_small() {
