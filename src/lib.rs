@@ -260,10 +260,12 @@ pub use resources::trades::RecentTradesParams;
 pub use resources::pages::CursorPages;
 pub use resources::trade_intent::TradeIntentParams;
 pub use resources::usdc_flows::{UsdcFlowVolumeParams, UsdcFlowsParams};
+pub use resources::news::NewsParams;
 pub use resources::breadth_ma::BreadthMaHistoryParams;
 pub use types::{
     BreadthMaCounts, BreadthMaDistance, BreadthMaLength, BreadthMaReading, PositioningReading,
-    PositioningWindow, TradeIntentBucket, TradeIntentInterval, UsdcFlowEvent, UsdcFlowKind,
+    NewsDepth, NewsLiquidations, NewsMarket, NewsOtherMove, NewsPrice, NewsReaction, NewsReport,
+    NewsStory, NewsWindow, NewsWindows, PositioningWindow, TradeIntentBucket, TradeIntentInterval, UsdcFlowEvent, UsdcFlowKind,
     UsdcFlowVolumeBucket,
 };
 pub use types::{Capability, TradeSide};

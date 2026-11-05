@@ -215,7 +215,7 @@ the first instant served (`available_from`), the cadence, the largest page
 (`page_limit`), and the accepted `interval` values. The `mempool` row is the one
 that sets `ws_endpoint` (the endpoint that serves it). `plans` names the plans that
 include a row when that is not every plan: Pro and above for `mempool`, Build and
-above for `trade_intent`, `usdc_flows`, `breadth_ma` and `positioning`. Rows without
+above for `trade_intent`, `usdc_flows`, `breadth_ma`, `positioning` and `news`. Rows without
 them use the default endpoint, `wss://api.0xarchive.io/ws`, and are on every plan. The route is public and uses no credits. Read replay availability from it rather than from a fixed
 list:
 
@@ -260,6 +260,7 @@ The sections below show which resources are available on each exchange client:
 | `usdc_flows` (Build and above) | Yes | -- | -- | -- | -- |
 | `breadth_ma` (above the n-day moving average, Build and above) | Yes | Yes | -- | -- | -- |
 | `positioning` (Build and above) | Yes | Yes | -- | -- | -- |
+| `news` (Build and above) | Yes | Yes | -- | Yes | -- |
 
 HIP-4 outcome markets (`client.hyperliquid.hip4`) have their own methods, listed in [HIP-4 Outcome Markets](#hip-4-outcome-markets-hyperliquid). Webhook management is on `client.webhooks`; see [Webhooks](#webhooks).
 
@@ -1600,8 +1601,8 @@ let hip3 = client.hyperliquid.hip3.cvd("xyz:XYZ100", CvdParams::default()).await
 
 ### Trade Intent, USDC Flows, Moving-Average Breadth and Positioning
 
-These four datasets are included with the Build, Pro, Scale and Enterprise
-plans. On Free the API answers HTTP 403 `forbidden`, and
+These datasets, and news below, are included with the Build, Pro, Scale and
+Enterprise plans. On Free the API answers HTTP 403 `forbidden`, and
 `Error::plan_required()` returns the plans that include the dataset:
 
 ```rust
@@ -1789,6 +1790,62 @@ let section = client.hyperliquid.positioning.current(PositioningWindow::FourHour
 println!("As of {:?}", section.meta.as_of);
 for r in section.data.iter().filter(|r| r.liq_long_usd > 0.0) {
     println!("{}: long liquidations {:.0} USD, taker buy {:.0}, sell {:.0}", r.symbol, r.liq_long_usd, r.buy_usd, r.sell_usd);
+}
+```
+
+#### News (Hyperliquid, HIP-3 and Lighter)
+
+`client.hyperliquid.news`, `client.hyperliquid.hip3.news` and
+`client.lighter.news` return headlines and our own market events as stories,
+newest first by `first_seen_at`. Each story carries the reports that joined
+it, the markets it names and, when a market was matched, what the first one
+did in the minutes after we first saw the story. A route returns the stories
+whose lead report names a market on its venue. Build, Pro, Scale and
+Enterprise plans (on Free, `Error::plan_required()` names them);
+public-display stories only. Each story names its `source` (and
+`source_line`, for example `via Tree News`) and links to its `url`;
+`headline` is the source's own words, cleaned by rules, never rewritten.
+
+- Filters: `symbols` (at most 20), `topic`, `min_weight` (1 to 3), `start`,
+  `end`, `as_of` (the feed as we knew it then; a future time is now) and
+  `limit` (1 to 500, default 100). `iterate()` follows `next_cursor` with
+  the same filters; `start` is optional, and a missing `end` is fixed to now
+  before the first request.
+- `reaction` is a measurement, not a cause. It covers the 1 and 5 minutes
+  after `first_seen_at`: price move, liquidations, open interest change,
+  volume against the prior window and (5 minutes only) book depth within 25
+  basis points, `move_z` and `move_level`. `status` is `measuring` until both
+  windows close (a window not yet due is `None`), then `final`.
+- Story moves are mostly noise. `move_z` is the 5-minute move over that
+  market's own trailing 24-hour standard deviation of 5-minute moves;
+  `move_level` is `normal`, `unusual` (from 2) or `large` (from 3). Treat a
+  move as typical unless `move_level` is `unusual` or `large`; `move_pct`
+  stays available. A figure we could not measure is `None`, never 0. Lighter
+  reports liquidations as a `total` only (`long` and `short` are `None`).
+
+```rust
+use oxarchive::NewsParams;
+
+let page = client.hyperliquid.news.list(NewsParams {
+    symbols: vec!["BTC".into(), "ETH".into()],
+    min_weight: Some(2),
+    limit: Some(20),
+    ..Default::default()
+}).await?;
+for story in &page.data {
+    println!("{} {} ({})", story.first_seen_at, story.headline, story.source);
+    let five = story.reaction.as_ref().and_then(|r| r.windows.five_minutes.as_ref());
+    if let Some(w) = five.filter(|w| matches!(w.move_level.as_deref(), Some("unusual" | "large"))) {
+        println!("  5m move {:?}%", w.price.as_ref().and_then(|p| p.move_pct));
+    }
+}
+
+let mut pages = client.lighter.news.iterate(NewsParams {
+    start: Some("2026-11-04T00:00:00Z".into()),
+    ..Default::default()
+})?;
+while let Some(page) = pages.next_page().await? {
+    println!("{} stories", page.data.len());
 }
 ```
 

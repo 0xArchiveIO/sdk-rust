@@ -6,7 +6,7 @@ use crate::http::HttpClient;
 use crate::resources::cvd::fetch_cvd;
 use crate::resources::trades::RecentTradesParams;
 use crate::resources::{
-    BreadthMaResource, BreadthResource, CandlesResource, PositioningResource, TradeIntentResource,
+    BreadthMaResource, BreadthResource, CandlesResource, NewsResource, PositioningResource, TradeIntentResource,
     UsdcFlowsResource, CvdParams, FundingResource, Hip3InstrumentsResource,
     Hip4InstrumentsResource, InstrumentsResource, L2OrderBookResource, L3OrderBookResource,
     Hip3LiquidationsResource, L4OrderBookResource, LighterAccountsResource,
@@ -59,6 +59,10 @@ pub struct HyperliquidClient {
     /// Every listed core perp over a trailing window (Build, Pro, Scale and
     /// Enterprise plans).
     pub positioning: PositioningResource,
+    /// News stories whose lead names a Hyperliquid perp, with what that
+    /// market did in the next 5 minutes (Build, Pro, Scale and Enterprise
+    /// plans; public-display stories only).
+    pub news: NewsResource,
     pub hip3: Hip3Client,
     /// HIP-4 outcome markets (binary outcome perps, `#`-prefixed coins).
     pub hip4: Hip4,
@@ -92,6 +96,7 @@ impl HyperliquidClient {
             trade_intent: TradeIntentResource::new(http.clone(), prefix),
             usdc_flows: UsdcFlowsResource::new(http.clone()),
             positioning: PositioningResource::new(http.clone(), prefix),
+            news: NewsResource::new(http.clone(), prefix),
             hip3: Hip3Client::new(http.clone()),
             hip4: Hip4::new(http.clone()),
             spot: SpotClient::new(http.clone()),
@@ -189,6 +194,10 @@ pub struct Hip3Client {
     /// Every listed HIP-3 perp over a trailing window (Build, Pro, Scale and
     /// Enterprise plans).
     pub positioning: PositioningResource,
+    /// News stories whose lead names a HIP-3 market, with what that market
+    /// did in the next 5 minutes (Build, Pro, Scale and Enterprise plans;
+    /// public-display stories only).
+    pub news: NewsResource,
     pub l4_orderbook: L4OrderBookResource,
     pub l2_orderbook: L2OrderBookResource,
     /// Account positions by wallet address (optional `dex` filter), market
@@ -222,6 +231,7 @@ impl Hip3Client {
             breadth_ma: BreadthMaResource::new(http.clone(), prefix),
             trade_intent: TradeIntentResource::new(http.clone(), prefix),
             positioning: PositioningResource::new(http.clone(), prefix),
+            news: NewsResource::new(http.clone(), prefix),
             l4_orderbook: L4OrderBookResource::new(http.clone(), prefix),
             l2_orderbook: L2OrderBookResource::new(http.clone(), prefix),
             positions: PositionsResource::new(http.clone(), prefix),
@@ -1222,6 +1232,10 @@ pub struct LighterClient {
     pub positions: LighterPositionsResource,
     /// Account lookup by L1 address.
     pub accounts: LighterAccountsResource,
+    /// News stories whose lead names a Lighter market, with what that market
+    /// did in the next 5 minutes (Build, Pro, Scale and Enterprise plans;
+    /// public-display stories only). Not on Robinhood Chain.
+    pub news: NewsResource,
 }
 
 impl LighterClient {
@@ -1243,6 +1257,7 @@ impl LighterClient {
             l3_orderbook: L3OrderBookResource::new(http.clone(), prefix),
             positions: LighterPositionsResource::new(http.clone(), prefix),
             accounts: LighterAccountsResource::new(http.clone(), prefix),
+            news: NewsResource::new(http.clone(), prefix),
             http,
         }
     }

@@ -36,6 +36,7 @@ include = [
     "/src/resources/l4_orderbook.rs",
     "/src/resources/liquidations.rs",
     "/src/resources/mod.rs",
+    "/src/resources/news.rs",
     "/src/resources/open_interest.rs",
     "/src/resources/oracle.rs",
     "/src/resources/orderbook.rs",

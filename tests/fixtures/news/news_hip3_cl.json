@@ -1,0 +1,120 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/hip3/news",
+    "query": {
+      "limit": "1",
+      "symbols": "xyz:CL",
+      "topic": "macro"
+    },
+    "plan": "build",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "id": "st_77e2d41a0b9c5f63",
+        "headline": "Oil jumps as tanker traffic through Hormuz is halted",
+        "source": "Tree News",
+        "source_line": "via Tree News",
+        "url": "https://news.treeofalpha.com/example/oil",
+        "origin": "outlet",
+        "topic": "macro",
+        "weight": 2,
+        "weight_rule": "tree-importance",
+        "published_at": "2026-11-04T18:07:30.000Z",
+        "first_seen_at": "2026-11-04T18:07:35.000Z",
+        "known_at": "2026-11-04T18:07:35.700Z",
+        "markets": [
+          {
+            "venue": "hip3",
+            "symbol": "xyz:CL"
+          },
+          {
+            "venue": "hip3",
+            "symbol": "xyz:BRENTOIL"
+          }
+        ],
+        "reports": [
+          {
+            "id": "77e2d41a0b9c5f63",
+            "source": "Tree News",
+            "url": "https://news.treeofalpha.com/example/oil",
+            "headline": "Oil jumps as tanker traffic through Hormuz is halted",
+            "published_at": "2026-11-04T18:07:30.000Z",
+            "observed_at": "2026-11-04T18:07:35.000Z"
+          }
+        ],
+        "reaction": {
+          "market": {
+            "venue": "hip3",
+            "symbol": "xyz:CL"
+          },
+          "from": "2026-11-04T18:07:35.000Z",
+          "status": "final",
+          "windows": {
+            "1m": {
+              "end": "2026-11-04T18:08:35.000Z",
+              "price": {
+                "at": 88.173,
+                "end": 88.41,
+                "move_pct": 0.27
+              },
+              "liquidations_usd": {
+                "long": 0.0,
+                "short": 0.0,
+                "total": 0.0
+              },
+              "oi_change_pct": 0.6,
+              "volume_vs_prior": 4.0
+            },
+            "5m": {
+              "end": "2026-11-04T18:12:35.000Z",
+              "price": {
+                "at": 88.173,
+                "end": 88.9,
+                "move_pct": 0.82
+              },
+              "liquidations_usd": {
+                "long": 0.0,
+                "short": 0.0,
+                "total": 0.0
+              },
+              "oi_change_pct": 1.83,
+              "volume_vs_prior": 8.3,
+              "bid_depth_25bp_usd": {
+                "at": 210000,
+                "end": 180000
+              },
+              "ask_depth_25bp_usd": {
+                "at": 205000,
+                "end": 150000
+              },
+              "move_z": 3.6,
+              "move_level": "large"
+            }
+          },
+          "others": [
+            {
+              "market": {
+                "venue": "hip3",
+                "symbol": "xyz:BRENTOIL"
+              },
+              "move_pct_5m": 0.9,
+              "oi_change_pct_5m": 1.1
+            }
+          ],
+          "known_at": "2026-11-04T18:43:35.000Z"
+        }
+      }
+    ],
+    "meta": {
+      "count": 1,
+      "request_id": "9f1c1a52-6a43-4d6b-9a0e-5b1d7f3d2a10",
+      "has_more": false
+    }
+  },
+  "recorded": "shaped from source 2026-11-05, API version 2026-10-01",
+  "note": "Shaped from the backend's news_story_json (migration 338) and reaction.rs on branch hermes/news-mvp-20261105, not recorded from a live API: the routes are dark until NEWS_ROUTES_ENABLED. Replace with recordings after launch."
+}

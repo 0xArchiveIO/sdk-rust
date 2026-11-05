@@ -1,0 +1,52 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/news",
+    "query": {
+      "cursor": "1793760070100_c3d90be1a7746f20",
+      "limit": "2",
+      "min_weight": "2",
+      "symbols": "BTC,BNB"
+    },
+    "plan": "build",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "id": "st_19ab0c5d7e3f8a42",
+        "headline": "SEC publishes the agenda for its November open meeting",
+        "source": "SEC",
+        "source_line": null,
+        "url": "https://www.sec.gov/example/open-meeting",
+        "origin": "official",
+        "topic": "regulation",
+        "weight": 2,
+        "weight_rule": "official",
+        "published_at": "2026-11-04T02:10:00.000Z",
+        "first_seen_at": "2026-11-04T02:10:05.000Z",
+        "known_at": "2026-11-04T02:10:06.000Z",
+        "markets": [],
+        "reports": [
+          {
+            "id": "19ab0c5d7e3f8a42",
+            "source": "SEC",
+            "url": "https://www.sec.gov/example/open-meeting",
+            "headline": "SEC publishes the agenda for its November open meeting",
+            "published_at": "2026-11-04T02:10:00.000Z",
+            "observed_at": "2026-11-04T02:10:05.000Z"
+          }
+        ],
+        "reaction": null
+      }
+    ],
+    "meta": {
+      "count": 1,
+      "request_id": "9f1c1a52-6a43-4d6b-9a0e-5b1d7f3d2a10",
+      "has_more": false
+    }
+  },
+  "recorded": "shaped from source 2026-11-05, API version 2026-10-01",
+  "note": "Shaped from the backend's news_story_json (migration 338) and reaction.rs on branch hermes/news-mvp-20261105, not recorded from a live API: the routes are dark until NEWS_ROUTES_ENABLED. Replace with recordings after launch."
+}

@@ -1,0 +1,186 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/news",
+    "query": {
+      "limit": "2",
+      "min_weight": "2",
+      "symbols": "BTC,BNB"
+    },
+    "plan": "build",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "id": "st_8a41c07e5d2b9f13",
+        "headline": "$16.7M of BTC longs liquidated in 5 minutes",
+        "source": "Hyperliquid",
+        "source_line": null,
+        "url": null,
+        "origin": "venue",
+        "topic": "liquidation",
+        "weight": 3,
+        "weight_rule": "venue",
+        "published_at": "2026-11-04T02:57:00.000Z",
+        "first_seen_at": "2026-11-04T02:57:00.000Z",
+        "known_at": "2026-11-04T02:57:01.800Z",
+        "markets": [
+          {
+            "venue": "hyperliquid",
+            "symbol": "BTC"
+          }
+        ],
+        "reports": [
+          {
+            "id": "8a41c07e5d2b9f13",
+            "source": "Hyperliquid",
+            "url": null,
+            "headline": "$16.7M of BTC longs liquidated in 5 minutes",
+            "published_at": "2026-11-04T02:57:00.000Z",
+            "observed_at": "2026-11-04T02:57:00.000Z"
+          }
+        ],
+        "reaction": {
+          "market": {
+            "venue": "hyperliquid",
+            "symbol": "BTC"
+          },
+          "from": "2026-11-04T02:57:00.000Z",
+          "status": "final",
+          "windows": {
+            "1m": {
+              "end": "2026-11-04T02:58:00.000Z",
+              "price": {
+                "at": 76554.0,
+                "end": 76210.0,
+                "move_pct": -0.45
+              },
+              "liquidations_usd": {
+                "long": 9800000.0,
+                "short": 0.0,
+                "total": 9800000.0
+              },
+              "oi_change_pct": -0.41,
+              "volume_vs_prior": 3.1
+            },
+            "5m": {
+              "end": "2026-11-04T03:02:00.000Z",
+              "price": {
+                "at": 76554.0,
+                "end": 75983.0,
+                "move_pct": -0.75
+              },
+              "liquidations_usd": {
+                "long": 16650000.0,
+                "short": 0.0,
+                "total": 16650000.0
+              },
+              "oi_change_pct": -0.76,
+              "volume_vs_prior": 4.4,
+              "bid_depth_25bp_usd": {
+                "at": 4200000,
+                "end": 3100000
+              },
+              "ask_depth_25bp_usd": {
+                "at": 3900000,
+                "end": 3600000
+              },
+              "move_z": -7.0,
+              "move_level": "large"
+            }
+          },
+          "others": [
+            {
+              "market": {
+                "venue": "hyperliquid",
+                "symbol": "ETH"
+              },
+              "move_pct_5m": -1.12,
+              "oi_change_pct_5m": -0.9
+            }
+          ],
+          "known_at": "2026-11-04T03:33:00.000Z"
+        }
+      },
+      {
+        "id": "st_c3d90be1a7746f20",
+        "headline": "Binance says it has replenished 95% of stolen crypto assets",
+        "source": "Tree News",
+        "source_line": "via Tree News",
+        "url": "https://news.treeofalpha.com/example/binance-replenished",
+        "origin": "outlet",
+        "topic": "hack",
+        "weight": 2,
+        "weight_rule": "tree-importance",
+        "published_at": "2026-11-04T02:40:50.100Z",
+        "first_seen_at": "2026-11-04T02:41:10.100Z",
+        "known_at": "2026-11-04T02:41:11.000Z",
+        "markets": [
+          {
+            "venue": "hyperliquid",
+            "symbol": "BNB"
+          },
+          {
+            "venue": "hyperliquid",
+            "symbol": "BTC"
+          }
+        ],
+        "reports": [
+          {
+            "id": "c3d90be1a7746f20",
+            "source": "Tree News",
+            "url": "https://news.treeofalpha.com/example/binance-replenished",
+            "headline": "Binance says it has replenished 95% of stolen crypto assets",
+            "published_at": "2026-11-04T02:40:50.100Z",
+            "observed_at": "2026-11-04T02:41:10.100Z"
+          },
+          {
+            "id": "5e07f1a9b2c44d18",
+            "source": "Tree News",
+            "url": "https://news.treeofalpha.com/example/binance-replenished-2",
+            "headline": "Binance says 95% of stolen assets replenished",
+            "published_at": null,
+            "observed_at": "2026-11-04T02:42:45.100Z"
+          }
+        ],
+        "reaction": {
+          "market": {
+            "venue": "hyperliquid",
+            "symbol": "BNB"
+          },
+          "from": "2026-11-04T02:41:10.100Z",
+          "status": "measuring",
+          "windows": {
+            "1m": {
+              "end": "2026-11-04T02:42:10.100Z",
+              "price": {
+                "at": 612.4,
+                "end": 612.9,
+                "move_pct": 0.08
+              },
+              "liquidations_usd": {
+                "long": 0.0,
+                "short": 0.0,
+                "total": 0.0
+              },
+              "oi_change_pct": null,
+              "volume_vs_prior": 1.2
+            }
+          },
+          "others": [],
+          "known_at": "2026-11-04T02:42:25.100Z"
+        }
+      }
+    ],
+    "meta": {
+      "count": 2,
+      "request_id": "9f1c1a52-6a43-4d6b-9a0e-5b1d7f3d2a10",
+      "has_more": true,
+      "next_cursor": "1793760070100_c3d90be1a7746f20"
+    }
+  },
+  "recorded": "shaped from source 2026-11-05, API version 2026-10-01",
+  "note": "Shaped from the backend's news_story_json (migration 338) and reaction.rs on branch hermes/news-mvp-20261105, not recorded from a live API: the routes are dark until NEWS_ROUTES_ENABLED. Replace with recordings after launch."
+}

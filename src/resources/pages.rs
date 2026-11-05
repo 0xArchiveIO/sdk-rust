@@ -149,3 +149,16 @@ pub(crate) fn pin_window<P>(
     }
     Ok(params)
 }
+
+/// `params` with `end` fixed to now when unset (for routes where `start` is
+/// optional).
+pub(crate) fn pin_window_optional<P>(
+    mut params: P,
+    end: impl FnOnce(&mut P) -> &mut Option<Timestamp>,
+) -> P {
+    let end = end(&mut params);
+    if end.is_none() {
+        *end = Some(Timestamp::Millis(chrono::Utc::now().timestamp_millis()));
+    }
+    params
+}

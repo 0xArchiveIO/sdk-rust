@@ -3,6 +3,20 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [Unreleased]
+
+### Added
+- News (Build, Pro, Scale and Enterprise plans): `client.hyperliquid.news`,
+  `client.hyperliquid.hip3.news` and `client.lighter.news` (`NewsResource`),
+  with `list(NewsParams)` and `iterate(NewsParams)`. Headlines from outlets
+  and official sources, and our own market events, as `NewsStory` values
+  newest first, each with the reports that joined it, the markets it names
+  and the first market's `NewsReaction` over 1 and 5 minutes (price move,
+  liquidations, open interest, volume, depth, `move_z` and `move_level`).
+  Public-display stories only. Filters: `symbols`, `topic`, `min_weight`,
+  `start`, `end`, `as_of`. On Free the error carries `PlanRequired`. The
+  routes are dark until the API ships them.
+
 ## [1.14.0] - 2026-11-04
 
 Four datasets included with the Build, Pro, Scale and Enterprise plans, on

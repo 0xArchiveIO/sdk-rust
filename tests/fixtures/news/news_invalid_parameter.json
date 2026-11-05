@@ -1,0 +1,21 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/news",
+    "query": {
+      "min_weight": "3"
+    },
+    "plan": "build",
+    "version": "2026-10-01"
+  },
+  "status": 400,
+  "body": {
+    "success": false,
+    "error": "min_weight must be 1, 2 or 3.",
+    "error_code": "invalid_parameter",
+    "param": "min_weight",
+    "request_id": "c0ffee00-0000-4000-8000-000000000001",
+    "code": 400
+  },
+  "recorded": "shaped from source 2026-11-05, API version 2026-10-01",
+  "note": "Shaped from the backend's news_story_json (migration 338) and reaction.rs on branch hermes/news-mvp-20261105, not recorded from a live API: the routes are dark until NEWS_ROUTES_ENABLED. Replace with recordings after launch."
+}

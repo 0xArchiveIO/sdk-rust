@@ -1,0 +1,106 @@
+{
+  "request": {
+    "path": "/v1/lighter/news",
+    "query": {
+      "limit": "1",
+      "symbols": "BTC"
+    },
+    "plan": "build",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "id": "st_b05f6a3c91d7e284",
+        "headline": "$1.2M of BTC shorts liquidated in 5 minutes",
+        "source": "Lighter",
+        "source_line": null,
+        "url": null,
+        "origin": "venue",
+        "topic": "liquidation",
+        "weight": 2,
+        "weight_rule": "venue",
+        "published_at": "2026-11-04T14:40:12.000Z",
+        "first_seen_at": "2026-11-04T14:40:12.000Z",
+        "known_at": "2026-11-04T14:40:13.500Z",
+        "markets": [
+          {
+            "venue": "lighter",
+            "symbol": "BTC"
+          }
+        ],
+        "reports": [
+          {
+            "id": "b05f6a3c91d7e284",
+            "source": "Lighter",
+            "url": null,
+            "headline": "$1.2M of BTC shorts liquidated in 5 minutes",
+            "published_at": "2026-11-04T14:40:12.000Z",
+            "observed_at": "2026-11-04T14:40:12.000Z"
+          }
+        ],
+        "reaction": {
+          "market": {
+            "venue": "lighter",
+            "symbol": "BTC"
+          },
+          "from": "2026-11-04T14:40:12.000Z",
+          "status": "final",
+          "windows": {
+            "1m": {
+              "end": "2026-11-04T14:41:12.000Z",
+              "price": {
+                "at": 78702.0,
+                "end": 78910.0,
+                "move_pct": 0.26
+              },
+              "liquidations_usd": {
+                "long": null,
+                "short": null,
+                "total": 1210000.0
+              },
+              "oi_change_pct": -0.2,
+              "volume_vs_prior": 2.2
+            },
+            "5m": {
+              "end": "2026-11-04T14:45:12.000Z",
+              "price": {
+                "at": 78702.0,
+                "end": 79430.0,
+                "move_pct": 0.92
+              },
+              "liquidations_usd": {
+                "long": null,
+                "short": null,
+                "total": 1210000.0
+              },
+              "oi_change_pct": -0.5,
+              "volume_vs_prior": 3.3,
+              "bid_depth_25bp_usd": {
+                "at": null,
+                "end": null
+              },
+              "ask_depth_25bp_usd": {
+                "at": null,
+                "end": null
+              },
+              "move_z": null,
+              "move_level": null
+            }
+          },
+          "others": [],
+          "known_at": "2026-11-04T15:16:12.000Z"
+        }
+      }
+    ],
+    "meta": {
+      "count": 1,
+      "request_id": "9f1c1a52-6a43-4d6b-9a0e-5b1d7f3d2a10",
+      "has_more": false
+    }
+  },
+  "recorded": "shaped from source 2026-11-05, API version 2026-10-01",
+  "note": "Shaped from the backend's news_story_json (migration 338) and reaction.rs on branch hermes/news-mvp-20261105, not recorded from a live API: the routes are dark until NEWS_ROUTES_ENABLED. Replace with recordings after launch."
+}

@@ -1,0 +1,82 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/news",
+    "query": {
+      "as_of": "1793761110000",
+      "limit": "1",
+      "symbols": "BTC"
+    },
+    "plan": "build",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "id": "st_8a41c07e5d2b9f13",
+        "headline": "$16.7M of BTC longs liquidated in 5 minutes",
+        "source": "Hyperliquid",
+        "source_line": null,
+        "url": null,
+        "origin": "venue",
+        "topic": "liquidation",
+        "weight": 3,
+        "weight_rule": "venue",
+        "published_at": "2026-11-04T02:57:00.000Z",
+        "first_seen_at": "2026-11-04T02:57:00.000Z",
+        "known_at": "2026-11-04T02:57:01.800Z",
+        "markets": [
+          {
+            "venue": "hyperliquid",
+            "symbol": "BTC"
+          }
+        ],
+        "reports": [
+          {
+            "id": "8a41c07e5d2b9f13",
+            "source": "Hyperliquid",
+            "url": null,
+            "headline": "$16.7M of BTC longs liquidated in 5 minutes",
+            "published_at": "2026-11-04T02:57:00.000Z",
+            "observed_at": "2026-11-04T02:57:00.000Z"
+          }
+        ],
+        "reaction": {
+          "market": {
+            "venue": "hyperliquid",
+            "symbol": "BTC"
+          },
+          "from": "2026-11-04T02:57:00.000Z",
+          "status": "measuring",
+          "windows": {
+            "1m": {
+              "end": "2026-11-04T02:58:00.000Z",
+              "price": {
+                "at": 76554.0,
+                "end": 76210.0,
+                "move_pct": -0.45
+              },
+              "liquidations_usd": {
+                "long": 9800000.0,
+                "short": 0.0,
+                "total": 9800000.0
+              },
+              "oi_change_pct": -0.41,
+              "volume_vs_prior": 3.1
+            }
+          },
+          "others": [],
+          "known_at": "2026-11-04T02:58:15.000Z"
+        }
+      }
+    ],
+    "meta": {
+      "count": 1,
+      "request_id": "9f1c1a52-6a43-4d6b-9a0e-5b1d7f3d2a10",
+      "has_more": false
+    }
+  },
+  "recorded": "shaped from source 2026-11-05, API version 2026-10-01",
+  "note": "Shaped from the backend's news_story_json (migration 338) and reaction.rs on branch hermes/news-mvp-20261105, not recorded from a live API: the routes are dark until NEWS_ROUTES_ENABLED. Replace with recordings after launch."
+}

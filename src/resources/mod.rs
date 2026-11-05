@@ -23,6 +23,7 @@ pub mod trade_intent;
 pub mod usdc_flows;
 pub mod breadth_ma;
 pub mod positioning;
+pub mod news;
 
 pub use orderbook::OrderBookResource;
 pub use trades::TradesResource;
@@ -61,3 +62,4 @@ pub use trade_intent::{TradeIntentParams, TradeIntentResource};
 pub use usdc_flows::{UsdcFlowVolumeParams, UsdcFlowsParams, UsdcFlowsResource};
 pub use breadth_ma::{BreadthMaHistoryParams, BreadthMaResource};
 pub use positioning::PositioningResource;
+pub use news::{NewsParams, NewsResource};

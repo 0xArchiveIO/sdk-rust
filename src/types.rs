@@ -2770,6 +2770,185 @@ pub struct UsdcFlowVolumeBucket {
     pub net_usd: f64,
 }
 
+/// A market a news story names.
+///
+/// More fields may be added in minor releases, so the struct cannot be built
+/// with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsMarket {
+    /// `hyperliquid`, `hip3` or `lighter`.
+    pub venue: String,
+    /// The venue's symbol as the API spells it (`BTC`, `xyz:CL`).
+    pub symbol: String,
+}
+
+/// One report that joined a news story.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsReport {
+    pub id: String,
+    /// Credit for the report, for example `Tree News`.
+    pub source: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    pub headline: String,
+    /// The source's own time (RFC 3339 UTC), when it gave one.
+    #[serde(default)]
+    pub published_at: Option<String>,
+    /// When we first saw the report (RFC 3339 UTC).
+    pub observed_at: String,
+}
+
+/// A market's price at the start and end of a news window.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsPrice {
+    #[serde(default)]
+    pub at: Option<f64>,
+    #[serde(default)]
+    pub end: Option<f64>,
+    #[serde(default)]
+    pub move_pct: Option<f64>,
+}
+
+/// Liquidations in a news window, in USD. Lighter reports `total` only
+/// (`long` and `short` are `None`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsLiquidations {
+    #[serde(default)]
+    pub long: Option<f64>,
+    #[serde(default)]
+    pub short: Option<f64>,
+    #[serde(default)]
+    pub total: Option<f64>,
+}
+
+/// Book depth within 25 basis points of the mid, in USD.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsDepth {
+    #[serde(default)]
+    pub at: Option<f64>,
+    #[serde(default)]
+    pub end: Option<f64>,
+}
+
+/// What one market did in the minute or 5 minutes after a story was first
+/// seen. A figure we could not measure is `None`, never 0. The depth,
+/// `move_z` and `move_level` fields are on the 5-minute window only.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsWindow {
+    /// When the window closed (RFC 3339 UTC).
+    pub end: String,
+    #[serde(default)]
+    pub price: Option<NewsPrice>,
+    #[serde(default)]
+    pub liquidations_usd: Option<NewsLiquidations>,
+    #[serde(default)]
+    pub oi_change_pct: Option<f64>,
+    #[serde(default)]
+    pub volume_vs_prior: Option<f64>,
+    #[serde(default)]
+    pub bid_depth_25bp_usd: Option<NewsDepth>,
+    #[serde(default)]
+    pub ask_depth_25bp_usd: Option<NewsDepth>,
+    /// The 5-minute move over that market's trailing 24-hour standard
+    /// deviation of 5-minute moves; `None` when it cannot be computed.
+    #[serde(default)]
+    pub move_z: Option<f64>,
+    /// `normal`, `unusual` (|move_z| from 2) or `large` (from 3); `None` with
+    /// `move_z`. Story moves are mostly noise: show the move as typical
+    /// unless this is `unusual` or `large`.
+    #[serde(default)]
+    pub move_level: Option<String>,
+}
+
+/// The windows of a [`NewsReaction`]; a window not yet due is `None`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsWindows {
+    #[serde(default, rename = "1m")]
+    pub one_minute: Option<NewsWindow>,
+    #[serde(default, rename = "5m")]
+    pub five_minutes: Option<NewsWindow>,
+}
+
+/// Another market a story names, over its first 5 minutes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsOtherMove {
+    pub market: NewsMarket,
+    #[serde(default)]
+    pub move_pct_5m: Option<f64>,
+    #[serde(default)]
+    pub oi_change_pct_5m: Option<f64>,
+}
+
+/// What the story's first market did after the story was first seen. A
+/// measurement, not a cause.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsReaction {
+    pub market: NewsMarket,
+    /// The story's `first_seen_at`; the windows start here (RFC 3339 UTC).
+    pub from: String,
+    /// `measuring` until the windows close, then `final`.
+    pub status: String,
+    pub windows: NewsWindows,
+    #[serde(default)]
+    pub others: Vec<NewsOtherMove>,
+    /// When we recorded this measurement (RFC 3339 UTC).
+    #[serde(default)]
+    pub known_at: Option<String>,
+}
+
+/// One news story: a headline, the reports behind it and the markets it
+/// names. Public-display stories only. `headline` is the source's own words,
+/// cleaned by rules and never rewritten; `source` and `source_line` credit it
+/// and `url` links to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NewsStory {
+    /// `st_` plus the lead report's id.
+    pub id: String,
+    pub headline: String,
+    /// Credit for the lead report, for example `Federal Reserve`.
+    pub source: String,
+    /// For example `via Tree News`.
+    #[serde(default)]
+    pub source_line: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    /// `outlet`, `official` or `venue`.
+    pub origin: String,
+    /// `listing`, `delisting`, `liquidation`, `hack`, `outage`, `upgrade`,
+    /// `etf`, `regulation`, `macro`, `earnings`, `partnership`, `funding` or
+    /// `other`.
+    pub topic: String,
+    /// 1 to 3, set by rules.
+    pub weight: i64,
+    #[serde(default)]
+    pub weight_rule: Option<String>,
+    #[serde(default)]
+    pub published_at: Option<String>,
+    /// When we first saw the story. Stories are ordered by it, newest first.
+    pub first_seen_at: String,
+    #[serde(default)]
+    pub known_at: Option<String>,
+    /// The markets the lead report names; the first is the one `reaction`
+    /// describes. Empty when none matched.
+    #[serde(default)]
+    pub markets: Vec<NewsMarket>,
+    #[serde(default)]
+    pub reports: Vec<NewsReport>,
+    /// `None` when there is no reaction (no market, or a weak match).
+    #[serde(default)]
+    pub reaction: Option<NewsReaction>,
+}
+
 /// Moving-average length, in days, for breadth above the n-day moving average
 /// (`client.hyperliquid.breadth_ma`). Each length starts on its own date.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
