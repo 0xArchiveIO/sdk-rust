@@ -3,6 +3,46 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.14.1] - Unreleased
+
+Times that describe market data are the time of the data, and are `None`
+when that time is unknown. Responses that carry these fields as before still
+parse.
+
+### Upgrading from 1.14.0
+
+- **Three fields are now `Option`.** Code that reads them as a plain value
+  handles `None`, for example `levels.as_of.as_deref().unwrap_or_default()`:
+  - `TriggerLevels::as_of` is `Option<String>` (it was `String`).
+  - `L2OrderBookSnapshot::timestamp` is `Option<String>` (it was `String`).
+  - `ServerMsg::L4Snapshot`'s `timestamp` is `Option<i64>` (it was `i64`).
+  Code that builds these with a struct literal wraps the value in `Some`,
+  and a `TriggerLevels` literal also needs `as_of_block`.
+
+### Changed
+- `TriggerLevels::as_of` (`orders.trigger_levels()` on Hyperliquid and
+  HIP-3) is the block time of the newest trigger order event the map
+  reflects, with millisecond precision, and no longer the server read time.
+  An answer served from a cache keeps the time of its data.
+- `L2OrderBookSnapshot::timestamp` (`l2_orderbook.get()`) is the block time
+  of the book as an RFC 3339 UTC string.
+- The `timestamp` of `ServerMsg::L4Snapshot` is the block time of
+  `last_block_number` in Unix milliseconds. This covers `l4_diffs`,
+  `hip3_l4_diffs`, `spot_l4_diffs`, `hip4_l4_diffs`, `orderbook_full` and
+  `hip3_orderbook_full`, live and in replay.
+- `CoinSummary` keeps the summary's `timestamp` in `extra`. It is the time
+  of the market data the summary is built from, not the time of the request,
+  and can be `null` when that time is unknown.
+
+### Added
+- `TriggerLevels::as_of_block`: the block the trigger map reflects, or `None`
+  when it is unknown or not sent.
+
+### Fixed
+- An `l4_snapshot` frame with a `null` `timestamp` parses instead of failing,
+  and a trigger map or full-depth L2 snapshot with a `null` time no longer
+  fails to deserialize.
+
 ## [1.14.0] - 2026-11-04
 
 Four datasets included with the Build, Pro, Scale and Enterprise plans, on

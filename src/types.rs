@@ -1837,8 +1837,16 @@ pub struct TriggerLevelBucket {
 pub struct TriggerLevels {
     /// Current mid/mark price, center of the requested range.
     pub mid_price: f64,
-    /// UTC RFC3339 server time the pending-trigger state was read.
-    pub as_of: String,
+    /// Block time of the newest trigger order event the map reflects, as a
+    /// UTC RFC 3339 string with millisecond precision. An answer served from
+    /// a cache keeps the time of the data it was built from. `None` when the
+    /// time of the data is unknown.
+    #[serde(default)]
+    pub as_of: Option<String>,
+    /// Hyperliquid block number the map reflects. `None` when it is unknown,
+    /// or when the API does not send it.
+    #[serde(default)]
+    pub as_of_block: Option<u64>,
     /// Total pending bid size across the returned window.
     pub total_bid_size: f64,
     /// Total pending ask size across the returned window.
@@ -1879,7 +1887,10 @@ pub struct L2PriceLevel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct L2OrderBookSnapshot {
     pub coin: String,
-    pub timestamp: String,
+    /// Block time of the book, as a UTC RFC 3339 string. `None` when the
+    /// time of the data is unknown.
+    #[serde(default)]
+    pub timestamp: Option<String>,
     pub bid_levels: usize,
     pub ask_levels: usize,
     pub total_bid_size: f64,

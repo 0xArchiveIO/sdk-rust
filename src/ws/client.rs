@@ -477,7 +477,10 @@ pub enum ServerMsg {
         symbol: String,
         /// Block number of the last applied diff in this snapshot.
         last_block_number: u64,
-        timestamp: i64,
+        /// Block time of `last_block_number` in Unix milliseconds. `None`
+        /// when the time of that block is not known yet.
+        #[serde(default)]
+        timestamp: Option<i64>,
         data: serde_json::Value,
     },
     /// Ordered L4 event batch for a live stream or a replay.
