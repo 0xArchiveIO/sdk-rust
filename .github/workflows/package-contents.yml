@@ -13,7 +13,7 @@ jobs:
   crate-scope:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - name: Plant untracked files that must not be packaged
         run: |
           mkdir -p .scratch/probe && echo stray > .scratch/probe/stray.rs
