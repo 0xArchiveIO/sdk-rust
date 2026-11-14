@@ -235,8 +235,9 @@ impl OrdersResource {
     /// Currently pending stop-loss and take-profit trigger orders grouped
     /// into price buckets near the current mid/mark price. Voluntary trigger
     /// orders, not projected forced liquidations (see the liquidations
-    /// resource's `levels` for those). The response's `as_of` is the server
-    /// read time.
+    /// resource's `levels` for those). The response's `as_of` is the block
+    /// time of the newest trigger order event the map reflects, and
+    /// `as_of_block` is that block; either is `None` when unknown.
     pub async fn trigger_levels(
         &self,
         symbol: &str,

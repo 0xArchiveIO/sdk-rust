@@ -47,6 +47,9 @@ impl L2OrderBookResource {
     }
 
     /// Get the current (or point-in-time) full-depth L2 orderbook.
+    ///
+    /// The snapshot's `timestamp` is the block time of the book, or `None`
+    /// when the time of the data is unknown.
     pub async fn get(
         &self,
         symbol: &str,

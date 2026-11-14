@@ -33,7 +33,7 @@ Or add directly to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.14"
+oxarchive = "1.15"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 chrono = "0.4" # the examples below use it for time windows
 ```
@@ -41,7 +41,7 @@ chrono = "0.4" # the examples below use it for time windows
 For WebSocket support (real-time streaming and replay):
 
 ```toml
-oxarchive = { version = "1.14", features = ["websocket"] }
+oxarchive = { version = "1.15", features = ["websocket"] }
 ```
 
 ## Quick Start

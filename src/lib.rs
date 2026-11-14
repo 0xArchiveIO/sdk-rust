@@ -188,7 +188,7 @@
 //! replay:
 //!
 //! ```toml
-//! oxarchive = { version = "1.14", features = ["websocket"] }
+//! oxarchive = { version = "1.15", features = ["websocket"] }
 //! ```
 //!
 //! Live subscriptions cover the supported Hyperliquid channels and four

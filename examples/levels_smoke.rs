@@ -75,7 +75,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .orders
         .trigger_levels("xyz:TSLA", TriggerLevelsParams { buckets: Some(10), ..Default::default() })
         .await?;
-    println!("HIP-3 trigger levels: as of {}, {} buckets", trig.as_of, trig.levels.len());
+    println!(
+        "HIP-3 trigger levels: as of {} (block {:?}), {} buckets",
+        trig.as_of.as_deref().unwrap_or("unknown"),
+        trig.as_of_block,
+        trig.levels.len()
+    );
 
     // Liquidations of one wallet over the last seven days.
     let by_user = client
