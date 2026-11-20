@@ -102,8 +102,11 @@ async fn main() -> oxarchive::Result<()> {
 }
 ```
 
-The examples in this README read the most recent minutes, hours or days, so
-they work on every plan, including Free's rolling 30-day window. Each dataset's first
+The examples in this README read the most recent minutes, hours or days, inside
+Free's rolling 30-day window. From November 23, 2026, after an account's first 30 days,
+Free data runs through yesterday (UTC): on such an account, the examples that read today,
+including every `current`, `recent` and summary call, need Build (see
+[Free Plan](#free-plan)). Each dataset's first
 available instant is listed in [Data Coverage](#data-coverage) and returned by
 [`client.capabilities()`](#capabilities).
 
@@ -137,6 +140,31 @@ them.
 | Lighter (Robinhood Chain) | Candles from 2026-06-26 20:10; trades and liquidations from 2026-06-26 20:10:26 (venue launch); order book, OI, funding, and price history from 2026-08-22 18:43 | Second Lighter deployment, quoted in USDG, with perps (`BTC`) and spot pairs (`AAPL-USDG`); list them with `client.rh_lighter.instruments.list()`. No L3. |
 | Build-and-above datasets | Trade intent hourly from 2025-05-25 15:00 (HIP-3 from 2025-10-13 12:00), minute intervals from 2026-07-14, second intervals for the last 3 days; USDC flows from 2025-09-27 09:33; moving-average breadth per length (see [below](#trade-intent-usdc-flows-moving-average-breadth-and-positioning)); positioning for the current window only | Build, Pro, Scale and Enterprise plans. Hyperliquid core and HIP-3; USDC flows on Hyperliquid only. |
 | Account positions | Hyperliquid core change log from 2025-05-25, HIP-3 from 2025-10-13, hourly snapshots from 2026-06-07, live every 5 minutes. Lighter mainnet from 2025-01-17, Robinhood Chain from 2026-06-26, hourly, live every 2 minutes | Perp positions per wallet or account, as of any time in coverage. See [Account Positions](#account-positions). |
+
+## Free Plan
+
+Free includes 50,000 credits a month and the most recent rolling 30 days of history,
+with at most 30 days per request or replay, on every route and WebSocket channel except
+the [Build-and-above datasets](#trade-intent-usdc-flows-moving-average-breadth-and-positioning)
+and the live `mempool` channel.
+
+From November 23, 2026, after an account's first 30 days (counted from sign-up), Free
+data runs through yesterday (UTC): today's data and live streams need Build, and replays
+of past days stay on Free. In its first 30 days an account keeps today's data. Build and
+above are unaffected.
+
+- **REST.** A request whose window reaches into today is refused before it is metered,
+  so it is not charged. That is an `end` (or `timestamp` on a point-in-time route such
+  as `orderbook.get()`) at or after today's 00:00 UTC, a range sent without `end`, which
+  ends now, and every `current`, `recent` and summary call, which always read now. The
+  refusal is HTTP 403 `forbidden`, and `Error::plan_required()` returns a `PlanRequired`
+  whose `datatype` is `None` and whose `required_plans` are Build, Pro, Scale and
+  Enterprise. The error message names the last day Free serves; the latest instant is
+  23:59:59.999 UTC on that day. Instrument and pair lists, HIP-4 outcomes and questions,
+  and freshness are never refused. See [Error Handling](#error-handling).
+- **WebSocket.** A live subscribe is answered with a `ServerMsg::Error` whose
+  `error_code` is `ErrorCode::Forbidden`, and so is a replay whose `end` is at or after
+  today's 00:00 UTC. Replays of past days are served as before.
 
 ## Configuration
 
@@ -2069,6 +2097,8 @@ For large historical downloads, use the S3 Parquet bulk export in the [Data Cata
 
 > The `mempool` channel (pending Hyperliquid transactions) is served only at `wss://stream.0xarchive.io/ws` and is included with the Pro, Scale and Enterprise plans. See [Pending Transactions (Mempool)](#pending-transactions-mempool).
 
+> From November 23, 2026, after an account's first 30 days, Free data runs through yesterday (UTC). On such an account a live subscribe, and a replay whose `end` is at or after today's 00:00 UTC, is answered with `ErrorCode::Forbidden`. Replays of past days stay on Free. See [Free Plan](#free-plan).
+
 The client connects with `version=2026-10-01`. Under that version, error messages carry an `error_code` (see [Error Handling](#error-handling)), and Lighter replay rows have the same shapes as the live payloads. `client.capabilities()` lists which channels stream live and which replay.
 
 ### Real-time Streaming
@@ -2106,8 +2136,9 @@ prefix (`rh_lighter_orderbook`, `rh_lighter_trades`, `rh_lighter_open_interest`,
 `rh_lighter_funding`), using the symbols of `client.rh_lighter.instruments.list()`.
 Their payloads have exactly the mainnet shapes below and decode with the same
 `msg.lighter_live_data()`; `rh_lighter_orderbook` also accepts `interval_ms` from 100
-to 5000 (default 1000). They are also served only on `wss://api.0xarchive.io/ws`. Live Lighter channels are available on every tier and
-are metered per message like Hyperliquid live data; the tier subscription and connection
+to 5000 (default 1000). They are also served only on `wss://api.0xarchive.io/ws`. Live Lighter channels are available on every tier (from
+November 23, 2026, after an account's first 30 days, live streams need Build; see
+[Free Plan](#free-plan)) and are metered per message like Hyperliquid live data; the tier subscription and connection
 limits below apply, and each connection accepts at most 10 subscribe operations per second.
 
 ```rust
@@ -2192,7 +2223,9 @@ It covers every Hyperliquid product: perps, HIP-3, HIP-4 and spot.
   at the default endpoint.
 - **Plans.** It is included with the Pro, Scale and Enterprise plans; on other plans a
   subscribe is answered with `ErrorCode::Forbidden`. Every other channel stays on every
-  plan, Free included. Each data message is metered like any other WebSocket message.
+  plan, Free included; from November 23, 2026, after an account's first 30 days, Free
+  keeps replays of past days and live streams need Build (see [Free Plan](#free-plan)).
+  Each data message is metered like any other WebSocket message.
 
 ```rust
 use oxarchive::ws::{OxArchiveWs, ServerMsg, WsOptions, MEMPOOL_CHANNEL, STREAM_WS_URL};
@@ -2403,7 +2436,7 @@ while let Some(msg) = rx.recv().await {
 
 ### Tier Limits
 
-All self-serve tiers reach the published route families; Free covers the most recent rolling 30 days of history (30-day span per request or replay), and Build and above keep the retained archive. Schema availability remains family-specific; plans gate capacity and Free's 30-day history window, not route families, schemas, or served depth. The one exception is the live `mempool` channel, included with the Pro, Scale and Enterprise plans.
+All self-serve tiers reach the published route families; Free covers the most recent rolling 30 days of history (30-day span per request or replay), and Build and above keep the retained archive. From November 23, 2026, after an account's first 30 days, Free data runs through yesterday (UTC); today's data and live streams need Build (see [Free Plan](#free-plan)). Schema availability remains family-specific; plans gate capacity and Free's history window, not route families, schemas, or served depth. The exceptions are the live `mempool` channel, included with the Pro, Scale and Enterprise plans, and the [Build-and-above datasets](#trade-intent-usdc-flows-moving-average-breadth-and-positioning).
 
 | Tier | Max Subscriptions | Max Connections | Max Replay Speed |
 |------|------------------|-----------------|------------------|
@@ -2460,7 +2493,7 @@ about one parameter, `param` and the `valid_values` it accepts. Branch on
 | `historical_range_exceeded`, `historical_depth_exceeded` | The span or the history window is beyond the plan's limit. |
 | `unsupported_for_venue` | The venue does not offer this datatype, channel or mode; the message names where it is offered. |
 | `route_not_found`, `not_found` | Unknown path, or unknown resource id. |
-| `unauthorized`, `forbidden`, `insufficient_credits` | Credentials, access (a `forbidden` from a dataset your plan does not include sets `plan_required()`) or credits. |
+| `unauthorized`, `forbidden`, `insufficient_credits` | Credentials, access (a `forbidden` from a dataset your plan does not include, or on Free from today's data, sets `plan_required()`) or credits. |
 | `rate_limited`, `upstream_unavailable`, `internal_error` | Retry later. |
 | `conflict` | The request conflicts with current state. |
 | `slow_consumer`, `endpoint_unsupported` | WebSocket only: the connection fell behind and messages were dropped (subscribe again or restart the replay), or this endpoint does not serve the channel. |
@@ -2474,7 +2507,8 @@ match client.hyperliquid.orderbook.get("BTC", None).await {
         // back off and retry
     }
     Err(e) if e.plan_required().is_some() => {
-        // HTTP 403: the plan does not include this dataset.
+        // HTTP 403: the plan does not include this dataset or, on Free after
+        // an account's first 30 days, today's data (`datatype` is `None`).
         let plan = e.plan_required().unwrap();
         eprintln!("Included with {:?}: {:?}", plan.required_plans, plan.upgrade_url);
     }
@@ -2491,7 +2525,12 @@ match client.hyperliquid.orderbook.get("BTC", None).await {
 `valid_values()` and `plan_required()` accessors. `plan_required()` is set
 when the plan does not include the dataset (HTTP 403, `forbidden`): it
 returns a `PlanRequired` with the `datatype`, the `required_plans` that
-include it, and the `upgrade_url`. WebSocket `ServerMsg::Error` messages carry the
+include it, and the `upgrade_url`. From November 23, 2026, it is also set when
+a Free account past its first 30 days asks for today's data (see
+[Free Plan](#free-plan)): `datatype` is then `None`, `required_plans` are
+Build, Pro, Scale and Enterprise, and the message names the last day Free
+serves. The request is not charged; end the window before today's 00:00 UTC to
+stay on Free. WebSocket `ServerMsg::Error` messages carry the
 same `error_code`.
 
 ## Examples
