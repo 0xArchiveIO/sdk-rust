@@ -1,0 +1,113 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/factors/momentum",
+    "query": {
+      "lookback": "7d",
+      "at": 1793534400000
+    },
+    "plan": "enterprise",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "symbol": "HYPE",
+        "timestamp": "2026-11-01T12:00:00.000Z",
+        "timestamp_ms": 1793534400000,
+        "lookback": "7d",
+        "method": "momentum/1",
+        "ret": 0.1488637998927249,
+        "vol": 0.007509860387029248,
+        "score": 19.822445720806865,
+        "pct_rank": 1.0,
+        "quintile": 5,
+        "in_top25": true,
+        "in_top50": true,
+        "is_final": true
+      },
+      {
+        "symbol": "PURR",
+        "timestamp": "2026-11-01T12:00:00.000Z",
+        "timestamp_ms": 1793534400000,
+        "lookback": "7d",
+        "method": "momentum/1",
+        "ret": 0.23494068710522265,
+        "vol": 0.01536998578398292,
+        "score": 15.285680182609838,
+        "pct_rank": 0.9943181818181818,
+        "quintile": 5,
+        "in_top25": false,
+        "in_top50": false,
+        "is_final": true
+      },
+      {
+        "symbol": "MERL",
+        "timestamp": "2026-11-01T12:00:00.000Z",
+        "timestamp_ms": 1793534400000,
+        "lookback": "7d",
+        "method": "momentum/1",
+        "ret": 0.16352490421455923,
+        "vol": 0.011376121574685956,
+        "score": 14.37439843983677,
+        "pct_rank": 0.9886363636363636,
+        "quintile": 5,
+        "in_top25": false,
+        "in_top50": false,
+        "is_final": true
+      },
+      {
+        "symbol": "PROVE",
+        "timestamp": "2026-11-01T12:00:00.000Z",
+        "timestamp_ms": 1793534400000,
+        "lookback": "7d",
+        "method": "momentum/1",
+        "ret": 0.1290839736856655,
+        "vol": 0.009293409578658965,
+        "score": 13.88984017040302,
+        "pct_rank": 0.9829545454545454,
+        "quintile": 5,
+        "in_top25": false,
+        "in_top50": false,
+        "is_final": true
+      },
+      {
+        "symbol": "0G",
+        "timestamp": "2026-11-01T12:00:00.000Z",
+        "timestamp_ms": 1793534400000,
+        "lookback": "7d",
+        "method": "momentum/1",
+        "ret": -0.18077947228274027,
+        "vol": 0.010119326274325468,
+        "score": -17.864773541437238,
+        "pct_rank": 0.011363636363636364,
+        "quintile": 1,
+        "in_top25": false,
+        "in_top50": false,
+        "is_final": true
+      },
+      {
+        "symbol": "FOGO",
+        "timestamp": "2026-11-01T12:00:00.000Z",
+        "timestamp_ms": 1793534400000,
+        "lookback": "7d",
+        "method": "momentum/1",
+        "ret": -0.3179205851619644,
+        "vol": 0.012355045460428087,
+        "score": -25.732044951208856,
+        "pct_rank": 0.005681818181818182,
+        "quintile": 1,
+        "in_top25": false,
+        "in_top50": false,
+        "is_final": true
+      }
+    ],
+    "meta": {
+      "count": 176,
+      "request_id": "cd2995a7-b486-485a-a460-e016eb0737e3"
+    }
+  },
+  "recorded": "2026-11-23, API version 2026-10-01",
+  "note": "captured with at in RFC 3339 form; the SDKs send the same instants in Unix milliseconds, which the API reads identically; data keeps the first 4 and last 2 of the 176 records the API returned; meta.count is the recorded count"
+}

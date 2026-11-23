@@ -108,11 +108,12 @@
 //!
 //! ## Build-and-above datasets
 //!
-//! Four datasets are included with the Build, Pro, Scale and Enterprise
+//! Five datasets are included with the Build, Pro, Scale and Enterprise
 //! plans: trade intent (`trade_intent`), USDC flows (`usdc_flows`,
 //! Hyperliquid only), breadth above the n-day moving average (`breadth_ma`)
 //! and the positioning cross-section (`positioning`), on
-//! `client.hyperliquid` and `client.hyperliquid.hip3`. On Free the API
+//! `client.hyperliquid` and `client.hyperliquid.hip3`, and the momentum
+//! factor on core perps (`client.hyperliquid.factors.momentum`). On Free the API
 //! answers 403 `forbidden`, and [`Error::plan_required`] returns the plans
 //! that include the dataset. Their `iterate*` methods return a
 //! [`CursorPages`] that follows `next_cursor` until the API stops returning
@@ -139,6 +140,35 @@
 //!     .collect_all()
 //!     .await?;
 //! println!("{} hourly buckets", buckets.len());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The momentum factor takes a required lookback, 7 or 14 days:
+//!
+//! ```no_run
+//! # use oxarchive::{MomentumLookback, MomentumReturnsParams, MomentumUniverse, OxArchive};
+//! # async fn example() -> oxarchive::Result<()> {
+//! # let client = OxArchive::new("key")?;
+//! let scores = client.hyperliquid.factors.momentum.current(MomentumLookback::SevenDays).await?;
+//! if let Some(top) = scores.data.first() {
+//!     println!("strongest: {} (score {}, pct_rank {})", top.symbol, top.score, top.pct_rank);
+//! }
+//!
+//! let page = client
+//!     .hyperliquid
+//!     .factors
+//!     .momentum
+//!     .returns(MomentumLookback::FourteenDays, MomentumReturnsParams {
+//!         universe: Some(MomentumUniverse::Top50),
+//!         start: Some("2026-10-01T00:00:00Z".into()),
+//!         end: Some("2026-11-01T00:00:00Z".into()),
+//!         ..Default::default()
+//!     })
+//!     .await?;
+//! for bucket in &page.data {
+//!     println!("{} ret={} long={} short={}", bucket.timestamp, bucket.ret, bucket.long_ret, bucket.short_ret);
+//! }
 //! # Ok(())
 //! # }
 //! ```
@@ -188,7 +218,7 @@
 //! replay:
 //!
 //! ```toml
-//! oxarchive = { version = "1.15", features = ["websocket"] }
+//! oxarchive = { version = "1.16", features = ["websocket"] }
 //! ```
 //!
 //! Live subscriptions cover the supported Hyperliquid channels and four
@@ -261,10 +291,15 @@ pub use resources::pages::CursorPages;
 pub use resources::trade_intent::TradeIntentParams;
 pub use resources::usdc_flows::{UsdcFlowVolumeParams, UsdcFlowsParams};
 pub use resources::breadth_ma::BreadthMaHistoryParams;
+pub use resources::momentum::MomentumReturnsParams;
 pub use types::{
     BreadthMaCounts, BreadthMaDistance, BreadthMaLength, BreadthMaReading, PositioningReading,
     PositioningWindow, TradeIntentBucket, TradeIntentInterval, UsdcFlowEvent, UsdcFlowKind,
     UsdcFlowVolumeBucket,
+};
+pub use types::{
+    MomentumHolding, MomentumInterval, MomentumLookback, MomentumReturn, MomentumScore,
+    MomentumUniverse,
 };
 pub use types::{Capability, TradeSide};
 pub use types::{

@@ -6,7 +6,8 @@ use crate::http::HttpClient;
 use crate::resources::cvd::fetch_cvd;
 use crate::resources::trades::RecentTradesParams;
 use crate::resources::{
-    BreadthMaResource, BreadthResource, CandlesResource, PositioningResource, TradeIntentResource,
+    BreadthMaResource, BreadthResource, CandlesResource, FactorsResource, PositioningResource,
+    TradeIntentResource,
     UsdcFlowsResource, CvdParams, FundingResource, Hip3InstrumentsResource,
     Hip4InstrumentsResource, InstrumentsResource, L2OrderBookResource, L3OrderBookResource,
     Hip3LiquidationsResource, L4OrderBookResource, LighterAccountsResource,
@@ -59,6 +60,10 @@ pub struct HyperliquidClient {
     /// Every listed core perp over a trailing window (Build, Pro, Scale and
     /// Enterprise plans).
     pub positioning: PositioningResource,
+    /// Factors on core perps: `factors.momentum`, every perp's momentum score
+    /// at an hour and the long-short factor's returns (Build, Pro, Scale and
+    /// Enterprise plans).
+    pub factors: FactorsResource,
     pub hip3: Hip3Client,
     /// HIP-4 outcome markets (binary outcome perps, `#`-prefixed coins).
     pub hip4: Hip4,
@@ -92,6 +97,7 @@ impl HyperliquidClient {
             trade_intent: TradeIntentResource::new(http.clone(), prefix),
             usdc_flows: UsdcFlowsResource::new(http.clone()),
             positioning: PositioningResource::new(http.clone(), prefix),
+            factors: FactorsResource::new(http.clone(), prefix),
             hip3: Hip3Client::new(http.clone()),
             hip4: Hip4::new(http.clone()),
             spot: SpotClient::new(http.clone()),

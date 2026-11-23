@@ -21,7 +21,7 @@ Build async Rust services on Hyperliquid and Lighter market data: typed response
 - **Every wallet's positions.** Current, as of any instant, hourly history and a fill-by-fill change log.
 - **Live, replay and mempool.** Behind the `websocket` feature: live channels, historical replay, and pending Hyperliquid transactions on Pro and above.
 - **Webhooks.** Size a rule before you create it, manage endpoints and subscriptions, and verify every delivery.
-- **Trade intent, USDC flows, moving-average breadth and positioning.** On Build and above: why each market traded, every USDC flow into and out of HyperCore, the share of perps above their n-day average, and a cross-section of every perp's open interest, flow and liquidations.
+- **Trade intent, USDC flows, moving-average breadth, positioning and momentum.** On Build and above: why each market traded, every USDC flow into and out of HyperCore, the share of perps above their n-day average, a cross-section of every perp's open interest, flow and liquidations, and the momentum factor's scores and returns.
 
 ## Installation
 
@@ -33,7 +33,7 @@ Or add directly to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-oxarchive = "1.15"
+oxarchive = "1.16"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 chrono = "0.4" # the examples below use it for time windows
 ```
@@ -41,7 +41,7 @@ chrono = "0.4" # the examples below use it for time windows
 For WebSocket support (real-time streaming and replay):
 
 ```toml
-oxarchive = { version = "1.15", features = ["websocket"] }
+oxarchive = { version = "1.16", features = ["websocket"] }
 ```
 
 ## Quick Start
@@ -135,7 +135,7 @@ them.
 | Hyperliquid Spot | Candles from 2025-03-22 10:50; trades from 2025-03-22 10:50:22; TWAP from 2026-05-05 13:05; order book from 2026-05-05 19:56; L4 and order history from 2026-05-05 22:57 | Dashed symbols (`HYPE-USDC`, `PURR-USDC`, ...); list them with `client.hyperliquid.spot.pairs.list()`. No funding, OI, or liquidations. |
 | Lighter (mainnet) | Trades from 2025-01-17 08:43 (exact starts vary by market); candles from 2025-08-01; funding, OI, and price history from 2025-08-25 15:28; order book from 2026-01-29 02:13; L3 from 2026-03-05 03:33; liquidations from 2026-06-10 | Maker/taker trade context; L3 caps at 250 orders per side; funding/OI update at ~10s. |
 | Lighter (Robinhood Chain) | Candles from 2026-06-26 20:10; trades and liquidations from 2026-06-26 20:10:26 (venue launch); order book, OI, funding, and price history from 2026-08-22 18:43 | Second Lighter deployment, quoted in USDG, with perps (`BTC`) and spot pairs (`AAPL-USDG`); list them with `client.rh_lighter.instruments.list()`. No L3. |
-| Build-and-above datasets | Trade intent hourly from 2025-05-25 15:00 (HIP-3 from 2025-10-13 12:00), minute intervals from 2026-07-14, second intervals for the last 3 days; USDC flows from 2025-09-27 09:33; moving-average breadth per length (see [below](#trade-intent-usdc-flows-moving-average-breadth-and-positioning)); positioning for the current window only | Build, Pro, Scale and Enterprise plans. Hyperliquid core and HIP-3; USDC flows on Hyperliquid only. |
+| Build-and-above datasets | Trade intent hourly from 2025-05-25 15:00 (HIP-3 from 2025-10-13 12:00), minute intervals from 2026-07-14, second intervals for the last 3 days; USDC flows from 2025-09-27 09:33; moving-average breadth per length (see [below](#trade-intent-usdc-flows-moving-average-breadth-and-positioning)); positioning for the current window only; the momentum factor from 2025-05-24 01:00 | Build, Pro, Scale and Enterprise plans. Hyperliquid core and HIP-3; USDC flows and the momentum factor on Hyperliquid core only. |
 | Account positions | Hyperliquid core change log from 2025-05-25, HIP-3 from 2025-10-13, hourly snapshots from 2026-06-07, live every 5 minutes. Lighter mainnet from 2025-01-17, Robinhood Chain from 2026-06-26, hourly, live every 2 minutes | Perp positions per wallet or account, as of any time in coverage. See [Account Positions](#account-positions). |
 
 ## Configuration
@@ -215,7 +215,7 @@ the first instant served (`available_from`), the cadence, the largest page
 (`page_limit`), and the accepted `interval` values. The `mempool` row is the one
 that sets `ws_endpoint` (the endpoint that serves it). `plans` names the plans that
 include a row when that is not every plan: Pro and above for `mempool`, Build and
-above for `trade_intent`, `usdc_flows`, `breadth_ma` and `positioning`. Rows without
+above for `trade_intent`, `usdc_flows`, `breadth_ma`, `positioning` and `momentum`. Rows without
 them use the default endpoint, `wss://api.0xarchive.io/ws`, and are on every plan. The route is public and uses no credits. Read replay availability from it rather than from a fixed
 list:
 
@@ -260,6 +260,7 @@ The sections below show which resources are available on each exchange client:
 | `usdc_flows` (Build and above) | Yes | -- | -- | -- | -- |
 | `breadth_ma` (above the n-day moving average, Build and above) | Yes | Yes | -- | -- | -- |
 | `positioning` (Build and above) | Yes | Yes | -- | -- | -- |
+| `factors.momentum` (Build and above) | Yes | -- | -- | -- | -- |
 
 HIP-4 outcome markets (`client.hyperliquid.hip4`) have their own methods, listed in [HIP-4 Outcome Markets](#hip-4-outcome-markets-hyperliquid). Webhook management is on `client.webhooks`; see [Webhooks](#webhooks).
 
@@ -1600,8 +1601,8 @@ let hip3 = client.hyperliquid.hip3.cvd("xyz:XYZ100", CvdParams::default()).await
 
 ### Trade Intent, USDC Flows, Moving-Average Breadth and Positioning
 
-These four datasets are included with the Build, Pro, Scale and Enterprise
-plans. On Free the API answers HTTP 403 `forbidden`, and
+These four datasets and the momentum factor are included with the Build,
+Pro, Scale and Enterprise plans. On Free the API answers HTTP 403 `forbidden`, and
 `Error::plan_required()` returns the plans that include the dataset:
 
 ```rust
@@ -1790,6 +1791,89 @@ println!("As of {:?}", section.meta.as_of);
 for r in section.data.iter().filter(|r| r.liq_long_usd > 0.0) {
     println!("{}: long liquidations {:.0} USD, taker buy {:.0}, sell {:.0}", r.symbol, r.liq_long_usd, r.buy_usd, r.sell_usd);
 }
+```
+
+#### Momentum factor (Hyperliquid)
+
+`client.hyperliquid.factors.momentum` serves every Hyperliquid core perp's
+momentum score at an hour, and the returns of the long-short momentum factor
+built from those scores (method `momentum/1`). The lookback is required on
+every call: `MomentumLookback::SevenDays` (`7d`) or
+`MomentumLookback::FourteenDays` (`14d`). A perp's `score` is its
+close-to-close return over the lookback (`ret`) divided by the standard
+deviation of its last 30 days of hourly returns (`vol`).
+
+- `get(lookback, at)` and `current(lookback)` return one reading as of the
+  close of an hour (the hour at or before `at`, default now; a later time
+  gets the newest reading): every perp eligible then, strongest first, with
+  60 days of history and dollar volume in the 30 days before the universe
+  pick in force. `pct_rank` is the score's percentile rank among them (ties
+  averaged), `quintile` the fifth it falls in (5 at or above 0.8, 1 at or
+  below 0.2), and `in_top25` and `in_top50` say whether the perp is in each
+  universe at that hour. A reading is never paged.
+- `returns(lookback, params)` returns the factor's return per bucket, oldest
+  first, and `iterate_returns(lookback, params)` walks every page. The
+  universe is the top 25 (`MomentumUniverse::Top25`, the default) or top 50
+  (`MomentumUniverse::Top50`) perps by 30-day dollar volume, re-picked every
+  30 days, with delisted perps included while they traded. Every 168 hours
+  (Saturdays 00:00 UTC, earning from 01:00) the factor goes long the top
+  fifth of the universe on the score and short the bottom fifth, each leg
+  weighted by inverse volatility and summing to 1.
+- A bucket's `ret` is `long_ret` minus `short_ret`, the sum of the factor's
+  hourly returns over the `hours` it holds (simple, not compounded), gross of
+  fees and funding. `longs` and `shorts` are the legs' sizes in force at the
+  bucket's last hour; with `holdings: Some(true)`, `holdings` lists that
+  rebalance's weights (positive long, negative short).
+- Intervals: `1d` (default) and `1h`, on UTC boundaries. Up to 1,000 buckets
+  per page (default 100). `start` defaults to 30 days before `end`, and `end`
+  to now.
+- Coverage: scores and returns from 2025-05-24 01:00 UTC. A request that
+  ends before then is empty, with `meta.coverage_from` and `meta.notice`.
+  `is_final` is `true` once every candle a record is made from is final (and,
+  for a bucket, once the bucket has closed).
+- A 503 `upstream_unavailable` ("still being prepared") on the first request
+  after the service restarts is retryable.
+
+```rust
+use oxarchive::{MomentumInterval, MomentumLookback, MomentumReturnsParams, MomentumUniverse};
+
+let scores = client.hyperliquid.factors.momentum.current(MomentumLookback::SevenDays).await?;
+for s in scores.data.iter().take(5) {
+    println!("{} ret={:?} vol={:?} score={} pct_rank={} quintile={}", s.symbol, s.ret, s.vol, s.score, s.pct_rank, s.quintile);
+}
+
+let past = client
+    .hyperliquid
+    .factors
+    .momentum
+    .get(MomentumLookback::FourteenDays, Some("2026-11-01T12:00:00Z".into()))
+    .await?;
+
+let page = client.hyperliquid.factors.momentum.returns(MomentumLookback::SevenDays, MomentumReturnsParams {
+    universe: Some(MomentumUniverse::Top25),
+    start: Some("2026-10-01T00:00:00Z".into()),
+    end: Some("2026-11-01T00:00:00Z".into()),
+    interval: Some(MomentumInterval::OneDay),
+    holdings: Some(true),
+    ..Default::default()
+}).await?;
+for b in &page.data {
+    println!("{} ret={} long={} short={} longs={} shorts={}", b.timestamp, b.ret, b.long_ret, b.short_ret, b.longs, b.shorts);
+}
+
+let all = client
+    .hyperliquid
+    .factors
+    .momentum
+    .iterate_returns(MomentumLookback::FourteenDays, MomentumReturnsParams {
+        universe: Some(MomentumUniverse::Top50),
+        start: Some("2025-06-01T00:00:00Z".into()),
+        end: Some("2026-11-01T00:00:00Z".into()),
+        ..Default::default()
+    })?
+    .collect_all()
+    .await?;
+println!("{} daily buckets, {} readings at {}", all.len(), past.data.len(), past.data.first().map_or("", |s| s.timestamp.as_str()));
 ```
 
 ## Data Quality Monitoring

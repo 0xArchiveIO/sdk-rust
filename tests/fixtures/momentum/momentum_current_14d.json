@@ -1,0 +1,112 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/factors/momentum/current",
+    "query": {
+      "lookback": "14d"
+    },
+    "plan": "enterprise",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "symbol": "BLUR",
+        "timestamp": "2026-11-23T16:00:00.000Z",
+        "timestamp_ms": 1795449600000,
+        "lookback": "14d",
+        "method": "momentum/1",
+        "ret": 0.1997067448680352,
+        "vol": 0.013506742767816283,
+        "score": 14.785707279766534,
+        "pct_rank": 1.0,
+        "quintile": 5,
+        "in_top25": false,
+        "in_top50": false,
+        "is_final": false
+      },
+      {
+        "symbol": "VVV",
+        "timestamp": "2026-11-23T16:00:00.000Z",
+        "timestamp_ms": 1795449600000,
+        "lookback": "14d",
+        "method": "momentum/1",
+        "ret": 0.18703729571169148,
+        "vol": 0.013913096922930917,
+        "score": 13.443253989226895,
+        "pct_rank": 0.9943820224719101,
+        "quintile": 5,
+        "in_top25": true,
+        "in_top50": true,
+        "is_final": false
+      },
+      {
+        "symbol": "HMSTR",
+        "timestamp": "2026-11-23T16:00:00.000Z",
+        "timestamp_ms": 1795449600000,
+        "lookback": "14d",
+        "method": "momentum/1",
+        "ret": 0.12781954887218028,
+        "vol": 0.011971053276722609,
+        "score": 10.677385349267633,
+        "pct_rank": 0.9887640449438202,
+        "quintile": 5,
+        "in_top25": false,
+        "in_top50": false,
+        "is_final": false
+      },
+      {
+        "symbol": "USUAL",
+        "timestamp": "2026-11-23T16:00:00.000Z",
+        "timestamp_ms": 1795449600000,
+        "lookback": "14d",
+        "method": "momentum/1",
+        "ret": 0.08864265927977844,
+        "vol": 0.01043617259346869,
+        "score": 8.493790083086017,
+        "pct_rank": 0.9831460674157303,
+        "quintile": 5,
+        "in_top25": false,
+        "in_top50": false,
+        "is_final": false
+      },
+      {
+        "symbol": "ARB",
+        "timestamp": "2026-11-23T16:00:00.000Z",
+        "timestamp_ms": 1795449600000,
+        "lookback": "14d",
+        "method": "momentum/1",
+        "ret": -0.36530002715177845,
+        "vol": 0.010386209972023927,
+        "score": -35.17163894584673,
+        "pct_rank": 0.011235955056179775,
+        "quintile": 1,
+        "in_top25": true,
+        "in_top50": true,
+        "is_final": false
+      },
+      {
+        "symbol": "PAXG",
+        "timestamp": "2026-11-23T16:00:00.000Z",
+        "timestamp_ms": 1795449600000,
+        "lookback": "14d",
+        "method": "momentum/1",
+        "ret": -0.10910728193146424,
+        "vol": 0.0026765498894184745,
+        "score": -40.764150282724465,
+        "pct_rank": 0.0056179775280898875,
+        "quintile": 1,
+        "in_top25": false,
+        "in_top50": true,
+        "is_final": false
+      }
+    ],
+    "meta": {
+      "count": 178,
+      "request_id": "aa62f4a6-5a40-4e8d-a4ef-3bdf7b5756b1"
+    }
+  },
+  "recorded": "2026-11-23, API version 2026-10-01",
+  "note": "data keeps the first 4 and last 2 of the 178 records the API returned; meta.count is the recorded count"
+}

@@ -1,0 +1,22 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/factors/momentum/current",
+    "query": {
+      "lookback": "7d",
+      "at": 1793534400000
+    },
+    "plan": "enterprise",
+    "version": "2026-10-01"
+  },
+  "status": 400,
+  "body": {
+    "code": 400,
+    "error": "/current does not take at; it takes lookback. It returns the newest reading; for another time use factors/momentum with at.",
+    "error_code": "invalid_parameter",
+    "param": "at",
+    "request_id": "1c01fa5c-59d0-47a4-ba1d-d392a35e9e9e",
+    "success": false
+  },
+  "recorded": "2026-11-23, API version 2026-10-01",
+  "note": "only the response was kept: the lookback and at shown are examples, and /current refuses any at"
+}

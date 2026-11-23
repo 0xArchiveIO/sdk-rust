@@ -1,0 +1,25 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/factors/momentum/returns",
+    "query": {
+      "lookback": "7d",
+      "interval": "4h"
+    },
+    "plan": "enterprise",
+    "version": "2026-10-01"
+  },
+  "status": 400,
+  "body": {
+    "code": 400,
+    "error": "Invalid interval '4h'. Use one of: 1h, 1d.",
+    "error_code": "invalid_interval",
+    "param": "interval",
+    "request_id": "042e4dc0-d7d4-41af-8656-9923ed1a0778",
+    "success": false,
+    "valid_values": [
+      "1h",
+      "1d"
+    ]
+  },
+  "recorded": "2026-11-23, API version 2026-10-01"
+}
