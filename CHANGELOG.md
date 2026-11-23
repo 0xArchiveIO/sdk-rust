@@ -3,6 +3,37 @@
 All notable changes to the `oxarchive` Rust SDK are tracked in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
+## [1.16.0] - Unreleased
+
+The momentum factor on Hyperliquid core perps, included with the Build, Pro,
+Scale and Enterprise plans.
+
+### Added
+- `client.hyperliquid.factors.momentum` (`FactorsResource`,
+  `MomentumResource`), with `get(lookback, at)`, `current(lookback)`,
+  `returns(lookback, MomentumReturnsParams)` and
+  `iterate_returns(lookback, MomentumReturnsParams)`. The lookback is
+  required on every call: `MomentumLookback::SevenDays` (`7d`) or
+  `MomentumLookback::FourteenDays` (`14d`).
+- `get()` and `current()` return one reading as of the close of an hour:
+  every eligible perp, strongest first (`MomentumScore`), with its lookback
+  return (`ret`), 30-day hourly volatility (`vol`), `score` (return over
+  volatility), `pct_rank`, `quintile` and whether it is in the top-25 and
+  top-50 universes (`in_top25`, `in_top50`).
+- `returns()` returns the long-short factor's return per `1d` (default) or
+  `1h` bucket (`MomentumInterval`) on the top-25 (default) or top-50
+  universe (`MomentumUniverse`), oldest first (`MomentumReturn`), with each
+  leg's return (`long_ret`, `short_ret`), the legs' sizes (`longs`,
+  `shorts`) and, with `holdings: Some(true)`, the rebalance's weights
+  (`MomentumHolding`). `start` defaults to 30 days before `end`, and pages
+  hold up to 1,000 buckets (default 100). `iterate_returns()` returns a
+  `CursorPages`, which follows `next_cursor` until a page has none, needs
+  `start`, and fixes `end` once when it is unset.
+- Scores and returns start 2025-05-24 01:00 UTC; a request that ends before
+  then is empty, with `meta.coverage_from` and `meta.notice`. On Free the API
+  answers 403 `forbidden`, and `Error::plan_required()` returns the plans
+  that include the dataset (`datatype` `momentum`).
+
 ## [1.15.0] - 2026-11-14
 
 Times that describe market data are the time of the data, and are `None`

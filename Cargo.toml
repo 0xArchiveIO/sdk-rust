@@ -1,6 +1,6 @@
 [package]
 name = "oxarchive"
-version = "1.15.0"
+version = "1.16.0"
 edition = "2021"
 rust-version = "1.85"
 description = "Rust SDK for async 0xArchive market data clients"
@@ -36,6 +36,7 @@ include = [
     "/src/resources/l4_orderbook.rs",
     "/src/resources/liquidations.rs",
     "/src/resources/mod.rs",
+    "/src/resources/momentum.rs",
     "/src/resources/open_interest.rs",
     "/src/resources/oracle.rs",
     "/src/resources/orderbook.rs",

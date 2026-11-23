@@ -1,0 +1,46 @@
+{
+  "request": {
+    "path": "/v1/capabilities",
+    "query": {},
+    "plan": "enterprise",
+    "version": "2026-10-01"
+  },
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "venue": "hyperliquid",
+        "datatype": "momentum",
+        "rest_routes": [
+          "/v1/hyperliquid/factors/momentum",
+          "/v1/hyperliquid/factors/momentum/current",
+          "/v1/hyperliquid/factors/momentum/returns"
+        ],
+        "ws_channels": [],
+        "live": false,
+        "replay": false,
+        "available_from": null,
+        "cadence": "interval",
+        "page_limit": 1000,
+        "intervals": [
+          "1h",
+          "1d"
+        ],
+        "notes": "Every Hyperliquid perp's momentum score and the long-short momentum factor's returns, method momentum/1 (lookback required: 7d or 14d, winners minus losers). factors/momentum is one hour's reading (at, default now): every perp with 60 days of history and dollar volume in the 30 days before the universe pick, its lookback return, 30-day hourly volatility, score (return over volatility), pct_rank, quintile and whether it is in the top-25 and top-50 universes. factors/momentum/returns is the factor's return per 1h or 1d bucket on the top 25 or top 50 perps by 30-day dollar volume (every perp ever listed, delisted ones included, re-picked every 30 days): long the top fifth on the score, short the bottom fifth, inverse-volatility weighted, rebalanced Saturdays 00:00 UTC, gross of fees and funding; holdings=true adds the weights. Both from 2025-05-24 01:00 UTC.",
+        "plans": [
+          "build",
+          "pro",
+          "scale",
+          "enterprise"
+        ]
+      }
+    ],
+    "meta": {
+      "count": 105,
+      "request_id": "2e881637-47e8-452c-a8c1-24089cf9b2db"
+    }
+  },
+  "recorded": "2026-11-23, API version 2026-10-01",
+  "note": "data keeps only the momentum row of the 105 rows the API returned; meta.count is the recorded count"
+}

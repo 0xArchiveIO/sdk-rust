@@ -2992,6 +2992,191 @@ pub struct PositioningReading {
 }
 
 // ---------------------------------------------------------------------------
+// The momentum factor (Hyperliquid core perps; Build and above)
+// ---------------------------------------------------------------------------
+
+/// The momentum factor's lookback (`client.hyperliquid.factors.momentum`):
+/// the window of the return each perp is ranked on. Required on every
+/// momentum call; there is no default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MomentumLookback {
+    /// 7 days (`7d`).
+    SevenDays,
+    /// 14 days (`14d`).
+    FourteenDays,
+}
+
+impl MomentumLookback {
+    /// Every lookback, shortest first.
+    pub const ALL: [MomentumLookback; 2] =
+        [MomentumLookback::SevenDays, MomentumLookback::FourteenDays];
+
+    /// The wire value: `7d` or `14d`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MomentumLookback::SevenDays => "7d",
+            MomentumLookback::FourteenDays => "14d",
+        }
+    }
+
+    /// The lookback for a wire value, or `None` unless it is `7d` or `14d`.
+    pub fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|l| l.as_str() == value)
+    }
+}
+
+/// The perps the momentum factor's baskets are built from: the top 25 or top
+/// 50 by 30-day dollar volume, re-picked every 30 days.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MomentumUniverse {
+    /// The top 25 (`top25`), the API's default.
+    Top25,
+    /// The top 50 (`top50`).
+    Top50,
+}
+
+impl MomentumUniverse {
+    /// The wire value: `top25` or `top50`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MomentumUniverse::Top25 => "top25",
+            MomentumUniverse::Top50 => "top50",
+        }
+    }
+}
+
+/// Bucket width of the momentum factor's returns, on UTC boundaries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MomentumInterval {
+    /// One hour (`1h`).
+    OneHour,
+    /// One UTC day (`1d`), the API's default.
+    OneDay,
+}
+
+impl MomentumInterval {
+    /// The wire value: `1h` or `1d`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MomentumInterval::OneHour => "1h",
+            MomentumInterval::OneDay => "1d",
+        }
+    }
+}
+
+/// One perp's momentum reading as of the close of one hour, from
+/// `client.hyperliquid.factors.momentum.get()` or `.current()`.
+///
+/// A reading lists every perp eligible at that hour (60 days of history and
+/// dollar volume in the 30 days before the universe pick in force),
+/// strongest first. `score` is `ret` over `vol`: what the perps are ranked
+/// on.
+///
+/// More fields may be added in minor releases, so the struct cannot be
+/// built with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct MomentumScore {
+    /// The perp.
+    pub symbol: String,
+    /// The reading's instant, the close of its hour, as an RFC 3339 UTC
+    /// string with milliseconds.
+    pub timestamp: String,
+    /// The reading's instant, in Unix milliseconds.
+    pub timestamp_ms: i64,
+    /// `7d` or `14d`.
+    pub lookback: String,
+    /// The method version, for example `momentum/1`.
+    pub method: String,
+    /// The close-to-close return over the lookback, as a fraction (0.05 is
+    /// 5%).
+    #[serde(default)]
+    pub ret: Option<f64>,
+    /// The standard deviation of the last 30 days of hourly returns (not
+    /// annualised).
+    #[serde(default)]
+    pub vol: Option<f64>,
+    /// `ret / vol`: the signal the perps are ranked on.
+    pub score: f64,
+    /// The score's percentile rank among the perps in this reading, in
+    /// `(0, 1]`, ties averaged.
+    pub pct_rank: f64,
+    /// The fifth `pct_rank` falls in: 5 at or above 0.8, 1 at or below 0.2.
+    /// The factor's baskets rank within their own universe, so a perp's
+    /// place in a basket is in the returns' `holdings`.
+    pub quintile: u8,
+    /// Whether the perp is in the top-25 universe in force at that hour.
+    pub in_top25: bool,
+    /// Whether the perp is in the top-50 universe in force at that hour.
+    pub in_top50: bool,
+    /// `true` once every candle the reading is made from is final. A final
+    /// reading changes only if those candles are rebuilt.
+    pub is_final: bool,
+}
+
+/// One perp's weight in the momentum factor after a rebalance.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct MomentumHolding {
+    /// The perp.
+    pub symbol: String,
+    /// Positive for the long leg, negative for the short leg. Each leg's
+    /// weights sum to 1 in size.
+    pub weight: f64,
+}
+
+/// The momentum factor's return over one bucket, from
+/// `client.hyperliquid.factors.momentum.returns()`.
+///
+/// Long the top fifth of the universe on the score, short the bottom fifth,
+/// each leg weighted by inverse volatility, rebalanced every 168 hours
+/// (Saturdays 00:00 UTC, earning from 01:00). `ret` is the sum of the
+/// factor's hourly returns over the hours the bucket holds (simple, not
+/// compounded), gross of fees and funding.
+///
+/// More fields may be added in minor releases, so the struct cannot be
+/// built with a literal outside this crate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct MomentumReturn {
+    /// The bucket's open, as an RFC 3339 UTC string with milliseconds.
+    pub timestamp: String,
+    /// The bucket's open, in Unix milliseconds.
+    pub timestamp_ms: i64,
+    /// The close of the last hour the bucket holds.
+    pub calculated_at: String,
+    /// `calculated_at` in Unix milliseconds.
+    pub calculated_at_ms: i64,
+    /// `7d` or `14d`.
+    pub lookback: String,
+    /// `top25` or `top50`.
+    pub universe: String,
+    /// The method version, for example `momentum/1`.
+    pub method: String,
+    /// The factor's return: `long_ret` minus `short_ret`, as a fraction.
+    pub ret: f64,
+    /// The long leg's return over the bucket.
+    pub long_ret: f64,
+    /// The short leg's return over the bucket: what the perps held short
+    /// did, so a rise lowers `ret`.
+    pub short_ret: f64,
+    /// The hours summed: fewer than the interval's for the bucket still
+    /// forming and for the first bucket of coverage.
+    pub hours: u32,
+    /// Perps in the long leg in force at the bucket's last hour.
+    pub longs: u32,
+    /// Perps in the short leg in force at the bucket's last hour.
+    pub shorts: u32,
+    /// With `holdings: Some(true)`, the weights of the rebalance in force at
+    /// the bucket's last hour, long leg first; `None` when not asked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub holdings: Option<Vec<MomentumHolding>>,
+    /// `true` once the whole bucket has closed and every candle it is made
+    /// from is final.
+    pub is_final: bool,
+}
+
+// ---------------------------------------------------------------------------
 // HIP-3 oracle
 // ---------------------------------------------------------------------------
 

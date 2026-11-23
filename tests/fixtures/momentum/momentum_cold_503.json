@@ -1,0 +1,20 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/factors/momentum/current",
+    "query": {
+      "lookback": "7d"
+    },
+    "plan": "enterprise",
+    "version": "2026-10-01"
+  },
+  "status": 503,
+  "body": {
+    "code": 503,
+    "error": "The momentum factor is still being prepared. Retry in a few seconds.",
+    "error_code": "upstream_unavailable",
+    "request_id": "5a7f8447-459e-416e-b632-607a9fe46c30",
+    "success": false
+  },
+  "recorded": "2026-11-23, API version 2026-10-01",
+  "note": "the first request after the service started: the API answered 503 (retryable) while the factor was being prepared, and it was ready about 20 s after this request"
+}

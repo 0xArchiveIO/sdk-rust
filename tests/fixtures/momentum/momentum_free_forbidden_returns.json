@@ -1,0 +1,28 @@
+{
+  "request": {
+    "path": "/v1/hyperliquid/factors/momentum/returns",
+    "query": {
+      "lookback": "7d"
+    },
+    "plan": "free",
+    "version": "2026-10-01"
+  },
+  "status": 403,
+  "body": {
+    "code": 403,
+    "datatype": "momentum",
+    "error": "Momentum factor is included with the Build, Pro, Scale and Enterprise plans. Upgrade at https://0xarchive.io/pricing.",
+    "error_code": "forbidden",
+    "request_id": "1af88c99-9d6d-41d2-9498-cd3ffe2009aa",
+    "required_plans": [
+      "build",
+      "pro",
+      "scale",
+      "enterprise"
+    ],
+    "success": false,
+    "upgrade_url": "https://0xarchive.io/pricing"
+  },
+  "recorded": "2026-11-23, API version 2026-10-01",
+  "note": "only the response was kept: the lookback shown is an example"
+}
